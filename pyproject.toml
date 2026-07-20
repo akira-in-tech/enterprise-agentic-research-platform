@@ -14,7 +14,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = []
+dev = [
+    "httpx",
+    "pytest",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
