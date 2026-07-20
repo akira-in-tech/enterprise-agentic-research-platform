@@ -1,22 +1,75 @@
+import logging
+
 from anthropic import AsyncAnthropic
+from anthropic.types import TextBlock
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
+
 
 class ClaudeClient:
-    """Create and manage the asynchronous Anthropic API client."""
+    """Provide a small application-facing wrapper around the Anthropic SDK."""
 
     def __init__(self) -> None:
         if not settings.anthropic_api_key:
             raise ValueError("ANTHROPIC_API_KEY is not configured.")
 
+        if not settings.anthropic_model:
+            raise ValueError("ANTHROPIC_MODEL is not configured.")
+
+        self._model = settings.anthropic_model
         self._client = AsyncAnthropic(
             api_key=settings.anthropic_api_key,
             timeout=30.0,
             max_retries=2,
         )
 
-    @property
-    def client(self) -> AsyncAnthropic:
-        """Return the underlying Anthropic SDK client."""
-        return self._client
+    async def generate_text(
+        self,
+        prompt: str,
+        *,
+        max_tokens: int = 64,
+    ) -> str:
+        """Generate a short text response from Claude."""
+
+        normalized_prompt = prompt.strip()
+
+        if not normalized_prompt:
+            raise ValueError("Prompt must not be empty.")
+
+        logger.info(
+            "Sending Claude request | model=%s | max_tokens=%s",
+            self._model,
+            max_tokens,
+        )
+
+        message = await self._client.messages.create(
+            model=self._model,
+            max_tokens=max_tokens,
+            messages=[
+                {
+                    "role": "user",
+                    "content": normalized_prompt,
+                }
+            ],
+        )
+
+        text_parts = [
+            block.text
+            for block in message.content
+            if isinstance(block, TextBlock)
+        ]
+
+        response_text = "\n".join(text_parts).strip()
+
+        if not response_text:
+            raise RuntimeError("Claude returned no text content.")
+
+        logger.info(
+            "Claude request completed | input_tokens=%s | output_tokens=%s",
+            message.usage.input_tokens,
+            message.usage.output_tokens,
+        )
+
+        return response_text
