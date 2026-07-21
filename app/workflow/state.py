@@ -1,4 +1,6 @@
-from typing import TypedDict
+from typing import Literal, NotRequired, TypedDict
+
+ResearchRoute = Literal["direct", "deep_research"]
 
 
 class ResearchState(TypedDict):
@@ -6,3 +8,4 @@ class ResearchState(TypedDict):
 
     query: str
     status: str
+    route: NotRequired[ResearchRoute]
