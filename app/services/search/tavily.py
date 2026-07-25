@@ -4,6 +4,7 @@ from tavily import AsyncTavilyClient  # type: ignore[import-untyped]
 
 from app.core.config import settings
 from app.services.search.base import SearchResult
+from app.services.search.urls import normalize_url
 
 
 class TavilySearchClient:
@@ -55,9 +56,13 @@ class TavilySearchClient:
         results: list[SearchResult] = []
 
         for item in raw_results:
-            url = str(item.get("url") or "").strip()
+            raw_url = str(
+                item.get("url") or ""
+            ).strip()
 
-            if not url:
+            try:
+                url = normalize_url(raw_url)
+            except ValueError:
                 continue
 
             results.append(

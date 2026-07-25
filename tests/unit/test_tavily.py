@@ -50,8 +50,16 @@ def test_search_normalizes_tavily_results(
             "results": [
                 {
                     "title": "HTTP PUT",
-                    "url": "https://example.com/http-put",
+                    "url": (
+                        "HTTPS://Example.COM:443/http-put/"
+                        "?utm_source=test#semantics"
+                    ),
                     "content": "PUT is an idempotent HTTP method.",
+                },
+                {
+                    "title": "Unsupported URL",
+                    "url": "ftp://example.com/http-put",
+                    "content": "This result should be skipped.",
                 },
                 {
                     "title": "Missing URL",
@@ -136,3 +144,18 @@ def test_client_requires_api_key(
         match="TAVILY_API_KEY must not be empty",
     ):
         TavilySearchClient()
+
+
+def test_search_returns_empty_list_for_empty_results(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = create_test_client(
+        monkeypatch,
+        {"results": []},
+    )
+
+    results = asyncio.run(
+        client.search("Linux epoll behavior")
+    )
+
+    assert results == []
