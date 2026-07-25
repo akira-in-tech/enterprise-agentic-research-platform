@@ -1,0 +1,79 @@
+from unittest.mock import AsyncMock
+
+import pytest
+
+from app.agents.intent_router import (
+    IntentRouter,
+    classify_route_by_rule,
+)
+from app.schemas.intent import IntentDecision
+from app.services.claude import ClaudeClient
+
+
+def test_rule_classifier_routes_stable_question_directly() -> None:
+    result = classify_route_by_rule(
+        "Explain idempotency in REST APIs."
+    )
+
+    assert result == "direct"
+
+
+def test_rule_classifier_routes_comparison_to_deep_research() -> None:
+    result = classify_route_by_rule(
+        "Compare HTTP/2 and HTTP/3 using current sources."
+    )
+
+    assert result == "deep_research"
+
+
+@pytest.mark.anyio
+async def test_intent_router_returns_claude_decision() -> None:
+    claude_client = ClaudeClient()
+
+    claude_client.generate_structured = AsyncMock(
+        return_value=IntentDecision(
+            route="deep_research",
+            reason=(
+                "The request requires current technical sources "
+                "and protocol comparison."
+            ),
+        )
+    )
+
+    router = IntentRouter(claude_client)
+
+    decision = await router.classify(
+        "Compare HTTP/2 and HTTP/3 using current sources."
+    )
+
+    assert decision.route == "deep_research"
+    assert "current technical sources" in decision.reason
+
+    claude_client.generate_structured.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_intent_router_uses_rule_fallback_on_claude_failure() -> None:
+    claude_client = ClaudeClient()
+
+    claude_client.generate_structured = AsyncMock(
+        side_effect=RuntimeError("Claude is temporarily unavailable.")
+    )
+
+    router = IntentRouter(claude_client)
+
+    decision = await router.classify(
+        "Analyze Kubernetes Deployment and StatefulSet trade-offs."
+    )
+
+    assert decision.route == "deep_research"
+    assert "fallback" in decision.reason.lower()
+
+
+@pytest.mark.anyio
+async def test_intent_router_rejects_empty_query() -> None:
+    claude_client = ClaudeClient()
+    router = IntentRouter(claude_client)
+
+    with pytest.raises(ValueError, match="Query must not be empty"):
+        await router.classify("   ")

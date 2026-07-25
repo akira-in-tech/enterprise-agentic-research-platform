@@ -1,54 +1,44 @@
+from collections.abc import Awaitable, Callable
 from typing import Literal
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
-from app.workflow.state import ResearchRoute, ResearchState
+from app.agents.intent_router import IntentRouter
+from app.schemas.intent import IntentDecision
+from app.services.claude import ClaudeClient
+from app.workflow.state import ResearchState
+
+IntentClassifier = Callable[[str], Awaitable[IntentDecision]]
 
 
 def initialize_node(_: ResearchState) -> dict[str, str]:
     """Initialize the workflow status for a new request."""
 
-    return {
-        "status": "initialized",
-    }
+    return {"status": "initialized"}
 
 
-def classify_route(query: str) -> ResearchRoute:
-    """Classify a query using a minimal deterministic rule."""
+def build_route_node(
+    classifier: IntentClassifier,
+) -> Callable[[ResearchState], Awaitable[dict[str, str]]]:
+    """Create the asynchronous route node."""
 
-    normalized_query = query.strip().lower()
+    async def route_node(state: ResearchState) -> dict[str, str]:
+        decision = await classifier(state["query"])
 
-    deep_research_keywords = (
-        "compare",
-        "research",
-        "analyze",
-        "latest",
-        "sources",
-        "evidence",
-    )
+        return {
+            "route": decision.route,
+            "route_reason": decision.reason,
+            "status": "routed",
+        }
 
-    if any(keyword in normalized_query for keyword in deep_research_keywords):
-        return "deep_research"
-
-    return "direct"
-
-
-def route_node(state: ResearchState) -> dict[str, ResearchRoute | str]:
-    """Choose the workflow path for the current query."""
-
-    route = classify_route(state["query"])
-
-    return {
-        "route": route,
-        "status": "routed",
-    }
+    return route_node
 
 
 def select_route(
     state: ResearchState,
 ) -> Literal["direct_answer", "deep_research"]:
-    """Select the next graph node from the routing decision."""
+    """Select the next node from the route stored in state."""
 
     if state["route"] == "direct":
         return "direct_answer"
@@ -57,28 +47,26 @@ def select_route(
 
 
 def direct_answer_node(_: ResearchState) -> dict[str, str]:
-    """Mark a simple request as ready for direct answering."""
+    """Mark the request as ready for direct answering."""
 
-    return {
-        "status": "direct_answer_ready",
-    }
+    return {"status": "direct_answer_ready"}
 
 
 def deep_research_node(_: ResearchState) -> dict[str, str]:
-    """Mark a complex request as ready for the research workflow."""
+    """Mark the request as ready for deep research."""
 
-    return {
-        "status": "deep_research_ready",
-    }
+    return {"status": "deep_research_ready"}
 
 
-def build_research_graph() -> CompiledStateGraph:
-    """Build and compile the research routing workflow."""
+def build_research_graph(
+    classifier: IntentClassifier,
+) -> CompiledStateGraph:
+    """Build and compile the asynchronous routing workflow."""
 
     graph_builder = StateGraph(ResearchState)
 
     graph_builder.add_node("initialize", initialize_node)
-    graph_builder.add_node("route", route_node)
+    graph_builder.add_node("route", build_route_node(classifier))
     graph_builder.add_node("direct_answer", direct_answer_node)
     graph_builder.add_node("deep_research", deep_research_node)
 
@@ -100,4 +88,13 @@ def build_research_graph() -> CompiledStateGraph:
     return graph_builder.compile()
 
 
-research_graph = build_research_graph()
+def build_default_research_graph() -> CompiledStateGraph:
+    """Build the production graph with the Claude Intent Router."""
+
+    claude_client = ClaudeClient()
+    intent_router = IntentRouter(claude_client)
+
+    return build_research_graph(intent_router.classify)
+
+
+research_graph = build_default_research_graph()

@@ -1,11 +1,12 @@
-from typing import Literal, NotRequired, TypedDict
+from typing import NotRequired, TypedDict
 
-ResearchRoute = Literal["direct", "deep_research"]
+from app.schemas.intent import ResearchRoute
 
 
 class ResearchState(TypedDict):
-    """Represent the shared state passed between research workflow nodes."""
+    """Represent the shared state passed between workflow nodes."""
 
     query: str
     status: str
     route: NotRequired[ResearchRoute]
+    route_reason: NotRequired[str]
