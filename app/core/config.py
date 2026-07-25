@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     anthropic_model: str = ""
     tavily_api_key: str = ""
 
+    llm_provider: str = "anthropic"
+
+    ollama_base_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen3:8b"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -11,6 +11,7 @@ requires-python = ">=3.13,<3.14"
 dependencies = [
     "anthropic",
     "fastapi",
+    "httpx",
     "langgraph",
     "pydantic-settings",
     "uvicorn[standard]",
@@ -18,7 +19,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "httpx",
     "pytest",
 ]
 

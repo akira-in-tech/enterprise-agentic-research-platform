@@ -4,12 +4,12 @@ from unittest.mock import AsyncMock
 import pytest
 from anthropic.types import TextBlock
 
-from app.services.claude import ClaudeClient
+from app.services.llm.anthropic import AnthropicClient
 
 
 @pytest.mark.anyio
-async def test_generate_text_returns_claude_text() -> None:
-    client = ClaudeClient()
+async def test_generate_text_returns_anthropic_text() -> None:
+    client = AnthropicClient()
 
     mock_message = SimpleNamespace(
         content=[
@@ -38,7 +38,7 @@ async def test_generate_text_returns_claude_text() -> None:
 
 @pytest.mark.anyio
 async def test_generate_text_rejects_empty_prompt() -> None:
-    client = ClaudeClient()
+    client = AnthropicClient()
 
     with pytest.raises(ValueError, match="Prompt must not be empty"):
         await client.generate_text("   ")
@@ -46,7 +46,7 @@ async def test_generate_text_rejects_empty_prompt() -> None:
 
 @pytest.mark.anyio
 async def test_generate_text_raises_when_no_text_is_returned() -> None:
-    client = ClaudeClient()
+    client = AnthropicClient()
 
     mock_message = SimpleNamespace(
         content=[],

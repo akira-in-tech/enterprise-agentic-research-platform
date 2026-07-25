@@ -12,7 +12,7 @@ from pydantic import BaseModel
 logger = logging.getLogger(__name__)
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 
-class ClaudeClient:
+class AnthropicClient:
     """Provide a small application-facing wrapper around the Anthropic SDK."""
 
     def __init__(self) -> None:

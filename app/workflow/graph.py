@@ -8,7 +8,7 @@ from app.agents.intent_router import IntentRouter
 from app.agents.planner import PlannerAgent
 from app.schemas.intent import IntentDecision
 from app.schemas.planner import ResearchPlan
-from app.services.claude import ClaudeClient
+from app.services.llm.anthropic import AnthropicClient
 from app.workflow.state import ResearchState
 
 IntentClassifier = Callable[[str], Awaitable[IntentDecision]]
@@ -105,9 +105,9 @@ def build_research_graph(
 def build_default_research_graph() -> CompiledStateGraph:
     """Build the production graph with Claude-backed agents."""
 
-    claude_client = ClaudeClient()
-    intent_router = IntentRouter(claude_client)
-    planner = PlannerAgent(claude_client)
+    anthropic_client = AnthropicClient()
+    intent_router = IntentRouter(anthropic_client)
+    planner = PlannerAgent(anthropic_client)
 
     return build_research_graph(
         intent_router.classify,
