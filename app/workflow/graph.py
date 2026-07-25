@@ -10,11 +10,20 @@ from app.agents.planner import PlannerAgent
 from app.schemas.intent import IntentDecision
 from app.schemas.planner import ResearchPlan
 from app.services.llm.factory import create_llm_client
+from app.services.search.executor import (
+    ResearchTaskResult,
+    SearchExecutor,
+)
+from app.services.search.tavily import TavilySearchClient
 from app.workflow.state import ResearchState
 
 IntentClassifier = Callable[[str], Awaitable[IntentDecision]]
 PlanCreator = Callable[[str], Awaitable[ResearchPlan]]
 DirectAnswerGenerator = Callable[[str], Awaitable[str]]
+SearchPlanExecutor = Callable[
+    [ResearchPlan],
+    Awaitable[list[ResearchTaskResult]],
+]
 
 ResearchGraph = CompiledStateGraph[
     ResearchState,
@@ -99,12 +108,46 @@ def build_planner_node(
     return planner_node
 
 
+def build_web_search_node(
+    execute_search: SearchPlanExecutor,
+) -> Callable[
+    [ResearchState],
+    Awaitable[dict[str, object]],
+]:
+    """Create the asynchronous web-search node."""
+
+    async def web_search_node(
+        state: ResearchState,
+    ) -> dict[str, object]:
+        outcomes = await execute_search(state["plan"])
+
+        succeeded_count = sum(
+            outcome.succeeded
+            for outcome in outcomes
+        )
+
+        if not outcomes or succeeded_count == 0:
+            status = "web_search_failed"
+        elif succeeded_count < len(outcomes):
+            status = "web_search_partial"
+        else:
+            status = "web_search_completed"
+
+        return {
+            "web_search_results": outcomes,
+            "status": status,
+        }
+
+    return web_search_node
+
+
 def build_research_graph(
     classifier: IntentClassifier,
     create_plan: PlanCreator,
     generate_direct_answer: DirectAnswerGenerator,
+    execute_search: SearchPlanExecutor,
 ) -> ResearchGraph:
-    """Build and compile the routing, answering, and planning workflow."""
+    """Build and compile the answering and research workflow."""
 
     graph_builder = StateGraph(ResearchState)
 
@@ -123,6 +166,10 @@ def build_research_graph(
     graph_builder.add_node(  # type: ignore[call-overload]
         "planner",
         build_planner_node(create_plan),
+    )
+    graph_builder.add_node(  # type: ignore[call-overload]
+        "web_search",
+        build_web_search_node(execute_search),
     )
 
     graph_builder.add_edge(
@@ -149,6 +196,10 @@ def build_research_graph(
     )
     graph_builder.add_edge(
         "planner",
+        "web_search",
+    )
+    graph_builder.add_edge(
+        "web_search",
         END,
     )
 
@@ -156,19 +207,19 @@ def build_research_graph(
 
 
 def build_default_research_graph() -> ResearchGraph:
-    """Build the production graph with the configured LLM provider."""
+    """Build the production graph with configured providers."""
 
     llm_client = create_llm_client()
+    tavily_client = TavilySearchClient()
 
     intent_router = IntentRouter(llm_client)
     direct_answer_agent = DirectAnswerAgent(llm_client)
     planner = PlannerAgent(llm_client)
+    search_executor = SearchExecutor(tavily_client)
 
     return build_research_graph(
         intent_router.classify,
         planner.create_plan,
         direct_answer_agent.answer,
+        search_executor.execute,
     )
-
-
-research_graph = build_default_research_graph()
