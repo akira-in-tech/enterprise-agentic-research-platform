@@ -15,11 +15,14 @@ dependencies = [
     "langgraph",
     "pydantic-settings",
     "uvicorn[standard]",
+    "tavily-python",
 ]
 
 [project.optional-dependencies]
 dev = [
+    "mypy",
     "pytest",
+    "ruff",
 ]
 
 [tool.pytest.ini_options]

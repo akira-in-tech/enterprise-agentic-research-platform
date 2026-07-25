@@ -1,5 +1,6 @@
 from functools import lru_cache
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -14,9 +15,9 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
 
-    anthropic_api_key: str = ""
     anthropic_model: str = ""
-    tavily_api_key: str = ""
+    anthropic_api_key: SecretStr = SecretStr("")
+    tavily_api_key: SecretStr = SecretStr("")
 
     llm_provider: str = "anthropic"
 
