@@ -27,10 +27,12 @@ def test_rule_classifier_routes_comparison_to_deep_research() -> None:
 
 
 @pytest.mark.anyio
-async def test_intent_router_returns_anthropic_decision() -> None:
+async def test_intent_router_returns_anthropic_decision(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     llm_client = AnthropicClient()
 
-    llm_client.generate_structured = AsyncMock(
+    generate_structured = AsyncMock(
         return_value=IntentDecision(
             route="deep_research",
             reason=(
@@ -38,6 +40,11 @@ async def test_intent_router_returns_anthropic_decision() -> None:
                 "and protocol comparison."
             ),
         )
+    )
+    monkeypatch.setattr(
+        llm_client,
+        "generate_structured",
+        generate_structured,
     )
 
     router = IntentRouter(llm_client)
@@ -49,15 +56,22 @@ async def test_intent_router_returns_anthropic_decision() -> None:
     assert decision.route == "deep_research"
     assert "current technical sources" in decision.reason
 
-    llm_client.generate_structured.assert_awaited_once()
+    generate_structured.assert_awaited_once()
 
 
 @pytest.mark.anyio
-async def test_intent_router_uses_rule_fallback_on_claude_failure() -> None:
+async def test_intent_router_uses_rule_fallback_on_claude_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     llm_client = AnthropicClient()
 
-    llm_client.generate_structured = AsyncMock(
+    generate_structured = AsyncMock(
         side_effect=RuntimeError("Claude is temporarily unavailable.")
+    )
+    monkeypatch.setattr(
+        llm_client,
+        "generate_structured",
+        generate_structured,
     )
 
     router = IntentRouter(llm_client)

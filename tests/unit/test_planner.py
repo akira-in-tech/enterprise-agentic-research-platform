@@ -8,7 +8,9 @@ from app.services.llm.anthropic import AnthropicClient
 
 
 @pytest.mark.anyio
-async def test_planner_returns_structured_research_plan() -> None:
+async def test_planner_returns_structured_research_plan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     llm_client = AnthropicClient()
 
     expected_plan = ResearchPlan(
@@ -35,8 +37,13 @@ async def test_planner_returns_structured_research_plan() -> None:
         ],
     )
 
-    llm_client.generate_structured = AsyncMock(
+    generate_structured = AsyncMock(
         return_value=expected_plan
+    )
+    monkeypatch.setattr(
+        llm_client,
+        "generate_structured",
+        generate_structured,
     )
 
     planner = PlannerAgent(llm_client)
@@ -49,7 +56,7 @@ async def test_planner_returns_structured_research_plan() -> None:
     assert len(result.tasks) == 2
     assert result.tasks[0].title == "Protocol architecture"
 
-    llm_client.generate_structured.assert_awaited_once()
+    generate_structured.assert_awaited_once()
 
 
 @pytest.mark.anyio

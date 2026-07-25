@@ -4,6 +4,7 @@ from typing import Any
 import pytest
 from pydantic import SecretStr
 
+from app.core.config import settings
 from app.services.search import tavily as tavily_module
 from app.services.search.tavily import TavilySearchClient
 
@@ -27,7 +28,7 @@ def create_test_client(
     fake_sdk_client = FakeAsyncTavilyClient(response)
 
     monkeypatch.setattr(
-        tavily_module.settings,
+        settings,
         "tavily_api_key",
         SecretStr("test-api-key"),
     )
@@ -125,7 +126,7 @@ def test_client_requires_api_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        tavily_module.settings,
+        settings,
         "tavily_api_key",
         SecretStr(""),
     )

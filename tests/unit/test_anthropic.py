@@ -8,7 +8,9 @@ from app.services.llm.anthropic import AnthropicClient
 
 
 @pytest.mark.anyio
-async def test_generate_text_returns_anthropic_text() -> None:
+async def test_generate_text_returns_anthropic_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = AnthropicClient()
 
     mock_message = SimpleNamespace(
@@ -25,7 +27,12 @@ async def test_generate_text_returns_anthropic_text() -> None:
         ),
     )
 
-    client._client.messages.create = AsyncMock(return_value=mock_message)
+    create_message = AsyncMock(return_value=mock_message)
+    monkeypatch.setattr(
+        client._client.messages,
+        "create",
+        create_message,
+    )
 
     result = await client.generate_text(
         "Confirm the API works.",
@@ -33,7 +40,7 @@ async def test_generate_text_returns_anthropic_text() -> None:
     )
 
     assert result == "The API works correctly."
-    client._client.messages.create.assert_awaited_once()
+    create_message.assert_awaited_once()
 
 
 @pytest.mark.anyio
@@ -45,7 +52,9 @@ async def test_generate_text_rejects_empty_prompt() -> None:
 
 
 @pytest.mark.anyio
-async def test_generate_text_raises_when_no_text_is_returned() -> None:
+async def test_generate_text_raises_when_no_text_is_returned(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     client = AnthropicClient()
 
     mock_message = SimpleNamespace(
@@ -56,7 +65,11 @@ async def test_generate_text_raises_when_no_text_is_returned() -> None:
         ),
     )
 
-    client._client.messages.create = AsyncMock(return_value=mock_message)
+    monkeypatch.setattr(
+        client._client.messages,
+        "create",
+        AsyncMock(return_value=mock_message),
+    )
 
     with pytest.raises(RuntimeError, match="Claude returned no text content"):
         await client.generate_text("Return a response.")

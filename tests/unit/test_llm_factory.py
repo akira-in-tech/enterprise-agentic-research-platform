@@ -1,5 +1,6 @@
 import pytest
 
+from app.core.config import settings
 from app.services.llm import factory
 
 
@@ -41,7 +42,7 @@ def test_factory_uses_provider_from_settings(
     expected_client = object()
 
     monkeypatch.setattr(
-        factory.settings,
+        settings,
         "llm_provider",
         "ollama",
     )
