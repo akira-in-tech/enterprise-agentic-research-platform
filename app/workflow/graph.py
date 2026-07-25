@@ -14,6 +14,13 @@ from app.workflow.state import ResearchState
 IntentClassifier = Callable[[str], Awaitable[IntentDecision]]
 PlanCreator = Callable[[str], Awaitable[ResearchPlan]]
 
+ResearchGraph = CompiledStateGraph[
+    ResearchState,
+    None,
+    ResearchState,
+    ResearchState,
+]
+
 
 def initialize_node(_: ResearchState) -> dict[str, str]:
     """Initialize the workflow status for a new request."""
@@ -26,7 +33,9 @@ def build_route_node(
 ) -> Callable[[ResearchState], Awaitable[dict[str, str]]]:
     """Create the asynchronous route node."""
 
-    async def route_node(state: ResearchState) -> dict[str, str]:
+    async def route_node(
+        state: ResearchState,
+    ) -> dict[str, str]:
         decision = await classifier(state["query"])
 
         return {
@@ -49,7 +58,9 @@ def select_route(
     return "planner"
 
 
-def direct_answer_node(_: ResearchState) -> dict[str, str]:
+def direct_answer_node(
+    _: ResearchState,
+) -> dict[str, str]:
     """Mark the request as ready for direct answering."""
 
     return {"status": "direct_answer_ready"}
@@ -57,10 +68,15 @@ def direct_answer_node(_: ResearchState) -> dict[str, str]:
 
 def build_planner_node(
     create_plan: PlanCreator,
-) -> Callable[[ResearchState], Awaitable[dict[str, object]]]:
+) -> Callable[
+    [ResearchState],
+    Awaitable[dict[str, object]],
+]:
     """Create the asynchronous planner node."""
 
-    async def planner_node(state: ResearchState) -> dict[str, object]:
+    async def planner_node(
+        state: ResearchState,
+    ) -> dict[str, object]:
         plan = await create_plan(state["query"])
 
         return {
@@ -74,18 +90,36 @@ def build_planner_node(
 def build_research_graph(
     classifier: IntentClassifier,
     create_plan: PlanCreator,
-) -> CompiledStateGraph:
+) -> ResearchGraph:
     """Build and compile the intent-routing and planning workflow."""
 
     graph_builder = StateGraph(ResearchState)
 
-    graph_builder.add_node("initialize", initialize_node)
-    graph_builder.add_node("route", build_route_node(classifier))
-    graph_builder.add_node("direct_answer", direct_answer_node)
-    graph_builder.add_node("planner", build_planner_node(create_plan))
+    graph_builder.add_node(  # type: ignore[call-overload]
+        "initialize",
+        initialize_node,
+    )
+    graph_builder.add_node(  # type: ignore[call-overload]
+        "route",
+        build_route_node(classifier),
+    )
+    graph_builder.add_node(  # type: ignore[call-overload]
+        "direct_answer",
+        direct_answer_node,
+    )
+    graph_builder.add_node(  # type: ignore[call-overload]
+        "planner",
+        build_planner_node(create_plan),
+    )
 
-    graph_builder.add_edge(START, "initialize")
-    graph_builder.add_edge("initialize", "route")
+    graph_builder.add_edge(
+        START,
+        "initialize",
+    )
+    graph_builder.add_edge(
+        "initialize",
+        "route",
+    )
 
     graph_builder.add_conditional_edges(
         "route",
@@ -96,13 +130,19 @@ def build_research_graph(
         },
     )
 
-    graph_builder.add_edge("direct_answer", END)
-    graph_builder.add_edge("planner", END)
+    graph_builder.add_edge(
+        "direct_answer",
+        END,
+    )
+    graph_builder.add_edge(
+        "planner",
+        END,
+    )
 
     return graph_builder.compile()
 
 
-def build_default_research_graph() -> CompiledStateGraph:
+def build_default_research_graph() -> ResearchGraph:
     """Build the production graph with the configured LLM provider."""
 
     llm_client = create_llm_client()

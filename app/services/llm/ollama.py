@@ -1,5 +1,5 @@
 import json
-from typing import TypeVar
+from typing import Any, TypeVar, cast
 
 import httpx
 from pydantic import BaseModel, ValidationError
@@ -47,11 +47,11 @@ class OllamaClient:
         )
         response.raise_for_status()
 
-        response_data = response.json()
-        response_text = response_data.get("response", "").strip()
+        response_data = cast(dict[str, Any], response.json())
+        response_text = str(response_data.get("response") or "").strip()
 
         if not response_text:
-            thinking_text = response_data.get("thinking", "").strip()
+            thinking_text = str(response_data.get("thinking") or "").strip()
 
             if thinking_text:
                 raise RuntimeError(

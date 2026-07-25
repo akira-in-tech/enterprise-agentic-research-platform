@@ -1,30 +1,40 @@
 import logging
+from typing import TypeVar
 
 from anthropic import AsyncAnthropic
 from anthropic.types import TextBlock
+from pydantic import BaseModel
 
 from app.core.config import settings
 
-from typing import TypeVar
-
-from pydantic import BaseModel
-
 logger = logging.getLogger(__name__)
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
+
 
 class AnthropicClient:
     """Provide a small application-facing wrapper around the Anthropic SDK."""
 
     def __init__(self) -> None:
-        if not settings.anthropic_api_key:
-            raise ValueError("ANTHROPIC_API_KEY is not configured.")
+        api_key = (
+            settings.anthropic_api_key
+            .get_secret_value()
+            .strip()
+        )
+        model = settings.anthropic_model.strip()
 
-        if not settings.anthropic_model:
-            raise ValueError("ANTHROPIC_MODEL is not configured.")
+        if not api_key:
+            raise ValueError(
+                "ANTHROPIC_API_KEY is not configured."
+            )
 
-        self._model = settings.anthropic_model
+        if not model:
+            raise ValueError(
+                "ANTHROPIC_MODEL is not configured."
+            )
+
+        self._model = model
         self._client = AsyncAnthropic(
-            api_key=settings.anthropic_api_key,
+            api_key=api_key,
             timeout=30.0,
             max_retries=2,
         )
@@ -68,7 +78,9 @@ class AnthropicClient:
         response_text = "\n".join(text_parts).strip()
 
         if not response_text:
-            raise RuntimeError("Claude returned no text content.")
+            raise RuntimeError(
+                "Claude returned no text content."
+            )
 
         logger.info(
             "Claude request completed | input_tokens=%s | output_tokens=%s",
@@ -77,7 +89,7 @@ class AnthropicClient:
         )
 
         return response_text
-    
+
     async def generate_structured(
         self,
         prompt: str,
@@ -113,7 +125,9 @@ class AnthropicClient:
         parsed_output = message.parsed_output
 
         if parsed_output is None:
-            raise RuntimeError("Claude returned no structured output.")
+            raise RuntimeError(
+                "Claude returned no structured output."
+            )
 
         logger.info(
             "Structured Claude request completed | schema=%s",

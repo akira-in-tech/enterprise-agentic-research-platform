@@ -8,7 +8,7 @@ class ResearchState(TypedDict):
     """Represent the shared state passed between workflow nodes."""
 
     query: str
-    status: str
+    status: NotRequired[str]
     route: NotRequired[ResearchRoute]
     route_reason: NotRequired[str]
     plan: NotRequired[ResearchPlan]
