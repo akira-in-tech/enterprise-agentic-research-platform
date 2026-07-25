@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     app_env: str = "development"
     app_debug: bool = True
     log_level: str = "INFO"
+    run_live_tests: bool = False
 
     api_host: str = "127.0.0.1"
     api_port: int = 8000

@@ -28,7 +28,10 @@ dev = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "-ra"
+addopts = "-ra -m 'not integration'"
+markers = [
+    "integration: tests that call external or containerized services.",
+]
 
 [tool.ruff]
 target-version = "py313"
