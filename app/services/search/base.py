@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from typing import Protocol
 
 
-@dataclass(slots=True)
+@dataclass(frozen=True, slots=True)
 class SearchResult:
     """A single search result."""
 

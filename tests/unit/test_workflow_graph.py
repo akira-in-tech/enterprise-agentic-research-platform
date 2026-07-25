@@ -73,11 +73,17 @@ def create_successful_outcome(
         task=task,
         results=[
             SearchResult(
+                title="Shared HTTP specification",
+                url="https://example.com/shared-http-source",
+                content="Shared evidence relevant to both tasks.",
+                source="fake",
+            ),
+            SearchResult(
                 title=f"Technical source {index}",
                 url=f"https://example.com/source-{index}",
                 content=f"Evidence for {task.search_query}.",
                 source="fake",
-            )
+            ),
         ],
     )
 
@@ -86,8 +92,7 @@ async def fake_successful_search(
     plan: ResearchPlan,
 ) -> list[ResearchTaskResult]:
     return [
-        create_successful_outcome(task, index)
-        for index, task in enumerate(plan.tasks, start=1)
+        create_successful_outcome(task, index) for index, task in enumerate(plan.tasks, start=1)
     ]
 
 
@@ -119,6 +124,18 @@ async def fake_failed_search(
     ]
 
 
+async def fake_empty_search(
+    plan: ResearchPlan,
+) -> list[ResearchTaskResult]:
+    return [
+        ResearchTaskResult(
+            task=task,
+            results=[],
+        )
+        for task in plan.tasks
+    ]
+
+
 @pytest.mark.anyio
 async def test_research_graph_generates_direct_answer() -> None:
     graph = build_research_graph(
@@ -137,11 +154,10 @@ async def test_research_graph_generates_direct_answer() -> None:
 
     assert result["route"] == "direct"
     assert result["status"] == "direct_answer_completed"
-    assert result["answer"] == (
-        "Direct answer for: Explain idempotency in REST APIs."
-    )
+    assert result["answer"] == ("Direct answer for: Explain idempotency in REST APIs.")
     assert "plan" not in result
     assert "web_search_results" not in result
+    assert "web_sources" not in result
 
 
 @pytest.mark.anyio
@@ -171,6 +187,16 @@ async def test_research_graph_searches_for_deep_research() -> None:
     assert len(outcomes) == 2
     assert all(outcome.succeeded for outcome in outcomes)
     assert "answer" not in result
+    assert all(len(outcome.results) == 2 for outcome in outcomes)
+
+    web_sources = result["web_sources"]
+
+    assert len(web_sources) == 3
+    assert [source.url for source in web_sources] == [
+        "https://example.com/shared-http-source",
+        "https://example.com/source-1",
+        "https://example.com/source-2",
+    ]
 
 
 @pytest.mark.anyio
@@ -195,9 +221,8 @@ async def test_research_graph_preserves_partial_search_results() -> None:
 
     assert outcomes[0].succeeded is True
     assert outcomes[1].succeeded is False
-    assert outcomes[1].error == (
-        "RuntimeError: simulated provider failure."
-    )
+    assert outcomes[1].error == ("RuntimeError: simulated provider failure.")
+    assert len(result["web_sources"]) == 2
 
 
 @pytest.mark.anyio
@@ -217,7 +242,26 @@ async def test_research_graph_marks_total_search_failure() -> None:
     )
 
     assert result["status"] == "web_search_failed"
-    assert all(
-        not outcome.succeeded
-        for outcome in result["web_search_results"]
+    assert all(not outcome.succeeded for outcome in result["web_search_results"])
+    assert result["web_sources"] == []
+
+
+@pytest.mark.anyio
+async def test_research_graph_marks_empty_search_results() -> None:
+    graph = build_research_graph(
+        fake_research_classifier,
+        fake_plan_creator,
+        fake_direct_answer,
+        fake_empty_search,
     )
+
+    result = await graph.ainvoke(
+        {
+            "query": "Compare HTTP/2 and HTTP/3 using current sources.",
+            "status": "pending",
+        }
+    )
+
+    assert result["status"] == "web_search_empty"
+    assert all(outcome.succeeded for outcome in result["web_search_results"])
+    assert result["web_sources"] == []

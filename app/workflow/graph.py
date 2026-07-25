@@ -14,6 +14,7 @@ from app.services.search.executor import (
     ResearchTaskResult,
     SearchExecutor,
 )
+from app.services.search.results import deduplicate_search_results
 from app.services.search.tavily import TavilySearchClient
 from app.workflow.state import ResearchState
 
@@ -121,20 +122,36 @@ def build_web_search_node(
     ) -> dict[str, object]:
         outcomes = await execute_search(state["plan"])
 
+        web_sources = deduplicate_search_results(
+            result
+            for outcome in outcomes
+            for result in outcome.results
+        )
+
         succeeded_count = sum(
             outcome.succeeded
+            for outcome in outcomes
+        )
+        empty_success_count = sum(
+            outcome.succeeded and not outcome.results
             for outcome in outcomes
         )
 
         if not outcomes or succeeded_count == 0:
             status = "web_search_failed"
-        elif succeeded_count < len(outcomes):
+        elif not web_sources:
+            status = "web_search_empty"
+        elif (
+            succeeded_count < len(outcomes)
+            or empty_success_count > 0
+        ):
             status = "web_search_partial"
         else:
             status = "web_search_completed"
 
         return {
             "web_search_results": outcomes,
+            "web_sources": web_sources,
             "status": status,
         }
 
