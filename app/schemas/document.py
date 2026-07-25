@@ -10,6 +10,7 @@ from pydantic import (
 DocumentMediaType = Literal[
     "text/plain",
     "text/markdown",
+    "application/pdf",
 ]
 
 
@@ -90,8 +91,6 @@ class DocumentChunk(BaseModel):
         """Require an increasing half-open word range."""
 
         if self.word_end <= self.word_start:
-            raise ValueError(
-                "word_end must be greater than word_start."
-            )
+            raise ValueError("word_end must be greater than word_start.")
 
         return self
