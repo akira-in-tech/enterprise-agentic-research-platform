@@ -25,13 +25,17 @@ class PlannerAgent:
             "engineering request.\n\n"
             "Requirements:\n"
             "- Define one clear research goal.\n"
+            "- Produce between 2 and 6 distinct sub-questions.\n"
             "- Produce between 2 and 6 independent research tasks.\n"
             "- Each task must have a concise title, a search-ready query, "
             "and a short rationale.\n"
-            "- Avoid overlapping tasks.\n"
-            "- Focus on architecture, reliability, security, performance, "
-            "standards, operational trade-offs, and current adoption only "
-            "when relevant.\n"
+            "- Ensure every sub-question is covered by at least one task.\n"
+            "- Avoid overlapping tasks and duplicate search queries.\n"
+            "- Create an ordered report outline with 3 to 8 sections.\n"
+            "- Use engineering-focused sections such as technical background, "
+            "architecture, trade-offs, reliability, performance, security, "
+            "and recommendations when relevant.\n"
+            "- Focus on standards and current adoption only when relevant.\n"
             "- Do not answer the user's question yet.\n\n"
             f"User request: {normalized_query}"
         )
@@ -41,12 +45,15 @@ class PlannerAgent:
         plan = await self._llm_client.generate_structured(
             prompt,
             ResearchPlan,
-            max_tokens=1000,
+            max_tokens=1200,
         )
 
         logger.info(
-            "Research plan created | task_count=%s",
+            "Research plan created | sub_question_count=%s | "
+            "task_count=%s | section_count=%s",
+            len(plan.sub_questions),
             len(plan.tasks),
+            len(plan.report_outline),
         )
 
         return plan

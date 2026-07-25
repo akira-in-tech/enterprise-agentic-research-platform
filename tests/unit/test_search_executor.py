@@ -2,7 +2,11 @@ import asyncio
 
 import pytest
 
-from app.schemas.planner import ResearchPlan, ResearchTask
+from app.schemas.planner import (
+    ReportSection,
+    ResearchPlan,
+    ResearchTask,
+)
 from app.services.search.base import SearchResult
 from app.services.search.executor import SearchExecutor
 
@@ -61,6 +65,11 @@ def create_test_plan() -> ResearchPlan:
 
     return ResearchPlan(
         goal="Compare HTTP protocol behavior.",
+        sub_questions=[
+            "What reliability features does HTTP/2 provide?",
+            "What reliability features does HTTP/3 provide?",
+            "What are their operational trade-offs?",
+        ],
         tasks=[
             ResearchTask(
                 title="HTTP/2 reliability",
@@ -76,6 +85,20 @@ def create_test_plan() -> ResearchPlan:
                 title="Protocol trade-offs",
                 search_query="HTTP/2 versus HTTP/3 trade-offs",
                 rationale="Compare operational trade-offs.",
+            ),
+        ],
+        report_outline=[
+            ReportSection(
+                title="Technical Background",
+                purpose="Explain the foundations of HTTP/2 and HTTP/3.",
+            ),
+            ReportSection(
+                title="Reliability",
+                purpose="Compare protocol reliability behavior.",
+            ),
+            ReportSection(
+                title="Operational Trade-offs",
+                purpose="Compare production deployment considerations.",
             ),
         ],
     )
