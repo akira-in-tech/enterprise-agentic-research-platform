@@ -1,7 +1,7 @@
 import logging
 
 from app.schemas.intent import IntentDecision, ResearchRoute
-from app.services.claude import ClaudeClient
+from app.services.llm.base import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +37,8 @@ def classify_route_by_rule(query: str) -> ResearchRoute:
 class IntentRouter:
     """Route requests using Claude with a deterministic fallback."""
 
-    def __init__(self, claude_client: ClaudeClient) -> None:
-        self._claude_client = claude_client
+    def __init__(self, llm_client: LLMClient) -> None:
+        self._llm_client = llm_client
 
     async def classify(self, query: str) -> IntentDecision:
         """Classify a request as direct or deep research."""
@@ -63,7 +63,7 @@ class IntentRouter:
         )
 
         try:
-            return await self._claude_client.generate_structured(
+            return await self._llm_client.generate_structured(
                 prompt,
                 IntentDecision,
                 max_tokens=200,

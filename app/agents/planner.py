@@ -1,7 +1,7 @@
 import logging
 
 from app.schemas.planner import ResearchPlan
-from app.services.claude import ClaudeClient
+from app.services.llm.base import LLMClient
 
 logger = logging.getLogger(__name__)
 
@@ -9,8 +9,8 @@ logger = logging.getLogger(__name__)
 class PlannerAgent:
     """Create structured research plans for deep-research requests."""
 
-    def __init__(self, claude_client: ClaudeClient) -> None:
-        self._claude_client = claude_client
+    def __init__(self, llm_client: LLMClient) -> None:
+        self._llm_client = llm_client
 
     async def create_plan(self, query: str) -> ResearchPlan:
         """Generate a validated research plan for a user query."""
@@ -38,7 +38,7 @@ class PlannerAgent:
 
         logger.info("Creating research plan")
 
-        plan = await self._claude_client.generate_structured(
+        plan = await self._llm_client.generate_structured(
             prompt,
             ResearchPlan,
             max_tokens=1000,
