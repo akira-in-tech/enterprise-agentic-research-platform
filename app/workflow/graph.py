@@ -14,7 +14,7 @@ from app.services.search.executor import (
     ResearchTaskResult,
     SearchExecutor,
 )
-from app.services.search.results import deduplicate_search_results
+from app.services.search.results import build_web_source_pool
 from app.services.search.tavily import TavilySearchClient
 from app.workflow.state import ResearchState
 
@@ -122,7 +122,7 @@ def build_web_search_node(
     ) -> dict[str, object]:
         outcomes = await execute_search(state["plan"])
 
-        web_sources = deduplicate_search_results(
+        web_sources = build_web_source_pool(
             result
             for outcome in outcomes
             for result in outcome.results

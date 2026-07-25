@@ -8,6 +8,7 @@ from app.schemas.planner import (
 )
 from app.services.search.base import SearchResult
 from app.services.search.executor import ResearchTaskResult
+from app.services.search.results import create_web_source_id
 from app.workflow.graph import build_research_graph
 
 
@@ -197,6 +198,26 @@ async def test_research_graph_searches_for_deep_research() -> None:
         "https://example.com/source-1",
         "https://example.com/source-2",
     ]
+
+    assert [
+        source.source_id
+        for source in web_sources
+    ] == [
+        create_web_source_id(
+            "https://example.com/shared-http-source"
+        ),
+        create_web_source_id(
+            "https://example.com/source-1"
+        ),
+        create_web_source_id(
+            "https://example.com/source-2"
+        ),
+    ]
+
+    assert all(
+        source.provider == "fake"
+        for source in web_sources
+    )
 
 
 @pytest.mark.anyio
