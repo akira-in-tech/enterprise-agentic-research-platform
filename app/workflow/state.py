@@ -11,4 +11,5 @@ class ResearchState(TypedDict):
     status: NotRequired[str]
     route: NotRequired[ResearchRoute]
     route_reason: NotRequired[str]
+    answer: NotRequired[str]
     plan: NotRequired[ResearchPlan]

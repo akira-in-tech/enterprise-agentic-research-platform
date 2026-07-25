@@ -4,6 +4,7 @@ from typing import Literal
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from app.agents.direct_answer import DirectAnswerAgent
 from app.agents.intent_router import IntentRouter
 from app.agents.planner import PlannerAgent
 from app.schemas.intent import IntentDecision
@@ -13,6 +14,7 @@ from app.workflow.state import ResearchState
 
 IntentClassifier = Callable[[str], Awaitable[IntentDecision]]
 PlanCreator = Callable[[str], Awaitable[ResearchPlan]]
+DirectAnswerGenerator = Callable[[str], Awaitable[str]]
 
 ResearchGraph = CompiledStateGraph[
     ResearchState,
@@ -58,12 +60,22 @@ def select_route(
     return "planner"
 
 
-def direct_answer_node(
-    _: ResearchState,
-) -> dict[str, str]:
-    """Mark the request as ready for direct answering."""
+def build_direct_answer_node(
+    generate_answer: DirectAnswerGenerator,
+) -> Callable[[ResearchState], Awaitable[dict[str, str]]]:
+    """Create the asynchronous direct-answer node."""
 
-    return {"status": "direct_answer_ready"}
+    async def direct_answer_node(
+        state: ResearchState,
+    ) -> dict[str, str]:
+        answer = await generate_answer(state["query"])
+
+        return {
+            "answer": answer,
+            "status": "direct_answer_completed",
+        }
+
+    return direct_answer_node
 
 
 def build_planner_node(
@@ -90,8 +102,9 @@ def build_planner_node(
 def build_research_graph(
     classifier: IntentClassifier,
     create_plan: PlanCreator,
+    generate_direct_answer: DirectAnswerGenerator,
 ) -> ResearchGraph:
-    """Build and compile the intent-routing and planning workflow."""
+    """Build and compile the routing, answering, and planning workflow."""
 
     graph_builder = StateGraph(ResearchState)
 
@@ -105,7 +118,7 @@ def build_research_graph(
     )
     graph_builder.add_node(  # type: ignore[call-overload]
         "direct_answer",
-        direct_answer_node,
+        build_direct_answer_node(generate_direct_answer),
     )
     graph_builder.add_node(  # type: ignore[call-overload]
         "planner",
@@ -146,12 +159,15 @@ def build_default_research_graph() -> ResearchGraph:
     """Build the production graph with the configured LLM provider."""
 
     llm_client = create_llm_client()
+
     intent_router = IntentRouter(llm_client)
+    direct_answer_agent = DirectAnswerAgent(llm_client)
     planner = PlannerAgent(llm_client)
 
     return build_research_graph(
         intent_router.classify,
         planner.create_plan,
+        direct_answer_agent.answer,
     )
 
 

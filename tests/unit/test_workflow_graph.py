@@ -19,6 +19,10 @@ async def fake_research_classifier(_: str) -> IntentDecision:
     )
 
 
+async def fake_direct_answer(query: str) -> str:
+    return f"Direct answer for: {query}"
+
+
 async def fake_plan_creator(_: str) -> ResearchPlan:
     return ResearchPlan(
         goal="Compare HTTP/2 and HTTP/3.",
@@ -38,10 +42,11 @@ async def fake_plan_creator(_: str) -> ResearchPlan:
 
 
 @pytest.mark.anyio
-async def test_research_graph_routes_stable_question_to_direct_answer() -> None:
+async def test_research_graph_generates_direct_answer() -> None:
     graph = build_research_graph(
         fake_direct_classifier,
         fake_plan_creator,
+        fake_direct_answer,
     )
 
     result = await graph.ainvoke(
@@ -52,7 +57,10 @@ async def test_research_graph_routes_stable_question_to_direct_answer() -> None:
     )
 
     assert result["route"] == "direct"
-    assert result["status"] == "direct_answer_ready"
+    assert result["status"] == "direct_answer_completed"
+    assert result["answer"] == (
+        "Direct answer for: Explain idempotency in REST APIs."
+    )
     assert "plan" not in result
 
 
@@ -61,6 +69,7 @@ async def test_research_graph_creates_plan_for_deep_research() -> None:
     graph = build_research_graph(
         fake_research_classifier,
         fake_plan_creator,
+        fake_direct_answer,
     )
 
     result = await graph.ainvoke(
@@ -74,3 +83,4 @@ async def test_research_graph_creates_plan_for_deep_research() -> None:
     assert result["status"] == "research_plan_ready"
     assert result["plan"].goal == "Compare HTTP/2 and HTTP/3."
     assert len(result["plan"].tasks) == 2
+    assert "answer" not in result
