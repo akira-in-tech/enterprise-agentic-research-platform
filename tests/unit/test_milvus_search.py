@@ -85,6 +85,16 @@ class FakeAsyncMilvusClient:
         )
         return self.search_results
 
+    async def delete(
+        self,
+        collection_name: str,
+        *,
+        filter: str,
+    ) -> object:
+        return {
+            "delete_count": 0,
+        }
+
     async def close(self) -> None:
         self.closed = True
 

@@ -62,6 +62,13 @@ class AsyncMilvusClientProtocol(Protocol):
         anns_field: str,
     ) -> list[list[dict[str, object]]]: ...
 
+    async def delete(
+        self,
+        collection_name: str,
+        *,
+        filter: str,
+    ) -> object: ...
+
     async def close(self) -> None: ...
 
 
@@ -220,6 +227,49 @@ class MilvusVectorStore:
             return []
 
         return [self._build_search_result(hit) for hit in search_results[0]]
+
+    async def delete_document(
+        self,
+        *,
+        tenant_id: str,
+        document_id: str,
+    ) -> int:
+        """Delete one tenant's vectors for one document."""
+
+        normalized_tenant_id = tenant_id.strip()
+        normalized_document_id = document_id.strip()
+
+        if not normalized_tenant_id:
+            raise ValueError("tenant_id must not be empty.")
+
+        if not normalized_document_id:
+            raise ValueError("document_id must not be empty.")
+
+        await self.initialize()
+
+        delete_result = await self._client.delete(
+            self._collection_name,
+            filter=(
+                "tenant_id == "
+                f"{json.dumps(normalized_tenant_id, ensure_ascii=False)} "
+                "and document_id == "
+                f"{json.dumps(normalized_document_id, ensure_ascii=False)}"
+            ),
+        )
+
+        if not isinstance(delete_result, dict):
+            raise RuntimeError("Milvus delete returned an invalid response.")
+
+        deleted_count = delete_result.get("delete_count")
+
+        if (
+            isinstance(deleted_count, bool)
+            or not isinstance(deleted_count, int)
+            or deleted_count < 0
+        ):
+            raise RuntimeError("Milvus delete returned an invalid delete count.")
+
+        return deleted_count
 
     async def close(self) -> None:
         """Close the underlying Milvus client."""
