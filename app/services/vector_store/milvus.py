@@ -1,4 +1,5 @@
 import asyncio
+import json
 import math
 import re
 from collections.abc import Sequence
@@ -10,9 +11,11 @@ from pymilvus import (  # type: ignore[import-untyped]
 )
 
 from app.core.config import settings
+from app.schemas.document import DocumentChunk
 from app.services.vector_store.base import (
     Vector,
     VectorRecord,
+    VectorSearchResult,
 )
 
 COLLECTION_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,254}$")
@@ -46,6 +49,18 @@ class AsyncMilvusClientProtocol(Protocol):
         *,
         data: list[dict[str, object]],
     ) -> object: ...
+
+    async def search(
+        self,
+        collection_name: str,
+        *,
+        data: list[list[float]],
+        filter: str,
+        limit: int,
+        output_fields: list[str],
+        search_params: dict[str, object],
+        anns_field: str,
+    ) -> list[list[dict[str, object]]]: ...
 
     async def close(self) -> None: ...
 
@@ -155,6 +170,57 @@ class MilvusVectorStore:
             data=rows,
         )
 
+    async def search(
+        self,
+        *,
+        tenant_id: str,
+        query_vector: Sequence[float],
+        limit: int = 5,
+    ) -> list[VectorSearchResult]:
+        """Search private-document vectors for one tenant."""
+
+        normalized_tenant_id = tenant_id.strip()
+
+        if not normalized_tenant_id:
+            raise ValueError("tenant_id must not be empty.")
+
+        if not 1 <= limit <= 100:
+            raise ValueError("limit must be between 1 and 100.")
+
+        validated_query = self._validate_vector(
+            query_vector,
+            field_name="Query vector",
+        )
+
+        await self.initialize()
+
+        search_results = await self._client.search(
+            self._collection_name,
+            data=[list(validated_query)],
+            filter=(f"tenant_id == {json.dumps(normalized_tenant_id, ensure_ascii=False)}"),
+            limit=limit,
+            output_fields=[
+                "document_id",
+                "tenant_id",
+                "filename",
+                "media_type",
+                "position",
+                "word_start",
+                "word_end",
+                "content",
+            ],
+            search_params={
+                "metric_type": "COSINE",
+                "params": {},
+            },
+            anns_field="embedding",
+        )
+
+        if not search_results:
+            return []
+
+        return [self._build_search_result(hit) for hit in search_results[0]]
+
     async def close(self) -> None:
         """Close the underlying Milvus client."""
 
@@ -166,7 +232,10 @@ class MilvusVectorStore:
     ) -> dict[str, object]:
         """Convert one provider-neutral record into a Milvus row."""
 
-        embedding = self._validate_embedding(record.embedding)
+        embedding = self._validate_vector(
+            record.embedding,
+            field_name="Embedding",
+        )
         chunk = record.chunk
 
         return {
@@ -182,14 +251,16 @@ class MilvusVectorStore:
             "embedding": list(embedding),
         }
 
-    def _validate_embedding(
+    def _validate_vector(
         self,
-        embedding: Sequence[float],
+        vector: Sequence[float],
+        *,
+        field_name: str,
     ) -> Vector:
-        """Return one validated, normalized embedding."""
+        """Return one validated, normalized vector."""
 
-        if len(embedding) != self._dimensions:
-            raise ValueError(f"Embedding must contain exactly {self._dimensions} values.")
+        if len(vector) != self._dimensions:
+            raise ValueError(f"{field_name} must contain exactly {self._dimensions} values.")
 
         if any(
             isinstance(value, bool)
@@ -197,19 +268,61 @@ class MilvusVectorStore:
                 value,
                 (int, float),
             )
-            for value in embedding
+            for value in vector
         ):
-            raise ValueError("Embedding must contain numeric values.")
+            raise ValueError(f"{field_name} must contain numeric values.")
 
-        normalized_embedding = tuple(float(value) for value in embedding)
+        normalized_vector = tuple(float(value) for value in vector)
 
-        if any(not math.isfinite(value) for value in normalized_embedding):
-            raise ValueError("Embedding must contain only finite values.")
+        if any(not math.isfinite(value) for value in normalized_vector):
+            raise ValueError(f"{field_name} must contain only finite values.")
 
-        if not any(value != 0.0 for value in normalized_embedding):
-            raise ValueError("Embedding must not be a zero vector.")
+        if not any(value != 0.0 for value in normalized_vector):
+            raise ValueError(f"{field_name} must not be a zero vector.")
 
-        return normalized_embedding
+        return normalized_vector
+
+    @staticmethod
+    def _build_search_result(
+        hit: dict[str, object],
+    ) -> VectorSearchResult:
+        """Convert one Milvus hit into a domain search result."""
+
+        chunk_id = hit.get("id")
+
+        if not isinstance(chunk_id, str):
+            raise RuntimeError("Milvus search hit is missing a valid chunk ID.")
+
+        entity = hit.get("entity")
+
+        if not isinstance(entity, dict):
+            raise RuntimeError("Milvus search hit is missing entity data.")
+
+        chunk_data: dict[str, object] = dict(entity)
+        chunk_data["chunk_id"] = chunk_id
+
+        try:
+            chunk = DocumentChunk.model_validate(chunk_data)
+        except ValueError as error:
+            raise RuntimeError("Milvus returned invalid document chunk data.") from error
+
+        raw_score = hit.get("distance")
+
+        if isinstance(raw_score, bool) or not isinstance(
+            raw_score,
+            (int, float),
+        ):
+            raise RuntimeError("Milvus search hit is missing a numeric score.")
+
+        score = float(raw_score)
+
+        if not math.isfinite(score):
+            raise RuntimeError("Milvus search hit contains a non-finite score.")
+
+        return VectorSearchResult(
+            chunk=chunk,
+            score=score,
+        )
 
     def _build_schema(self) -> object:
         schema = AsyncMilvusClient.create_schema(

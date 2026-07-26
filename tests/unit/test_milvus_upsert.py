@@ -77,6 +77,19 @@ class FakeAsyncMilvusClient:
             "upsert_count": len(data),
         }
 
+    async def search(
+        self,
+        collection_name: str,
+        *,
+        data: list[list[float]],
+        filter: str,
+        limit: int,
+        output_fields: list[str],
+        search_params: dict[str, object],
+        anns_field: str,
+    ) -> list[list[dict[str, object]]]:
+        return [[]]
+
     async def close(self) -> None:
         self.closed = True
 
