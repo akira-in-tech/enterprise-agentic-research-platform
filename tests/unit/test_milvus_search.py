@@ -131,7 +131,7 @@ def create_search_hit(
     )
 
     return {
-        "id": chunk.chunk_id,
+        "chunk_id": chunk.chunk_id,
         "distance": score,
         "entity": entity,
     }
@@ -193,6 +193,41 @@ def test_search_uses_cosine_metric_and_tenant_filter() -> None:
     assert len(matches) == 1
     assert matches[0].chunk == chunk
     assert matches[0].score == pytest.approx(0.93)
+
+
+def test_search_accepts_generic_id_key() -> None:
+    chunk = create_test_chunk()
+    hit = create_search_hit(
+        chunk,
+        score=0.91,
+    )
+
+    hit["id"] = hit.pop("chunk_id")
+
+    client = FakeAsyncMilvusClient(
+        search_results=[
+            [
+                hit,
+            ]
+        ],
+    )
+    store = MilvusVectorStore(
+        dimensions=2,
+        collection_name="private_chunks_test",
+        uri="http://milvus.test:19530",
+        client=client,
+    )
+
+    matches = asyncio.run(
+        store.search(
+            tenant_id="tenant-hennge",
+            query_vector=(1.0, 0.0),
+        )
+    )
+
+    assert len(matches) == 1
+    assert matches[0].chunk == chunk
+    assert matches[0].score == pytest.approx(0.91)
 
 
 def test_search_returns_empty_list_for_no_hits() -> None:

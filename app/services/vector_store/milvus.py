@@ -338,7 +338,10 @@ class MilvusVectorStore:
     ) -> VectorSearchResult:
         """Convert one Milvus hit into a domain search result."""
 
-        chunk_id = hit.get("id")
+        chunk_id = hit.get("chunk_id")
+
+        if chunk_id is None:
+            chunk_id = hit.get("id")
 
         if not isinstance(chunk_id, str):
             raise RuntimeError("Milvus search hit is missing a valid chunk ID.")
