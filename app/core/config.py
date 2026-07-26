@@ -24,6 +24,8 @@ class Settings(BaseSettings):
 
     ollama_base_url: str = "http://localhost:11434"
     ollama_model: str = "qwen3:8b"
+    ollama_embedding_model: str = "qwen3-embedding:0.6b"
+    ollama_embedding_dimensions: int = 1024
 
     model_config = SettingsConfigDict(
         env_file=".env",
