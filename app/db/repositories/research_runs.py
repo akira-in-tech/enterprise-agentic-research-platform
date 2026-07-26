@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import ResearchRun
@@ -11,6 +11,10 @@ SUPPORTED_LLM_PROVIDERS = frozenset(
         "ollama",
     }
 )
+
+
+class ResearchRunTransitionError(RuntimeError):
+    """Indicate that a research run transition was rejected."""
 
 
 class ResearchRunRepository:
@@ -97,3 +101,114 @@ class ResearchRunRepository:
         result = await self._session.scalars(statement)
 
         return list(result)
+
+    async def mark_running(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> ResearchRun:
+        """Atomically transition a queued run to running."""
+
+        statement = (
+            update(ResearchRun)
+            .where(
+                ResearchRun.id == research_run_id,
+                ResearchRun.tenant_id == tenant_id,
+                ResearchRun.status == "queued",
+            )
+            .values(
+                status="running",
+                started_at=func.now(),
+                completed_at=None,
+                error_message=None,
+            )
+            .returning(ResearchRun)
+        )
+
+        result = await self._session.scalar(statement)
+
+        if result is None:
+            raise ResearchRunTransitionError(
+                "Research run is missing or cannot transition to running."
+            )
+
+        return result
+
+    async def mark_completed(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> ResearchRun:
+        """Atomically transition a running run to completed."""
+
+        statement = (
+            update(ResearchRun)
+            .where(
+                ResearchRun.id == research_run_id,
+                ResearchRun.tenant_id == tenant_id,
+                ResearchRun.status == "running",
+            )
+            .values(
+                status="completed",
+                completed_at=func.now(),
+                error_message=None,
+            )
+            .returning(ResearchRun)
+        )
+
+        result = await self._session.scalar(statement)
+
+        if result is None:
+            raise ResearchRunTransitionError(
+                "Research run is missing or cannot transition to completed."
+            )
+
+        return result
+
+    async def mark_failed(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        error_message: str,
+    ) -> ResearchRun:
+        """Atomically transition an active run to failed."""
+
+        normalized_error = error_message.strip()
+
+        if not normalized_error:
+            raise ValueError("error_message must not be empty.")
+
+        if len(normalized_error) > 4_000:
+            raise ValueError("error_message must not exceed 4000 characters.")
+
+        statement = (
+            update(ResearchRun)
+            .where(
+                ResearchRun.id == research_run_id,
+                ResearchRun.tenant_id == tenant_id,
+                ResearchRun.status.in_(
+                    (
+                        "queued",
+                        "running",
+                    )
+                ),
+            )
+            .values(
+                status="failed",
+                completed_at=func.now(),
+                error_message=normalized_error,
+            )
+            .returning(ResearchRun)
+        )
+
+        result = await self._session.scalar(statement)
+
+        if result is None:
+            raise ResearchRunTransitionError(
+                "Research run is missing or cannot transition to failed."
+            )
+
+        return result

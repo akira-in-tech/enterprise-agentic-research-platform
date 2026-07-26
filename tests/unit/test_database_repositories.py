@@ -6,8 +6,10 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.db.models.research import ResearchRun
 from app.db.repositories import (
     ResearchRunRepository,
+    ResearchRunTransitionError,
     TenantRepository,
     UserRepository,
 )
@@ -27,6 +29,19 @@ def create_session_mock() -> tuple[
             session_mock,
         ),
         session_mock,
+    )
+
+
+def create_research_run(
+    *,
+    status: str,
+) -> ResearchRun:
+    return ResearchRun(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        query="Explain Linux epoll.",
+        llm_provider="ollama",
+        status=status,
     )
 
 
@@ -249,3 +264,120 @@ def test_research_run_repository_rejects_invalid_limit(
         )
 
     session_mock.scalars.assert_not_awaited()
+
+
+def test_research_run_repository_marks_run_running() -> None:
+    session, session_mock = create_session_mock()
+    repository = ResearchRunRepository(session)
+    research_run = create_research_run(
+        status="running",
+    )
+    session_mock.scalar.return_value = research_run
+
+    result = asyncio.run(
+        repository.mark_running(
+            tenant_id=research_run.tenant_id,
+            research_run_id=research_run.id,
+        )
+    )
+
+    assert result is research_run
+    session_mock.scalar.assert_awaited_once()
+    session_mock.commit.assert_not_awaited()
+
+
+def test_research_run_repository_marks_run_completed() -> None:
+    session, session_mock = create_session_mock()
+    repository = ResearchRunRepository(session)
+    research_run = create_research_run(
+        status="completed",
+    )
+    session_mock.scalar.return_value = research_run
+
+    result = asyncio.run(
+        repository.mark_completed(
+            tenant_id=research_run.tenant_id,
+            research_run_id=research_run.id,
+        )
+    )
+
+    assert result is research_run
+    session_mock.scalar.assert_awaited_once()
+    session_mock.commit.assert_not_awaited()
+
+
+def test_research_run_repository_marks_run_failed() -> None:
+    session, session_mock = create_session_mock()
+    repository = ResearchRunRepository(session)
+    research_run = create_research_run(
+        status="failed",
+    )
+    research_run.error_message = "Search provider failed."
+    session_mock.scalar.return_value = research_run
+
+    result = asyncio.run(
+        repository.mark_failed(
+            tenant_id=research_run.tenant_id,
+            research_run_id=research_run.id,
+            error_message="  Search provider failed.  ",
+        )
+    )
+
+    assert result is research_run
+    assert result.error_message == "Search provider failed."
+    session_mock.scalar.assert_awaited_once()
+    session_mock.commit.assert_not_awaited()
+
+
+def test_research_run_repository_rejects_invalid_transition() -> None:
+    session, session_mock = create_session_mock()
+    repository = ResearchRunRepository(session)
+    session_mock.scalar.return_value = None
+
+    with pytest.raises(
+        ResearchRunTransitionError,
+        match="cannot transition to running",
+    ):
+        asyncio.run(
+            repository.mark_running(
+                tenant_id=uuid4(),
+                research_run_id=uuid4(),
+            )
+        )
+
+    session_mock.commit.assert_not_awaited()
+
+
+@pytest.mark.parametrize(
+    ("error_message", "expected_error"),
+    [
+        (
+            "   ",
+            "error_message must not be empty",
+        ),
+        (
+            "a" * 4_001,
+            "error_message must not exceed 4000 characters",
+        ),
+    ],
+)
+def test_research_run_repository_rejects_invalid_failure(
+    error_message: str,
+    expected_error: str,
+) -> None:
+    session, session_mock = create_session_mock()
+    repository = ResearchRunRepository(session)
+
+    with pytest.raises(
+        ValueError,
+        match=expected_error,
+    ):
+        asyncio.run(
+            repository.mark_failed(
+                tenant_id=uuid4(),
+                research_run_id=uuid4(),
+                error_message=error_message,
+            )
+        )
+
+    session_mock.scalar.assert_not_awaited()
