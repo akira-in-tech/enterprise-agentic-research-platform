@@ -69,6 +69,13 @@ class DocumentChunk(BaseModel):
         max_length=100,
     )
 
+    filename: str = Field(
+        min_length=1,
+        max_length=255,
+    )
+
+    media_type: DocumentMediaType
+
     position: int = Field(
         ge=0,
     )

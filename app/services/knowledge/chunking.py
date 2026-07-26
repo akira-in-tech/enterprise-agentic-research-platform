@@ -15,34 +15,24 @@ def chunk_document(
     """Split a document into deterministic overlapping chunks."""
 
     if max_words < 1:
-        raise ValueError(
-            "max_words must be greater than 0."
-        )
+        raise ValueError("max_words must be greater than 0.")
 
     if overlap_words < 0:
-        raise ValueError(
-            "overlap_words must not be negative."
-        )
+        raise ValueError("overlap_words must not be negative.")
 
     if overlap_words >= max_words:
-        raise ValueError(
-            "overlap_words must be less than max_words."
-        )
+        raise ValueError("overlap_words must be less than max_words.")
 
     words = document.content.split()
     step = max_words - overlap_words
     chunks: list[DocumentChunk] = []
 
-    for position, word_start in enumerate(
-        range(0, len(words), step)
-    ):
+    for position, word_start in enumerate(range(0, len(words), step)):
         word_end = min(
             word_start + max_words,
             len(words),
         )
-        chunk_content = " ".join(
-            words[word_start:word_end]
-        )
+        chunk_content = " ".join(words[word_start:word_end])
 
         identity = "\0".join(
             (
@@ -51,15 +41,15 @@ def chunk_document(
                 chunk_content,
             )
         )
-        chunk_digest = sha256(
-            identity.encode("utf-8")
-        ).hexdigest()[:16].upper()
+        chunk_digest = sha256(identity.encode("utf-8")).hexdigest()[:16].upper()
 
         chunks.append(
             DocumentChunk(
                 chunk_id=f"CHK-{chunk_digest}",
                 document_id=document.document_id,
                 tenant_id=document.tenant_id,
+                filename=document.filename,
+                media_type=document.media_type,
                 position=position,
                 word_start=word_start,
                 word_end=word_end,

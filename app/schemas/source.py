@@ -1,4 +1,8 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.document import DocumentMediaType
 
 
 class WebSource(BaseModel):
@@ -31,3 +35,43 @@ class WebSource(BaseModel):
         min_length=1,
         max_length=50,
     )
+
+
+class PrivateSource(BaseModel):
+    """Represent one canonical private knowledge source."""
+
+    model_config = ConfigDict(
+        extra="forbid",
+        frozen=True,
+    )
+
+    source_id: str = Field(
+        pattern=r"^PRIVATE-[0-9A-F]{16}$",
+    )
+
+    document_id: str = Field(
+        pattern=r"^DOC-[0-9A-F]{16}$",
+    )
+
+    chunk_id: str = Field(
+        pattern=r"^CHK-[0-9A-F]{16}$",
+    )
+
+    filename: str = Field(
+        min_length=1,
+        max_length=255,
+    )
+
+    media_type: DocumentMediaType
+
+    content: str = Field(
+        min_length=1,
+        max_length=20_000,
+    )
+
+    score: float = Field(
+        ge=-1.0,
+        le=1.0,
+    )
+
+    provider: Literal["private_knowledge"] = "private_knowledge"
