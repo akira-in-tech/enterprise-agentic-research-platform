@@ -1,5 +1,7 @@
 import asyncio
+import math
 import re
+from collections.abc import Sequence
 from typing import Protocol, cast
 
 from pymilvus import (  # type: ignore[import-untyped]
@@ -8,6 +10,10 @@ from pymilvus import (  # type: ignore[import-untyped]
 )
 
 from app.core.config import settings
+from app.services.vector_store.base import (
+    Vector,
+    VectorRecord,
+)
 
 COLLECTION_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,254}$")
 
@@ -33,6 +39,13 @@ class AsyncMilvusClientProtocol(Protocol):
         self,
         collection_name: str,
     ) -> None: ...
+
+    async def upsert(
+        self,
+        collection_name: str,
+        *,
+        data: list[dict[str, object]],
+    ) -> object: ...
 
     async def close(self) -> None: ...
 
@@ -124,10 +137,79 @@ class MilvusVectorStore:
             await self._client.load_collection(self._collection_name)
             self._initialized = True
 
+    async def upsert(
+        self,
+        records: Sequence[VectorRecord],
+    ) -> None:
+        """Validate and upsert private-document vectors."""
+
+        rows = [self._build_row(record) for record in records]
+
+        if not rows:
+            return
+
+        await self.initialize()
+
+        await self._client.upsert(
+            self._collection_name,
+            data=rows,
+        )
+
     async def close(self) -> None:
         """Close the underlying Milvus client."""
 
         await self._client.close()
+
+    def _build_row(
+        self,
+        record: VectorRecord,
+    ) -> dict[str, object]:
+        """Convert one provider-neutral record into a Milvus row."""
+
+        embedding = self._validate_embedding(record.embedding)
+        chunk = record.chunk
+
+        return {
+            "chunk_id": chunk.chunk_id,
+            "document_id": chunk.document_id,
+            "tenant_id": chunk.tenant_id,
+            "filename": chunk.filename,
+            "media_type": chunk.media_type,
+            "position": chunk.position,
+            "word_start": chunk.word_start,
+            "word_end": chunk.word_end,
+            "content": chunk.content,
+            "embedding": list(embedding),
+        }
+
+    def _validate_embedding(
+        self,
+        embedding: Sequence[float],
+    ) -> Vector:
+        """Return one validated, normalized embedding."""
+
+        if len(embedding) != self._dimensions:
+            raise ValueError(f"Embedding must contain exactly {self._dimensions} values.")
+
+        if any(
+            isinstance(value, bool)
+            or not isinstance(
+                value,
+                (int, float),
+            )
+            for value in embedding
+        ):
+            raise ValueError("Embedding must contain numeric values.")
+
+        normalized_embedding = tuple(float(value) for value in embedding)
+
+        if any(not math.isfinite(value) for value in normalized_embedding):
+            raise ValueError("Embedding must contain only finite values.")
+
+        if not any(value != 0.0 for value in normalized_embedding):
+            raise ValueError("Embedding must not be a zero vector.")
+
+        return normalized_embedding
 
     def _build_schema(self) -> object:
         schema = AsyncMilvusClient.create_schema(

@@ -54,6 +54,16 @@ class FakeAsyncMilvusClient:
     ) -> None:
         self.load_collection_calls.append(collection_name)
 
+    async def upsert(
+        self,
+        collection_name: str,
+        *,
+        data: list[dict[str, object]],
+    ) -> object:
+        return {
+            "upsert_count": len(data),
+        }
+
     async def close(self) -> None:
         self.closed = True
 
