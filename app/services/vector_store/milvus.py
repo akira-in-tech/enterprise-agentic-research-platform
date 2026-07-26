@@ -1,0 +1,198 @@
+import asyncio
+import re
+from typing import Protocol, cast
+
+from pymilvus import (  # type: ignore[import-untyped]
+    AsyncMilvusClient,
+    DataType,
+)
+
+from app.core.config import settings
+
+COLLECTION_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,254}$")
+
+
+class AsyncMilvusClientProtocol(Protocol):
+    """Describe Milvus operations used by this adapter."""
+
+    async def has_collection(
+        self,
+        collection_name: str,
+    ) -> bool: ...
+
+    async def create_collection(
+        self,
+        collection_name: str,
+        *,
+        schema: object,
+        index_params: object,
+        consistency_level: str,
+    ) -> None: ...
+
+    async def load_collection(
+        self,
+        collection_name: str,
+    ) -> None: ...
+
+    async def close(self) -> None: ...
+
+
+class MilvusVectorStore:
+    """Manage the Milvus private-document collection."""
+
+    def __init__(
+        self,
+        *,
+        dimensions: int | None = None,
+        collection_name: str | None = None,
+        uri: str | None = None,
+        token: str | None = None,
+        client: AsyncMilvusClientProtocol | None = None,
+    ) -> None:
+        selected_dimensions = (
+            dimensions if dimensions is not None else settings.ollama_embedding_dimensions
+        )
+        selected_collection = (
+            collection_name if collection_name is not None else settings.milvus_collection
+        ).strip()
+        selected_uri = (uri if uri is not None else settings.milvus_uri).strip()
+        selected_token = (
+            token if token is not None else settings.milvus_token.get_secret_value()
+        ).strip()
+
+        if selected_dimensions < 2:
+            raise ValueError("Milvus dimensions must be at least 2.")
+
+        if not COLLECTION_NAME_PATTERN.fullmatch(selected_collection):
+            raise ValueError("Invalid Milvus collection name.")
+
+        if not selected_uri:
+            raise ValueError("Milvus URI must not be empty.")
+
+        self._dimensions = selected_dimensions
+        self._collection_name = selected_collection
+        self._initialized = False
+        self._initialize_lock = asyncio.Lock()
+
+        if client is None:
+            raw_client = AsyncMilvusClient(
+                uri=selected_uri,
+                token=selected_token,
+            )
+            self._client = cast(
+                AsyncMilvusClientProtocol,
+                raw_client,
+            )
+        else:
+            self._client = client
+
+    @property
+    def dimensions(self) -> int:
+        """Return the collection vector dimensions."""
+
+        return self._dimensions
+
+    @property
+    def collection_name(self) -> str:
+        """Return the configured collection name."""
+
+        return self._collection_name
+
+    async def initialize(self) -> None:
+        """Create and load the collection once."""
+
+        if self._initialized:
+            return
+
+        async with self._initialize_lock:
+            if self._initialized:
+                return
+
+            exists = await self._client.has_collection(self._collection_name)
+
+            if not exists:
+                schema = self._build_schema()
+                index_params = self._build_index_params()
+
+                await self._client.create_collection(
+                    self._collection_name,
+                    schema=schema,
+                    index_params=index_params,
+                    consistency_level="Strong",
+                )
+
+            await self._client.load_collection(self._collection_name)
+            self._initialized = True
+
+    async def close(self) -> None:
+        """Close the underlying Milvus client."""
+
+        await self._client.close()
+
+    def _build_schema(self) -> object:
+        schema = AsyncMilvusClient.create_schema(
+            auto_id=False,
+            enable_dynamic_field=False,
+        )
+
+        schema.add_field(
+            field_name="chunk_id",
+            datatype=DataType.VARCHAR,
+            is_primary=True,
+            max_length=20,
+        )
+        schema.add_field(
+            field_name="document_id",
+            datatype=DataType.VARCHAR,
+            max_length=20,
+        )
+        schema.add_field(
+            field_name="tenant_id",
+            datatype=DataType.VARCHAR,
+            max_length=100,
+        )
+        schema.add_field(
+            field_name="filename",
+            datatype=DataType.VARCHAR,
+            max_length=255,
+        )
+        schema.add_field(
+            field_name="media_type",
+            datatype=DataType.VARCHAR,
+            max_length=50,
+        )
+        schema.add_field(
+            field_name="position",
+            datatype=DataType.INT64,
+        )
+        schema.add_field(
+            field_name="word_start",
+            datatype=DataType.INT64,
+        )
+        schema.add_field(
+            field_name="word_end",
+            datatype=DataType.INT64,
+        )
+        schema.add_field(
+            field_name="content",
+            datatype=DataType.VARCHAR,
+            max_length=65_535,
+        )
+        schema.add_field(
+            field_name="embedding",
+            datatype=DataType.FLOAT_VECTOR,
+            dim=self._dimensions,
+        )
+
+        return schema
+
+    @staticmethod
+    def _build_index_params() -> object:
+        index_params = AsyncMilvusClient.prepare_index_params()
+        index_params.add_index(
+            field_name="embedding",
+            index_type="AUTOINDEX",
+            metric_type="COSINE",
+        )
+
+        return index_params
