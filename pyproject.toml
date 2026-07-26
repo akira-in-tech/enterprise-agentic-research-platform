@@ -9,15 +9,18 @@ description = "An enterprise-oriented multi-agent research platform."
 readme = "README.md"
 requires-python = ">=3.13,<3.14"
 dependencies = [
+    "alembic",
     "anthropic",
+    "asyncpg",
     "fastapi",
     "httpx",
     "langgraph",
     "pydantic-settings",
-    "pypdf",
-    "uvicorn[standard]",
-    "tavily-python",
     "pymilvus>=2.6.14,<3.0",
+    "pypdf",
+    "sqlalchemy[asyncio]",
+    "tavily-python",
+    "uvicorn[standard]",
 ]
 
 [project.optional-dependencies]

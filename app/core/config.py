@@ -39,6 +39,11 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
+    database_url: SecretStr = SecretStr(
+        "postgresql+asyncpg://research_user:change_me@localhost:5432/research_platform"
+    )
+    database_echo: bool = False
+
 
 @lru_cache
 def get_settings() -> Settings:
