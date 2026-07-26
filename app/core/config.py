@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     ollama_embedding_model: str = "qwen3-embedding:0.6b"
     ollama_embedding_dimensions: int = 1024
 
+    milvus_uri: str = "http://localhost:19530"
+    milvus_token: SecretStr = SecretStr("")
+    milvus_collection: str = "private_document_chunks"
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

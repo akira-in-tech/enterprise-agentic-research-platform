@@ -17,6 +17,7 @@ dependencies = [
     "pypdf",
     "uvicorn[standard]",
     "tavily-python",
+    "pymilvus>=2.6.14,<3.0",
 ]
 
 [project.optional-dependencies]
