@@ -37,6 +37,9 @@ class SuccessfulResearchWorkflow:
             "status": "direct_answer_completed",
         }
 
+    async def close(self) -> None:
+        """Release no-op integration workflow resources."""
+
 
 @pytest.mark.integration
 @pytest.mark.anyio

@@ -71,6 +71,7 @@ class RecordingWorkflow:
         self.result = result
         self.error = error
         self.inputs: list[ResearchState] = []
+        self.close_calls = 0
 
     async def ainvoke(
         self,
@@ -84,6 +85,9 @@ class RecordingWorkflow:
         assert self.result is not None
 
         return self.result
+
+    async def close(self) -> None:
+        self.close_calls += 1
 
 
 @pytest.mark.anyio
@@ -156,6 +160,8 @@ async def test_execution_normalizes_provider_and_completes(
         }
     ]
 
+    assert workflow.close_calls == 1
+
 
 @pytest.mark.anyio
 async def test_execution_marks_run_failed_and_reraises() -> None:
@@ -186,6 +192,8 @@ async def test_execution_marks_run_failed_and_reraises() -> None:
         "failed",
     ]
     assert store.error_message == ("Tavily search provider timed out.")
+
+    assert workflow.close_calls == 1
 
 
 @pytest.mark.anyio

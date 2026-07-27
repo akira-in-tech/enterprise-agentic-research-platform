@@ -29,3 +29,14 @@ class LLMClient(Protocol):
     ) -> StructuredModel:
         """Generate a response validated against a Pydantic model."""
         ...
+
+
+class ClosableLLMClient(
+    LLMClient,
+    Protocol,
+):
+    """Define an LLM client that owns asynchronous resources."""
+
+    async def close(self) -> None:
+        """Release provider-owned network resources."""
+        ...

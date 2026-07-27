@@ -1,15 +1,17 @@
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol, cast
 from uuid import UUID
 
+from app.services.llm.base import ClosableLLMClient
 from app.services.llm.factory import (
     CanonicalLLMProvider,
+    create_llm_client,
     normalize_llm_provider,
 )
 from app.workflow.graph import (
     ResearchGraph,
-    build_default_research_graph,
+    build_research_graph_for_client,
 )
 from app.workflow.state import ResearchState
 
@@ -23,15 +25,23 @@ class ResearchWorkflow(Protocol):
     ) -> ResearchState:
         """Execute one research workflow."""
 
+    async def close(self) -> None:
+        """Release resources owned by this workflow."""
+
 
 class LangGraphResearchWorkflow:
-    """Adapt LangGraph's overloaded API to the application interface."""
+    """Adapt LangGraph and own its provider client lifecycle."""
 
     def __init__(
         self,
         graph: ResearchGraph,
+        close_callback: Callable[
+            [],
+            Awaitable[None],
+        ],
     ) -> None:
         self._graph = graph
+        self._close_callback = close_callback
 
     async def ainvoke(
         self,
@@ -45,6 +55,11 @@ class LangGraphResearchWorkflow:
             ResearchState,
             result,
         )
+
+    async def close(self) -> None:
+        """Release workflow-owned resources."""
+
+        await self._close_callback()
 
 
 class ResearchRunStore(Protocol):
@@ -95,10 +110,17 @@ WorkflowFactory = Callable[
 def create_default_workflow(
     provider: CanonicalLLMProvider,
 ) -> ResearchWorkflow:
-    """Build the production workflow for one canonical provider."""
+    """Build one managed production workflow."""
+
+    llm_client: ClosableLLMClient = create_llm_client(
+        provider,
+    )
 
     return LangGraphResearchWorkflow(
-        build_default_research_graph(provider),
+        build_research_graph_for_client(
+            llm_client,
+        ),
+        llm_client.close,
     )
 
 
@@ -163,14 +185,19 @@ class ResearchExecutionService:
             initial_state: ResearchState = {
                 "query": normalized_query,
             }
-            final_state = await workflow.ainvoke(
-                initial_state,
-            )
+
+            try:
+                final_state = await workflow.ainvoke(
+                    initial_state,
+                )
+            finally:
+                await workflow.close()
 
             await self._store.mark_completed(
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
             )
+
         except Exception as error:
             await self._store.mark_failed(
                 tenant_id=tenant_id,

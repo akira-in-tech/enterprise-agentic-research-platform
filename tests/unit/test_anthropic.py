@@ -73,3 +73,21 @@ async def test_generate_text_raises_when_no_text_is_returned(
 
     with pytest.raises(RuntimeError, match="Claude returned no text content"):
         await client.generate_text("Return a response.")
+
+
+@pytest.mark.anyio
+async def test_close_releases_anthropic_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = AnthropicClient()
+    close_client = AsyncMock()
+
+    monkeypatch.setattr(
+        client._client,
+        "close",
+        close_client,
+    )
+
+    await client.close()
+
+    close_client.assert_awaited_once_with()

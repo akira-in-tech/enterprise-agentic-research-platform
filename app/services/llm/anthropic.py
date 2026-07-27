@@ -15,22 +15,14 @@ class AnthropicClient:
     """Provide a small application-facing wrapper around the Anthropic SDK."""
 
     def __init__(self) -> None:
-        api_key = (
-            settings.anthropic_api_key
-            .get_secret_value()
-            .strip()
-        )
+        api_key = settings.anthropic_api_key.get_secret_value().strip()
         model = settings.anthropic_model.strip()
 
         if not api_key:
-            raise ValueError(
-                "ANTHROPIC_API_KEY is not configured."
-            )
+            raise ValueError("ANTHROPIC_API_KEY is not configured.")
 
         if not model:
-            raise ValueError(
-                "ANTHROPIC_MODEL is not configured."
-            )
+            raise ValueError("ANTHROPIC_MODEL is not configured.")
 
         self._model = model
         self._client = AsyncAnthropic(
@@ -69,18 +61,12 @@ class AnthropicClient:
             ],
         )
 
-        text_parts = [
-            block.text
-            for block in message.content
-            if isinstance(block, TextBlock)
-        ]
+        text_parts = [block.text for block in message.content if isinstance(block, TextBlock)]
 
         response_text = "\n".join(text_parts).strip()
 
         if not response_text:
-            raise RuntimeError(
-                "Claude returned no text content."
-            )
+            raise RuntimeError("Claude returned no text content.")
 
         logger.info(
             "Claude request completed | input_tokens=%s | output_tokens=%s",
@@ -125,9 +111,7 @@ class AnthropicClient:
         parsed_output = message.parsed_output
 
         if parsed_output is None:
-            raise RuntimeError(
-                "Claude returned no structured output."
-            )
+            raise RuntimeError("Claude returned no structured output.")
 
         logger.info(
             "Structured Claude request completed | schema=%s",
@@ -135,3 +119,8 @@ class AnthropicClient:
         )
 
         return parsed_output
+
+    async def close(self) -> None:
+        """Close the underlying Anthropic client."""
+
+        await self._client.close()

@@ -2,7 +2,7 @@ from typing import Literal
 
 from app.core.config import settings
 from app.services.llm.anthropic import AnthropicClient
-from app.services.llm.base import LLMClient
+from app.services.llm.base import ClosableLLMClient
 from app.services.llm.ollama import OllamaClient
 
 CanonicalLLMProvider = Literal[
@@ -43,7 +43,7 @@ def normalize_llm_provider(
 
 def create_llm_client(
     provider: str | None = None,
-) -> LLMClient:
+) -> ClosableLLMClient:
     """Create the selected LLM provider client."""
 
     selected_provider = normalize_llm_provider(provider)

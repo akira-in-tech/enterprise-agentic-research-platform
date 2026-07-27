@@ -9,6 +9,7 @@ from app.agents.intent_router import IntentRouter
 from app.agents.planner import PlannerAgent
 from app.schemas.intent import IntentDecision
 from app.schemas.planner import ResearchPlan
+from app.services.llm.base import LLMClient
 from app.services.llm.factory import create_llm_client
 from app.services.search.executor import (
     ResearchTaskResult,
@@ -212,14 +213,11 @@ def build_research_graph(
     return graph_builder.compile()
 
 
-def build_default_research_graph(
-    provider: str | None = None,
+def build_research_graph_for_client(
+    llm_client: LLMClient,
 ) -> ResearchGraph:
-    """Build the production graph for one selected provider."""
+    """Build the production graph around one supplied LLM client."""
 
-    llm_client = create_llm_client(
-        provider,
-    )
     tavily_client = TavilySearchClient()
 
     intent_router = IntentRouter(llm_client)
@@ -232,4 +230,18 @@ def build_default_research_graph(
         planner.create_plan,
         direct_answer_agent.answer,
         search_executor.execute,
+    )
+
+
+def build_default_research_graph(
+    provider: str | None = None,
+) -> ResearchGraph:
+    """Build the production graph for one selected provider."""
+
+    llm_client = create_llm_client(
+        provider,
+    )
+
+    return build_research_graph_for_client(
+        llm_client,
     )

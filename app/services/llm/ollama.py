@@ -55,8 +55,7 @@ class OllamaClient:
 
             if thinking_text:
                 raise RuntimeError(
-                    "Ollama used the token budget for reasoning but returned "
-                    "no final text content."
+                    "Ollama used the token budget for reasoning but returned no final text content."
                 )
 
             raise RuntimeError("Ollama returned no text content.")
@@ -75,9 +74,7 @@ class OllamaClient:
         schema = output_model.model_json_schema()
 
         structured_prompt = (
-            f"{prompt}\n\n"
-            "Return only valid JSON matching this JSON schema:\n"
-            f"{json.dumps(schema)}"
+            f"{prompt}\n\nReturn only valid JSON matching this JSON schema:\n{json.dumps(schema)}"
         )
 
         response = await self._client.post(
@@ -103,9 +100,7 @@ class OllamaClient:
         try:
             return output_model.model_validate_json(raw_text)
         except ValidationError as error:
-            raise RuntimeError(
-                "Ollama returned invalid structured output."
-            ) from error
+            raise RuntimeError("Ollama returned invalid structured output.") from error
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""
