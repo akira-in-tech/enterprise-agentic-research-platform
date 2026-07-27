@@ -1,10 +1,18 @@
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.schemas.intent import ResearchRoute
 
 UserFacingLLMProvider = Literal[
     "claude",
     "qwen",
+]
+
+PersistedLLMProvider = Literal[
+    "anthropic",
+    "ollama",
 ]
 
 
@@ -19,3 +27,15 @@ class CreateResearchRunRequest(BaseModel):
         min_length=1,
     )
     llm_provider: UserFacingLLMProvider
+
+
+class CreateResearchRunResponse(BaseModel):
+    """Represent one completed synchronous research request."""
+
+    research_run_id: UUID
+    llm_provider: PersistedLLMProvider
+    status: Literal["completed"]
+    workflow_status: str
+    route: ResearchRoute | None = None
+    route_reason: str | None = None
+    answer: str | None = None
