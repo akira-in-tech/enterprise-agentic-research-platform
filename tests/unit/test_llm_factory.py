@@ -36,6 +36,65 @@ def test_factory_creates_ollama_provider(
     assert result is expected_client
 
 
+@pytest.mark.parametrize(
+    ("provider", "constructor_name"),
+    [
+        (
+            "claude",
+            "AnthropicClient",
+        ),
+        (
+            "qwen",
+            "OllamaClient",
+        ),
+    ],
+)
+def test_factory_accepts_user_facing_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    provider: str,
+    constructor_name: str,
+) -> None:
+    expected_client = object()
+
+    monkeypatch.setattr(
+        factory,
+        constructor_name,
+        lambda: expected_client,
+    )
+
+    result = factory.create_llm_client(provider)
+
+    assert result is expected_client
+
+
+@pytest.mark.parametrize(
+    ("provider", "expected"),
+    [
+        (
+            " ANTHROPIC ",
+            "anthropic",
+        ),
+        (
+            " Claude ",
+            "anthropic",
+        ),
+        (
+            " OLLAMA ",
+            "ollama",
+        ),
+        (
+            " Qwen ",
+            "ollama",
+        ),
+    ],
+)
+def test_normalize_llm_provider(
+    provider: str,
+    expected: factory.CanonicalLLMProvider,
+) -> None:
+    assert factory.normalize_llm_provider(provider) == expected
+
+
 def test_factory_uses_provider_from_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -44,7 +103,7 @@ def test_factory_uses_provider_from_settings(
     monkeypatch.setattr(
         settings,
         "llm_provider",
-        "ollama",
+        "qwen",
     )
     monkeypatch.setattr(
         factory,
@@ -57,9 +116,18 @@ def test_factory_uses_provider_from_settings(
     assert result is expected_client
 
 
-def test_factory_rejects_unsupported_provider() -> None:
+@pytest.mark.parametrize(
+    "provider",
+    [
+        "",
+        "unknown-provider",
+    ],
+)
+def test_factory_rejects_unsupported_provider(
+    provider: str,
+) -> None:
     with pytest.raises(
         ValueError,
         match="Unsupported LLM provider",
     ):
-        factory.create_llm_client("unknown-provider")
+        factory.create_llm_client(provider)

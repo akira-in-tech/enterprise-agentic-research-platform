@@ -123,28 +123,17 @@ def build_web_search_node(
         outcomes = await execute_search(state["plan"])
 
         web_sources = build_web_source_pool(
-            result
-            for outcome in outcomes
-            for result in outcome.results
+            result for outcome in outcomes for result in outcome.results
         )
 
-        succeeded_count = sum(
-            outcome.succeeded
-            for outcome in outcomes
-        )
-        empty_success_count = sum(
-            outcome.succeeded and not outcome.results
-            for outcome in outcomes
-        )
+        succeeded_count = sum(outcome.succeeded for outcome in outcomes)
+        empty_success_count = sum(outcome.succeeded and not outcome.results for outcome in outcomes)
 
         if not outcomes or succeeded_count == 0:
             status = "web_search_failed"
         elif not web_sources:
             status = "web_search_empty"
-        elif (
-            succeeded_count < len(outcomes)
-            or empty_success_count > 0
-        ):
+        elif succeeded_count < len(outcomes) or empty_success_count > 0:
             status = "web_search_partial"
         else:
             status = "web_search_completed"
@@ -223,10 +212,14 @@ def build_research_graph(
     return graph_builder.compile()
 
 
-def build_default_research_graph() -> ResearchGraph:
-    """Build the production graph with configured providers."""
+def build_default_research_graph(
+    provider: str | None = None,
+) -> ResearchGraph:
+    """Build the production graph for one selected provider."""
 
-    llm_client = create_llm_client()
+    llm_client = create_llm_client(
+        provider,
+    )
     tavily_client = TavilySearchClient()
 
     intent_router = IntentRouter(llm_client)

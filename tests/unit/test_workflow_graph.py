@@ -1,3 +1,5 @@
+from unittest.mock import Mock
+
 import pytest
 
 from app.schemas.intent import IntentDecision
@@ -9,6 +11,7 @@ from app.schemas.planner import (
 from app.services.search.base import SearchResult
 from app.services.search.executor import ResearchTaskResult
 from app.services.search.results import create_web_source_id
+from app.workflow import graph as graph_module
 from app.workflow.graph import build_research_graph
 
 
@@ -199,25 +202,13 @@ async def test_research_graph_searches_for_deep_research() -> None:
         "https://example.com/source-2",
     ]
 
-    assert [
-        source.source_id
-        for source in web_sources
-    ] == [
-        create_web_source_id(
-            "https://example.com/shared-http-source"
-        ),
-        create_web_source_id(
-            "https://example.com/source-1"
-        ),
-        create_web_source_id(
-            "https://example.com/source-2"
-        ),
+    assert [source.source_id for source in web_sources] == [
+        create_web_source_id("https://example.com/shared-http-source"),
+        create_web_source_id("https://example.com/source-1"),
+        create_web_source_id("https://example.com/source-2"),
     ]
 
-    assert all(
-        source.provider == "fake"
-        for source in web_sources
-    )
+    assert all(source.provider == "fake" for source in web_sources)
 
 
 @pytest.mark.anyio
@@ -286,3 +277,50 @@ async def test_research_graph_marks_empty_search_results() -> None:
     assert result["status"] == "web_search_empty"
     assert all(outcome.succeeded for outcome in result["web_search_results"])
     assert result["web_sources"] == []
+
+
+def test_default_graph_forwards_request_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    llm_client = Mock()
+    tavily_client = Mock()
+    expected_graph = Mock()
+    provider_calls: list[str | None] = []
+
+    def fake_create_llm_client(
+        provider: str | None = None,
+    ) -> Mock:
+        provider_calls.append(provider)
+
+        return llm_client
+
+    def fake_tavily_client() -> Mock:
+        return tavily_client
+
+    def fake_build_research_graph(
+        *_: object,
+    ) -> Mock:
+        return expected_graph
+
+    monkeypatch.setattr(
+        graph_module,
+        "create_llm_client",
+        fake_create_llm_client,
+    )
+    monkeypatch.setattr(
+        graph_module,
+        "TavilySearchClient",
+        fake_tavily_client,
+    )
+    monkeypatch.setattr(
+        graph_module,
+        "build_research_graph",
+        fake_build_research_graph,
+    )
+
+    result = graph_module.build_default_research_graph("qwen")
+
+    assert result is expected_graph
+    assert provider_calls == [
+        "qwen",
+    ]
