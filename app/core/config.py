@@ -1,6 +1,6 @@
 from functools import lru_cache
 
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +43,27 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://research_user:change_me@localhost:5432/research_platform"
     )
     database_echo: bool = False
+
+    redis_url: SecretStr = SecretStr(
+        "redis://localhost:6379/0",
+    )
+    redis_max_connections: int = Field(
+        default=20,
+        ge=1,
+        le=1000,
+    )
+    redis_socket_connect_timeout_seconds: float = Field(
+        default=2.0,
+        gt=0,
+    )
+    redis_socket_timeout_seconds: float = Field(
+        default=2.0,
+        gt=0,
+    )
+    redis_health_check_interval_seconds: int = Field(
+        default=30,
+        ge=0,
+    )
 
 
 @lru_cache
