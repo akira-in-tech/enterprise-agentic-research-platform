@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
@@ -6,10 +7,13 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import (
     get_research_execution_service,
+    get_research_progress_store,
     get_research_rate_limiter,
 )
 from app.main import app
+from app.schemas.progress import ResearchProgressRecord
 from app.services.cache import (
+    CacheUnavailableError,
     ResearchRateLimitDecision,
     ResearchRateLimitUnavailableError,
 )
@@ -100,6 +104,93 @@ class FakeResearchRateLimiter:
             raise self.error
 
         return self.decision
+
+
+class FakeResearchProgressStore:
+    def __init__(
+        self,
+        *,
+        record: ResearchProgressRecord | None = None,
+        error: CacheUnavailableError | None = None,
+    ) -> None:
+        self.record = record
+        self.error = error
+        self.calls: list[tuple[UUID, UUID]] = []
+
+    async def get(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> ResearchProgressRecord | None:
+        self.calls.append((tenant_id, research_run_id))
+
+        if self.error is not None:
+            raise self.error
+
+        return self.record
+
+
+def test_get_research_progress_is_tenant_scoped() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    record = ResearchProgressRecord(
+        research_run_id=research_run_id,
+        status="running",
+        message="Research workflow is running.",
+        updated_at=datetime.now(UTC),
+    )
+    progress_store = FakeResearchProgressStore(record=record)
+    app.dependency_overrides[get_research_progress_store] = lambda: progress_store
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{research_run_id}/progress",
+                headers={"X-Tenant-ID": str(tenant_id)},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "running"
+    assert progress_store.calls == [(tenant_id, research_run_id)]
+
+
+def test_get_research_progress_returns_not_found() -> None:
+    progress_store = FakeResearchProgressStore()
+    app.dependency_overrides[get_research_progress_store] = lambda: progress_store
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{uuid4()}/progress",
+                headers={"X-Tenant-ID": str(uuid4())},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Research progress was not found."}
+
+
+def test_get_research_progress_returns_service_unavailable() -> None:
+    progress_store = FakeResearchProgressStore(
+        error=CacheUnavailableError("Redis is unavailable."),
+    )
+    app.dependency_overrides[get_research_progress_store] = lambda: progress_store
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{uuid4()}/progress",
+                headers={"X-Tenant-ID": str(uuid4())},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Research progress is temporarily unavailable."}
 
 
 @pytest.fixture(autouse=True)

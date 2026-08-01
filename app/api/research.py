@@ -12,14 +12,18 @@ from fastapi import (
 
 from app.api.dependencies import (
     get_research_execution_service,
+    get_research_progress_store,
     get_research_rate_limiter,
 )
+from app.schemas.progress import ResearchProgressRecord
 from app.schemas.research import (
     CreateResearchRunRequest,
     CreateResearchRunResponse,
 )
 from app.services.cache import (
     MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH,
+    CacheUnavailableError,
+    RedisResearchProgressStore,
     RedisResearchRateLimiter,
     ResearchRateLimitDecision,
     ResearchRateLimitUnavailableError,
@@ -37,6 +41,43 @@ router = APIRouter(
         "research",
     ],
 )
+
+
+@router.get(
+    "/{research_run_id}/progress",
+    response_model=ResearchProgressRecord,
+)
+async def get_research_run_progress(
+    research_run_id: UUID,
+    tenant_id: Annotated[
+        UUID,
+        Header(alias="X-Tenant-ID"),
+    ],
+    progress_store: Annotated[
+        RedisResearchProgressStore,
+        Depends(get_research_progress_store),
+    ],
+) -> ResearchProgressRecord:
+    """Return the latest tenant-scoped progress snapshot for one run."""
+
+    try:
+        record = await progress_store.get(
+            tenant_id=tenant_id,
+            research_run_id=research_run_id,
+        )
+    except CacheUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Research progress is temporarily unavailable.",
+        ) from error
+
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research progress was not found.",
+        )
+
+    return record
 
 
 def _rate_limit_headers(

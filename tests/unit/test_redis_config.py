@@ -18,6 +18,7 @@ def test_settings_accepts_custom_redis_configuration() -> None:
         redis_research_idempotency_lock_ttl_seconds=300,
         redis_research_rate_limit_requests=40,
         redis_research_rate_limit_window_seconds=120,
+        redis_research_progress_ttl_seconds=7_200,
     )
 
     assert config.redis_url.get_secret_value() == "rediss://cache.internal.example:6380/2"
@@ -30,6 +31,7 @@ def test_settings_accepts_custom_redis_configuration() -> None:
     assert config.redis_research_idempotency_lock_ttl_seconds == 300
     assert config.redis_research_rate_limit_requests == 40
     assert config.redis_research_rate_limit_window_seconds == 120
+    assert config.redis_research_progress_ttl_seconds == 7_200
 
 
 def test_settings_rejects_non_positive_idempotency_ttl() -> None:
@@ -71,4 +73,11 @@ def test_settings_rejects_non_positive_rate_limit_window() -> None:
     with pytest.raises(ValidationError):
         Settings(
             redis_research_rate_limit_window_seconds=0,
+        )
+
+
+def test_settings_rejects_non_positive_progress_ttl() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            redis_research_progress_ttl_seconds=0,
         )

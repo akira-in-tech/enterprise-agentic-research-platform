@@ -90,6 +90,11 @@ class Settings(BaseSettings):
         ge=1,
         le=3600,
     )
+    redis_research_progress_ttl_seconds: int = Field(
+        default=3600,
+        ge=1,
+        le=604_800,
+    )
 
 
 @lru_cache

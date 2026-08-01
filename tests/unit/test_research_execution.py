@@ -3,6 +3,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.schemas.cache import CachedResearchResult
+from app.schemas.progress import ResearchProgressRecord
 from app.services.cache import CacheUnavailableError
 from app.services.llm.factory import CanonicalLLMProvider
 from app.services.research.execution import (
@@ -155,6 +156,116 @@ class RecordingResearchResultCache:
 
         if self.set_error is not None:
             raise self.set_error
+
+
+class RecordingResearchProgressStore:
+    def __init__(
+        self,
+        *,
+        error: CacheUnavailableError | None = None,
+    ) -> None:
+        self.error = error
+        self.calls: list[tuple[UUID, ResearchProgressRecord]] = []
+
+    async def set(
+        self,
+        *,
+        tenant_id: UUID,
+        record: ResearchProgressRecord,
+    ) -> None:
+        self.calls.append((tenant_id, record))
+
+        if self.error is not None:
+            raise self.error
+
+
+@pytest.mark.anyio
+async def test_execution_publishes_lifecycle_progress() -> None:
+    store = RecordingResearchRunStore()
+    progress_store = RecordingResearchProgressStore()
+    tenant_id = uuid4()
+    workflow = RecordingWorkflow(
+        result={
+            "query": "Explain epoll.",
+            "status": "direct_answer_completed",
+            "answer": "epoll observes file descriptors.",
+        }
+    )
+    service = ResearchExecutionService(
+        store,
+        lambda _: workflow,
+        progress_store=progress_store,
+    )
+
+    await service.execute(
+        tenant_id=tenant_id,
+        query="Explain epoll.",
+        llm_provider="qwen",
+    )
+
+    assert [record.status for _, record in progress_store.calls] == [
+        "queued",
+        "running",
+        "completed",
+    ]
+    assert all(call_tenant == tenant_id for call_tenant, _ in progress_store.calls)
+    completed_record = progress_store.calls[-1][1]
+    assert completed_record.research_run_id == store.research_run_id
+    assert completed_record.workflow_status == "direct_answer_completed"
+
+
+@pytest.mark.anyio
+async def test_execution_publishes_failure_progress() -> None:
+    store = RecordingResearchRunStore()
+    progress_store = RecordingResearchProgressStore()
+    workflow = RecordingWorkflow(error=RuntimeError("Search timed out."))
+    service = ResearchExecutionService(
+        store,
+        lambda _: workflow,
+        progress_store=progress_store,
+    )
+
+    with pytest.raises(RuntimeError, match="Search timed out"):
+        await service.execute(
+            tenant_id=uuid4(),
+            query="Compare HTTP versions.",
+            llm_provider="qwen",
+        )
+
+    assert [record.status for _, record in progress_store.calls] == [
+        "queued",
+        "running",
+        "failed",
+    ]
+    assert progress_store.calls[-1][1].error_message == "Search timed out."
+
+
+@pytest.mark.anyio
+async def test_execution_fails_open_when_progress_store_is_unavailable() -> None:
+    store = RecordingResearchRunStore()
+    progress_store = RecordingResearchProgressStore(
+        error=CacheUnavailableError("Redis is unavailable."),
+    )
+    workflow = RecordingWorkflow(
+        result={
+            "query": "Explain epoll.",
+            "status": "direct_answer_completed",
+        }
+    )
+    service = ResearchExecutionService(
+        store,
+        lambda _: workflow,
+        progress_store=progress_store,
+    )
+
+    result = await service.execute(
+        tenant_id=uuid4(),
+        query="Explain epoll.",
+        llm_provider="qwen",
+    )
+
+    assert result.state["status"] == "direct_answer_completed"
+    assert store.events == ["queued", "running", "completed"]
 
 
 @pytest.mark.anyio

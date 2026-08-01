@@ -1,10 +1,12 @@
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Protocol, cast
 from uuid import UUID
 
 from app.schemas.cache import CachedResearchResult
+from app.schemas.progress import ResearchProgressRecord, ResearchProgressStatus
 from app.services.cache import CacheUnavailableError
 from app.services.llm.base import ClosableLLMClient
 from app.services.llm.factory import (
@@ -128,6 +130,18 @@ class ResearchResultCache(Protocol):
         """Store one completed research result."""
 
 
+class ResearchProgressPublisher(Protocol):
+    """Represent optional research progress publishing."""
+
+    async def set(
+        self,
+        *,
+        tenant_id: UUID,
+        record: ResearchProgressRecord,
+    ) -> None:
+        """Publish the latest lifecycle snapshot."""
+
+
 WorkflowFactory = Callable[
     [CanonicalLLMProvider],
     ResearchWorkflow,
@@ -174,10 +188,12 @@ class ResearchExecutionService:
         workflow_factory: WorkflowFactory = create_default_workflow,
         *,
         result_cache: ResearchResultCache | None = None,
+        progress_store: ResearchProgressPublisher | None = None,
     ) -> None:
         self._store = store
         self._workflow_factory = workflow_factory
         self._result_cache = result_cache
+        self._progress_store = progress_store
 
     async def execute(
         self,
@@ -204,11 +220,23 @@ class ResearchExecutionService:
             query=normalized_query,
             llm_provider=canonical_provider,
         )
+        await self._publish_progress(
+            tenant_id=tenant_id,
+            research_run_id=research_run_id,
+            status="queued",
+            message="Research request queued.",
+        )
 
         try:
             await self._store.mark_running(
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
+            )
+            await self._publish_progress(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                status="running",
+                message="Research workflow is running.",
             )
 
             cached_result = await self._get_cached_result(
@@ -245,12 +273,27 @@ class ResearchExecutionService:
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
             )
+            await self._publish_progress(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                status="completed",
+                message="Research workflow completed.",
+                workflow_status=final_state.get("status"),
+            )
 
         except Exception as error:
+            error_message = self._format_error(error)
             await self._store.mark_failed(
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
-                error_message=self._format_error(error),
+                error_message=error_message,
+            )
+            await self._publish_progress(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                status="failed",
+                message="Research workflow failed.",
+                error_message=error_message,
             )
             raise
 
@@ -268,6 +311,43 @@ class ResearchExecutionService:
             state=final_state,
             cache_hit=cache_hit,
         )
+
+    async def _publish_progress(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        status: ResearchProgressStatus,
+        message: str,
+        workflow_status: str | None = None,
+        error_message: str | None = None,
+    ) -> None:
+        """Publish optional progress without breaking durable execution."""
+
+        if self._progress_store is None:
+            return
+
+        record = ResearchProgressRecord(
+            research_run_id=research_run_id,
+            status=status,
+            message=message,
+            updated_at=datetime.now(UTC),
+            workflow_status=workflow_status,
+            error_message=error_message,
+        )
+
+        try:
+            await self._progress_store.set(
+                tenant_id=tenant_id,
+                record=record,
+            )
+        except CacheUnavailableError:
+            logger.warning(
+                "Research progress publish failed for tenant %s and run %s.",
+                tenant_id,
+                research_run_id,
+                exc_info=True,
+            )
 
     async def _get_cached_result(
         self,

@@ -15,6 +15,7 @@ from app.services.cache import (
     RedisConnection,
     RedisResearchIdempotencyLockManager,
     RedisResearchIdempotencyStore,
+    RedisResearchProgressStore,
     RedisResearchRateLimiter,
     RedisResearchResultCache,
 )
@@ -59,6 +60,10 @@ async def lifespan(
         result_cache = RedisResearchResultCache(
             redis_connection,
         )
+        progress_store = RedisResearchProgressStore(
+            redis_connection,
+        )
+        application.state.research_progress_store = progress_store
         idempotency_store = RedisResearchIdempotencyStore(
             redis_connection,
         )
@@ -71,6 +76,7 @@ async def lifespan(
         execution_service = ResearchExecutionService(
             research_store,
             result_cache=result_cache,
+            progress_store=progress_store,
         )
 
         application.state.research_execution_service = IdempotentResearchExecutionService(

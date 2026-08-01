@@ -36,6 +36,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     idempotent_execution_service = object()
     idempotency_lock_manager = object()
     rate_limiter = object()
+    progress_store = object()
 
     create_engine = Mock(
         return_value=engine,
@@ -65,6 +66,9 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_rate_limiter = Mock(
         return_value=rate_limiter,
+    )
+    create_progress_store = Mock(
+        return_value=progress_store,
     )
     monkeypatch.setattr(
         main_module,
@@ -116,6 +120,11 @@ async def test_lifespan_wires_and_closes_application_resources(
         "RedisResearchRateLimiter",
         create_rate_limiter,
     )
+    monkeypatch.setattr(
+        main_module,
+        "RedisResearchProgressStore",
+        create_progress_store,
+    )
 
     application = FastAPI()
 
@@ -124,6 +133,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     ):
         assert application.state.research_execution_service is idempotent_execution_service
         assert application.state.research_rate_limiter is rate_limiter
+        assert application.state.research_progress_store is progress_store
         assert engine.disposed is False
         assert redis_connection.closed is False
 
@@ -155,7 +165,11 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_cache.assert_called_once_with(
         redis_connection,
     )
+    create_progress_store.assert_called_once_with(
+        redis_connection,
+    )
     create_execution_service.assert_called_once_with(
         research_store,
         result_cache=result_cache,
+        progress_store=progress_store,
     )

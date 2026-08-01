@@ -8,6 +8,7 @@ RESEARCH_IDEMPOTENCY_KEY_VERSION = "v1"
 MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH = 200
 RESEARCH_IDEMPOTENCY_LOCK_VERSION = "v1"
 RESEARCH_RATE_LIMIT_VERSION = "v1"
+RESEARCH_PROGRESS_VERSION = "v1"
 
 
 def create_research_result_cache_key(
@@ -108,4 +109,17 @@ def create_research_rate_limit_redis_key(
 
     return (
         f"enterprise-research:{RESEARCH_RATE_LIMIT_VERSION}:tenant:{tenant_id}:research-rate-limit"
+    )
+
+
+def create_research_progress_redis_key(
+    *,
+    tenant_id: UUID,
+    research_run_id: UUID,
+) -> str:
+    """Create a versioned, tenant-scoped research progress key."""
+
+    return (
+        f"enterprise-research:{RESEARCH_PROGRESS_VERSION}"
+        f":tenant:{tenant_id}:research-progress:{research_run_id}"
     )
