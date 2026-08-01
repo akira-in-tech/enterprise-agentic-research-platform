@@ -13,10 +13,14 @@ from app.db.session import (
 )
 from app.services.cache import (
     RedisConnection,
+    RedisResearchIdempotencyStore,
     RedisResearchResultCache,
 )
 from app.services.research.execution import (
     ResearchExecutionService,
+)
+from app.services.research.idempotency import (
+    IdempotentResearchExecutionService,
 )
 from app.services.research.postgres import (
     PostgresResearchRunStore,
@@ -53,10 +57,17 @@ async def lifespan(
         result_cache = RedisResearchResultCache(
             redis_connection,
         )
-
-        application.state.research_execution_service = ResearchExecutionService(
+        idempotency_store = RedisResearchIdempotencyStore(
+            redis_connection,
+        )
+        execution_service = ResearchExecutionService(
             research_store,
             result_cache=result_cache,
+        )
+
+        application.state.research_execution_service = IdempotentResearchExecutionService(
+            execution_service,
+            idempotency_store,
         )
 
         logger.info("Application started")

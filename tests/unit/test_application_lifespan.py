@@ -31,7 +31,9 @@ async def test_lifespan_wires_and_closes_application_resources(
     database_session_factory = object()
     research_store = object()
     result_cache = object()
+    idempotency_store = object()
     execution_service = object()
+    idempotent_execution_service = object()
 
     create_engine = Mock(
         return_value=engine,
@@ -47,10 +49,25 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_cache = Mock(
         return_value=result_cache,
     )
+    create_idempotency_store = Mock(
+        return_value=idempotency_store,
+    )
     create_execution_service = Mock(
         return_value=execution_service,
     )
-
+    create_idempotent_execution_service = Mock(
+        return_value=idempotent_execution_service,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "RedisResearchIdempotencyStore",
+        create_idempotency_store,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "IdempotentResearchExecutionService",
+        create_idempotent_execution_service,
+    )
     monkeypatch.setattr(
         main_module,
         "create_database_engine",
@@ -87,13 +104,20 @@ async def test_lifespan_wires_and_closes_application_resources(
     async with main_module.lifespan(
         application,
     ):
-        assert application.state.research_execution_service is execution_service
+        assert application.state.research_execution_service is idempotent_execution_service
         assert engine.disposed is False
         assert redis_connection.closed is False
 
     assert redis_connection.closed is True
     assert engine.disposed is True
 
+    create_idempotency_store.assert_called_once_with(
+        redis_connection,
+    )
+    create_idempotent_execution_service.assert_called_once_with(
+        execution_service,
+        idempotency_store,
+    )
     create_engine.assert_called_once_with()
     create_sessions.assert_called_once_with(
         engine,

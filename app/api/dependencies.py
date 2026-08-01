@@ -2,14 +2,14 @@ from typing import cast
 
 from fastapi import Request
 
-from app.services.research.execution import (
-    ResearchExecutionService,
+from app.services.research.idempotency import (
+    IdempotentResearchExecutionService,
 )
 
 
 def get_research_execution_service(
     request: Request,
-) -> ResearchExecutionService:
+) -> IdempotentResearchExecutionService:
     """Return the application-scoped research service."""
 
     try:
@@ -18,6 +18,6 @@ def get_research_execution_service(
         raise RuntimeError("Research execution service is not initialized.") from error
 
     return cast(
-        ResearchExecutionService,
+        IdempotentResearchExecutionService,
         service,
     )

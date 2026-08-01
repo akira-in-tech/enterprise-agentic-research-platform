@@ -14,8 +14,8 @@ from app.schemas.research import (
     CreateResearchRunRequest,
     CreateResearchRunResponse,
 )
-from app.services.research.execution import (
-    ResearchExecutionService,
+from app.services.research.idempotency import (
+    IdempotentResearchExecutionService,
 )
 
 router = APIRouter(
@@ -37,7 +37,7 @@ async def create_research_run(
         Header(alias="X-Tenant-ID"),
     ],
     service: Annotated[
-        ResearchExecutionService,
+        IdempotentResearchExecutionService,
         Depends(get_research_execution_service),
     ],
     requested_by_user_id: Annotated[
