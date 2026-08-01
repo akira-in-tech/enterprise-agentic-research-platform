@@ -15,9 +15,9 @@ listed as tested only after its automated checks pass in this repository.
 ## Current Phase
 
 ```text
-Completed: Phase 0 through Phase 9
-Phase 9: Redis caching, idempotency, concurrency, rate limiting, and progress
-Next: Phase 10 - MCP and evidence-quality pipeline
+Completed: Phase 0 through Phase 10
+Phase 10: MCP client boundaries and evidence-quality research pipeline
+Next: Phase 11 - durable reports and asynchronous delivery
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -97,6 +97,18 @@ queued PostgreSQL research run
 → bounded TTL and test cleanup
 ```
 
+Phase 10 completes the evidence-quality path for deep research:
+
+```text
+MCP Streamable HTTP tool boundary
+→ canonical Web, Private, or MCP evidence
+→ deterministic relevance, content-quality, and traceability scores
+→ analyst report with canonical source IDs
+→ unknown-citation and uncited-claim audit
+→ reflection quality gate
+→ report and quality state in the workflow, cache, and API
+```
+
 ## Project Status
 
 | Component | Status |
@@ -149,10 +161,14 @@ queued PostgreSQL research run
 | Tenant-scoped Redis research progress snapshots and TTL | Tested with unit and live integration tests |
 | Research execution lifecycle progress publishing | Tested with unit and live integration tests |
 | Tenant-scoped research progress REST endpoint | Tested |
-| MCP tools and client | Planned |
-| Evidence scoring and citation validation | Planned |
-| Analyst and reflection loop | Planned |
-| Report generation | Planned |
+| MCP Streamable HTTP tools client | Contract tested with deterministic HTTP transport |
+| Web, private, and MCP evidence normalization | Tested |
+| Explainable evidence scoring and citation validation | Tested |
+| Analyst report generation and reflection quality gate | Tested |
+| Deep-research evidence-quality LangGraph path | Tested |
+| Citation and reflection API/cache visibility | Tested |
+| Durable report persistence | Planned |
+| Iterative reflection loop | Planned |
 | SSE progress streaming | Planned |
 | Vue 3 + TypeScript + Vite frontend | Planned |
 | Docker Compose project stack | Planned |
@@ -208,6 +224,44 @@ VectorStore
 
 Unit tests use mocks, deterministic providers, and the in-memory vector store.
 Real external integrations are opt-in.
+
+### MCP Tool Boundary
+
+```text
+StreamableHTTPMCPClient
+→ initialize and negotiate protocol version 2025-11-25
+→ send notifications/initialized
+→ preserve MCP session and protocol headers
+→ follow tools/list cursor pagination
+→ call tools/call and validate content or structuredContent
+→ distinguish JSON-RPC protocol errors from tool execution errors
+→ terminate the session and close owned HTTP resources
+```
+
+The client implements the JSON-response subset of the
+[MCP protocol revision 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25)
+Streamable HTTP transport using the existing `httpx` dependency. Its lifecycle,
+headers, pagination, tool-call results, error handling, and cleanup are contract
+tested with a deterministic HTTP transport. No external MCP server is
+configured or described as live.
+
+### Evidence Quality Pipeline
+
+```text
+deep-research web sources
+→ provider-neutral EvidenceSource records
+→ explainable EvidenceScore records
+→ evidence-constrained analyst prompt
+→ Markdown report with canonical [SOURCE-ID] citations
+→ CitationAudit
+→ ReflectionDecision: approved or revise
+```
+
+The same evidence model also accepts tenant-scoped private sources and
+successful MCP text results. The scorer is deterministic and records separate
+relevance, content-quality, and traceability signals rather than presenting an
+opaque model judgment. Reflection currently acts as one explicit quality gate;
+automatic multi-pass revision remains planned.
 
 ### Durable Request Execution
 
@@ -426,7 +480,7 @@ pytest -q
 Current verified default result:
 
 ```text
-376 passed
+386 passed
 18 integration tests deselected
 1 dependency deprecation warning
 ```
@@ -539,53 +593,34 @@ private engineering documents
 
 ## Next Phase
 
-Phase 9 is complete. Its tested Redis caching and coordination scope is:
+Phase 10 is complete. Its tested scope is:
 
 ```text
-async Redis client foundation
-health and connectivity checks
-tenant-scoped cache keys
-research-result JSON serialization and TTL
-execution cache reads and writes
-cache_hit API visibility
-application lifecycle wiring
-fail-open behavior
-real API miss/write/hit verification
-tenant-scoped idempotency keys and request fingerprints
-completed-response storage and replay
-payload conflict detection
-atomic SET NX EX lock acquisition
-owner-token compare-and-delete release
-double-check after lock acquisition
-concurrent duplicate-execution prevention
-HTTP 409 conflict/in-progress handling
-fail-closed HTTP 503 behavior when idempotency is unavailable
-real Redis lock and concurrency verification
-tenant-scoped fixed-window rate-limit keys
-atomic Redis increment and TTL initialization
-configurable request allowance and window
-API X-RateLimit headers, HTTP 429, and Retry-After
-fail-closed HTTP 503 behavior when rate limiting is unavailable
-live concurrent counter and tenant-isolation verification
-versioned tenant/run-scoped progress keys
-validated progress JSON and configurable TTL
-queued, running, completed, and failed lifecycle publication
-fail-open progress publishing during Redis outages
-tenant-scoped progress polling API with HTTP 404/503 behavior
-live running-to-completed transition and cross-tenant isolation verification
+MCP 2025-11-25 initialization and session lifecycle
+cursor-paginated tools/list discovery
+validated tools/call results and JSON-RPC errors
+canonical Web, Private, and MCP evidence adapters
+deterministic relevance, content-quality, and traceability scoring
+canonical citation parsing and source allow-list validation
+paragraph-level uncited-claim detection and coverage
+evidence-constrained analyst report generation
+reflection approval or revision decisions with explicit reasons
+deep-research LangGraph integration
+report-quality cache and API fields
 ```
 
-Phase 10 will move from infrastructure coordination into the evidence-quality
-pipeline:
+Phase 11 will make reports durable and independently consumable:
 
 ```text
-MCP tool and client boundaries
-evidence scoring
-citation validation
-analyst and reflection-loop foundations
+report and source persistence
+research-run report retrieval APIs
+background execution
+SSE progress and completion delivery
+iterative reflection and bounded revision policy
 ```
 
-Redis will store temporary coordination state only. PostgreSQL remains the
-durable source of truth for tenants, users, and research runs. Background
-execution, SSE progress streaming, and coordination-lock renewal for workflows
-that can exceed the current lease remain explicit future hardening work.
+MCP is currently a contract-tested client boundary rather than a configured
+external integration. PostgreSQL remains the durable source of truth, while
+Redis stores temporary cache and coordination state. Coordination-lock renewal
+for workflows that can exceed the current lease remains explicit production
+hardening work.
