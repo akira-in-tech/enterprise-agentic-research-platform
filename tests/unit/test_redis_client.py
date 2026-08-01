@@ -17,11 +17,30 @@ class FakeAsyncRedisClient:
         *,
         ping_result: bool = True,
         ping_error: RedisConnectionError | None = None,
+        get_result: str | None = None,
+        set_result: bool | None = True,
+        delete_result: int = 1,
+        ttl_result: int = 900,
+        operation_error: RedisConnectionError | None = None,
     ) -> None:
         self.ping_result = ping_result
         self.ping_error = ping_error
+        self.get_result = get_result
+        self.set_result = set_result
+        self.delete_result = delete_result
+        self.ttl_result = ttl_result
+        self.operation_error = operation_error
+
         self.ping_calls = 0
+        self.get_calls: list[str] = []
+        self.set_calls: list[tuple[str, str, int]] = []
+        self.delete_calls: list[str] = []
+        self.ttl_calls: list[str] = []
         self.close_calls = 0
+
+    def _raise_operation_error(self) -> None:
+        if self.operation_error is not None:
+            raise self.operation_error
 
     def ping(self) -> Awaitable[bool]:
         async def execute_ping() -> bool:
@@ -33,6 +52,53 @@ class FakeAsyncRedisClient:
             return self.ping_result
 
         return execute_ping()
+
+    async def get(
+        self,
+        name: str,
+    ) -> str | None:
+        self.get_calls.append(name)
+        self._raise_operation_error()
+
+        return self.get_result
+
+    async def set(
+        self,
+        name: str,
+        value: str,
+        *,
+        ex: int,
+    ) -> bool | None:
+        self.set_calls.append(
+            (
+                name,
+                value,
+                ex,
+            )
+        )
+        self._raise_operation_error()
+
+        return self.set_result
+
+    async def delete(
+        self,
+        *names: str,
+    ) -> int:
+        self.delete_calls.extend(
+            names,
+        )
+        self._raise_operation_error()
+
+        return self.delete_result
+
+    async def ttl(
+        self,
+        name: str,
+    ) -> int:
+        self.ttl_calls.append(name)
+        self._raise_operation_error()
+
+        return self.ttl_result
 
     async def aclose(
         self,
@@ -177,4 +243,187 @@ def test_from_url_rejects_negative_health_check_interval() -> None:
     ):
         RedisConnection.from_url(
             health_check_interval_seconds=-1,
+        )
+
+
+@pytest.mark.anyio
+async def test_get_text_returns_cached_value() -> None:
+    raw_client = FakeAsyncRedisClient(
+        get_result='{"status":"completed"}',
+    )
+    connection = RedisConnection(
+        raw_client,
+    )
+
+    result = await connection.get_text(
+        key="enterprise-research:v1:test",
+    )
+
+    assert result == '{"status":"completed"}'
+    assert raw_client.get_calls == [
+        "enterprise-research:v1:test",
+    ]
+
+
+@pytest.mark.anyio
+async def test_get_text_returns_none_for_cache_miss() -> None:
+    raw_client = FakeAsyncRedisClient(
+        get_result=None,
+    )
+    connection = RedisConnection(
+        raw_client,
+    )
+
+    result = await connection.get_text(
+        key="enterprise-research:v1:missing",
+    )
+
+    assert result is None
+
+
+@pytest.mark.anyio
+async def test_set_text_writes_value_with_ttl() -> None:
+    raw_client = FakeAsyncRedisClient(
+        set_result=True,
+    )
+    connection = RedisConnection(
+        raw_client,
+    )
+
+    await connection.set_text(
+        key="enterprise-research:v1:test",
+        value='{"status":"completed"}',
+        ttl_seconds=900,
+    )
+
+    assert raw_client.set_calls == [
+        (
+            "enterprise-research:v1:test",
+            '{"status":"completed"}',
+            900,
+        )
+    ]
+
+
+@pytest.mark.anyio
+async def test_set_text_rejects_unconfirmed_write() -> None:
+    raw_client = FakeAsyncRedisClient(
+        set_result=None,
+    )
+    connection = RedisConnection(
+        raw_client,
+    )
+
+    with pytest.raises(
+        RedisUnavailableError,
+        match="did not confirm the write",
+    ):
+        await connection.set_text(
+            key="enterprise-research:v1:test",
+            value="value",
+            ttl_seconds=900,
+        )
+
+
+@pytest.mark.anyio
+async def test_delete_returns_true_for_existing_key() -> None:
+    raw_client = FakeAsyncRedisClient(
+        delete_result=1,
+    )
+    connection = RedisConnection(
+        raw_client,
+    )
+
+    deleted = await connection.delete(
+        key="enterprise-research:v1:test",
+    )
+
+    assert deleted is True
+    assert raw_client.delete_calls == [
+        "enterprise-research:v1:test",
+    ]
+
+
+@pytest.mark.anyio
+async def test_delete_returns_false_for_missing_key() -> None:
+    raw_client = FakeAsyncRedisClient(
+        delete_result=0,
+    )
+    connection = RedisConnection(
+        raw_client,
+    )
+
+    deleted = await connection.delete(
+        key="enterprise-research:v1:missing",
+    )
+
+    assert deleted is False
+
+
+@pytest.mark.anyio
+async def test_ttl_seconds_returns_redis_ttl() -> None:
+    raw_client = FakeAsyncRedisClient(
+        ttl_result=842,
+    )
+    connection = RedisConnection(
+        raw_client,
+    )
+
+    ttl = await connection.ttl_seconds(
+        key="enterprise-research:v1:test",
+    )
+
+    assert ttl == 842
+    assert raw_client.ttl_calls == [
+        "enterprise-research:v1:test",
+    ]
+
+
+@pytest.mark.anyio
+async def test_get_text_wraps_redis_error() -> None:
+    raw_client = FakeAsyncRedisClient(
+        operation_error=RedisConnectionError("Redis connection was lost."),
+    )
+    connection = RedisConnection(
+        raw_client,
+    )
+
+    with pytest.raises(
+        RedisUnavailableError,
+        match="Redis GET failed",
+    ):
+        await connection.get_text(
+            key="enterprise-research:v1:test",
+        )
+
+
+@pytest.mark.anyio
+async def test_text_commands_reject_blank_key() -> None:
+    connection = RedisConnection(
+        FakeAsyncRedisClient(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="Redis key must not be empty",
+    ):
+        await connection.get_text(
+            key="   ",
+        )
+
+
+@pytest.mark.anyio
+async def test_set_text_rejects_non_positive_ttl() -> None:
+    connection = RedisConnection(
+        FakeAsyncRedisClient(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="ttl_seconds must be at least 1",
+    ):
+        await connection.set_text(
+            key="enterprise-research:v1:test",
+            value="value",
+            ttl_seconds=0,
         )

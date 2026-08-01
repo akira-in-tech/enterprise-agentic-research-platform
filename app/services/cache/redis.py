@@ -13,6 +13,33 @@ class AsyncRedisClient(Protocol):
     def ping(self) -> Awaitable[bool]:
         """Return whether Redis is reachable."""
 
+    def get(
+        self,
+        name: str,
+    ) -> Awaitable[str | None]:
+        """Return one decoded string value."""
+
+    def set(
+        self,
+        name: str,
+        value: str,
+        *,
+        ex: int,
+    ) -> Awaitable[bool | None]:
+        """Store one string value with expiration."""
+
+    def delete(
+        self,
+        *names: str,
+    ) -> Awaitable[int]:
+        """Delete Redis keys."""
+
+    def ttl(
+        self,
+        name: str,
+    ) -> Awaitable[int]:
+        """Return the remaining key lifetime."""
+
     async def aclose(
         self,
         close_connection_pool: bool | None = None,
@@ -43,6 +70,22 @@ def _create_redis_client(
         AsyncRedisClient,
         raw_client,
     )
+
+
+def _validate_key(
+    key: str,
+) -> str:
+    """Validate one application-owned Redis key."""
+
+    normalized_key = key.strip()
+
+    if not normalized_key:
+        raise ValueError("Redis key must not be empty.")
+
+    if normalized_key != key:
+        raise ValueError("Redis key must not contain surrounding whitespace.")
+
+    return key
 
 
 class RedisUnavailableError(RuntimeError):
@@ -122,6 +165,90 @@ class RedisConnection:
             return await self._client.ping()
         except RedisError as error:
             raise RedisUnavailableError("Redis health check failed.") from error
+
+    async def get_text(
+        self,
+        *,
+        key: str,
+    ) -> str | None:
+        """Return one decoded Redis string or a cache miss."""
+
+        validated_key = _validate_key(
+            key,
+        )
+
+        try:
+            return await self._client.get(
+                validated_key,
+            )
+        except RedisError as error:
+            raise RedisUnavailableError("Redis GET failed.") from error
+
+    async def set_text(
+        self,
+        *,
+        key: str,
+        value: str,
+        ttl_seconds: int,
+    ) -> None:
+        """Store one string value with a required expiration."""
+
+        validated_key = _validate_key(
+            key,
+        )
+
+        if ttl_seconds < 1:
+            raise ValueError("Redis ttl_seconds must be at least 1.")
+
+        try:
+            write_confirmed = await self._client.set(
+                validated_key,
+                value,
+                ex=ttl_seconds,
+            )
+        except RedisError as error:
+            raise RedisUnavailableError("Redis SET failed.") from error
+
+        if write_confirmed is not True:
+            raise RedisUnavailableError("Redis SET did not confirm the write.")
+
+    async def delete(
+        self,
+        *,
+        key: str,
+    ) -> bool:
+        """Delete one key and return whether it existed."""
+
+        validated_key = _validate_key(
+            key,
+        )
+
+        try:
+            deleted_count = await self._client.delete(
+                validated_key,
+            )
+        except RedisError as error:
+            raise RedisUnavailableError("Redis DELETE failed.") from error
+
+        return deleted_count > 0
+
+    async def ttl_seconds(
+        self,
+        *,
+        key: str,
+    ) -> int:
+        """Return Redis TTL semantics for one key."""
+
+        validated_key = _validate_key(
+            key,
+        )
+
+        try:
+            return await self._client.ttl(
+                validated_key,
+            )
+        except RedisError as error:
+            raise RedisUnavailableError("Redis TTL failed.") from error
 
     async def close(self) -> None:
         """Close the Redis client and its owned connection pool."""

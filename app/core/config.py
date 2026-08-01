@@ -65,6 +65,12 @@ class Settings(BaseSettings):
         ge=0,
     )
 
+    redis_research_result_ttl_seconds: int = Field(
+        default=900,
+        ge=1,
+        le=86_400,
+    )
+
 
 @lru_cache
 def get_settings() -> Settings:
