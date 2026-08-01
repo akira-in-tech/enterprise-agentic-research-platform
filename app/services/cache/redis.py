@@ -7,6 +7,13 @@ from redis.exceptions import RedisError
 from app.core.config import settings
 from app.services.cache.base import CacheUnavailableError
 
+_COMPARE_AND_DELETE_SCRIPT = """
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+    return redis.call("DEL", KEYS[1])
+end
+return 0
+""".strip()
+
 
 class AsyncRedisClient(Protocol):
     """Redis operations required by the application wrapper."""
@@ -26,6 +33,7 @@ class AsyncRedisClient(Protocol):
         value: str,
         *,
         ex: int,
+        nx: bool = False,
     ) -> Awaitable[bool | None]:
         """Store one string value with expiration."""
 
@@ -40,6 +48,14 @@ class AsyncRedisClient(Protocol):
         name: str,
     ) -> Awaitable[int]:
         """Return the remaining key lifetime."""
+
+    def eval(
+        self,
+        script: str,
+        numkeys: int,
+        *keys_and_args: str,
+    ) -> Awaitable[int]:
+        """Execute one Lua script atomically."""
 
     async def aclose(
         self,
@@ -212,6 +228,61 @@ class RedisConnection:
 
         if write_confirmed is not True:
             raise RedisUnavailableError("Redis SET did not confirm the write.")
+
+    async def set_if_absent(
+        self,
+        *,
+        key: str,
+        value: str,
+        ttl_seconds: int,
+    ) -> bool:
+        """Atomically store a value only when the key does not exist."""
+
+        validated_key = _validate_key(
+            key,
+        )
+
+        if ttl_seconds < 1:
+            raise ValueError("Redis ttl_seconds must be at least 1.")
+
+        try:
+            write_confirmed = await self._client.set(
+                validated_key,
+                value,
+                ex=ttl_seconds,
+                nx=True,
+            )
+        except RedisError as error:
+            raise RedisUnavailableError("Redis SET NX failed.") from error
+
+        return write_confirmed is True
+
+    async def delete_if_value(
+        self,
+        *,
+        key: str,
+        expected_value: str,
+    ) -> bool:
+        """Atomically delete a key only when its value matches."""
+
+        validated_key = _validate_key(
+            key,
+        )
+
+        if not expected_value.strip():
+            raise ValueError("Redis expected_value must not be empty.")
+
+        try:
+            deleted_count = await self._client.eval(
+                _COMPARE_AND_DELETE_SCRIPT,
+                1,
+                validated_key,
+                expected_value,
+            )
+        except RedisError as error:
+            raise RedisUnavailableError("Redis compare-and-delete failed.") from error
+
+        return deleted_count > 0
 
     async def delete(
         self,
