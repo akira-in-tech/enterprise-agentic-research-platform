@@ -1,6 +1,6 @@
 import logging
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import AsyncExitStack, asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -10,6 +10,10 @@ from app.core.logging import configure_logging
 from app.db.session import (
     create_database_engine,
     create_session_factory,
+)
+from app.services.cache import (
+    RedisConnection,
+    RedisResearchResultCache,
 )
 from app.services.research.execution import (
     ResearchExecutionService,
@@ -29,24 +33,37 @@ async def lifespan(
 ) -> AsyncIterator[None]:
     """Initialize and dispose application-scoped resources."""
 
-    engine = create_database_engine()
-    session_factory = create_session_factory(
-        engine,
-    )
-    research_store = PostgresResearchRunStore(
-        session_factory,
-    )
-    application.state.research_execution_service = ResearchExecutionService(
-        research_store,
-    )
+    async with AsyncExitStack() as resource_stack:
+        engine = create_database_engine()
+        resource_stack.push_async_callback(
+            engine.dispose,
+        )
 
-    logger.info("Application started")
+        redis_connection = RedisConnection.from_url()
+        resource_stack.push_async_callback(
+            redis_connection.close,
+        )
 
-    try:
+        session_factory = create_session_factory(
+            engine,
+        )
+        research_store = PostgresResearchRunStore(
+            session_factory,
+        )
+        result_cache = RedisResearchResultCache(
+            redis_connection,
+        )
+
+        application.state.research_execution_service = ResearchExecutionService(
+            research_store,
+            result_cache=result_cache,
+        )
+
+        logger.info("Application started")
+
         yield
-    finally:
-        await engine.dispose()
-        logger.info("Application stopped")
+
+    logger.info("Application stopped")
 
 
 app = FastAPI(
