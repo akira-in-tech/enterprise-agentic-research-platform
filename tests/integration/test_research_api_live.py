@@ -3,7 +3,7 @@ from uuid import UUID, uuid4
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+from sqlalchemy import delete, func, select
 
 from app.core.config import settings
 from app.db.models import ResearchRun, Tenant, User
@@ -19,6 +19,7 @@ from app.db.session import (
 from app.main import app
 from app.services.cache import (
     RedisConnection,
+    create_research_idempotency_redis_key,
     create_research_result_cache_key,
 )
 
@@ -88,6 +89,36 @@ async def load_research_run(
         await engine.dispose()
 
 
+async def count_research_runs(
+    *,
+    tenant_id: UUID,
+) -> int:
+    """Count durable runs created for one test tenant."""
+
+    engine = create_database_engine(
+        echo=False,
+    )
+    session_factory = create_session_factory(
+        engine,
+    )
+
+    try:
+        async with session_factory() as session:
+            count = await session.scalar(
+                select(
+                    func.count(),
+                )
+                .select_from(ResearchRun)
+                .where(
+                    ResearchRun.tenant_id == tenant_id,
+                )
+            )
+
+            return count or 0
+    finally:
+        await engine.dispose()
+
+
 async def delete_test_identity(
     tenant_id: UUID,
 ) -> None:
@@ -136,6 +167,27 @@ async def delete_test_cache(
     try:
         await connection.delete(
             key=cache_key,
+        )
+    finally:
+        await connection.close()
+
+
+async def delete_test_idempotency_record(
+    *,
+    tenant_id: UUID,
+    client_key: str,
+) -> None:
+    """Delete the Redis idempotency entry created by a live test."""
+
+    connection = RedisConnection.from_url()
+    redis_key = create_research_idempotency_redis_key(
+        tenant_id=tenant_id,
+        client_key=client_key,
+    )
+
+    try:
+        await connection.delete(
+            key=redis_key,
         )
     finally:
         await connection.close()
@@ -249,3 +301,126 @@ def test_research_api_live_qwen_round_trip() -> None:
                     tenant_id,
                 )
             )
+
+
+@pytest.mark.integration
+def test_research_api_live_idempotency_replay_and_conflict() -> None:
+    """Verify replay, conflict and one durable run through the API."""
+
+    if not settings.run_live_tests:
+        pytest.skip("Set RUN_LIVE_TESTS=true to run external integration tests.")
+
+    tenant_id, user_id = asyncio.run(create_test_identity())
+    query = "Explain idempotency in REST APIs."
+    conflicting_query = "Explain Linux epoll."
+    client_key = f"live-api-{uuid4().hex}"
+
+    try:
+        asyncio.run(
+            delete_test_cache(
+                tenant_id=tenant_id,
+                query=query,
+            )
+        )
+        asyncio.run(
+            delete_test_idempotency_record(
+                tenant_id=tenant_id,
+                client_key=client_key,
+            )
+        )
+
+        with TestClient(app) as client:
+            headers = {
+                "X-Tenant-ID": str(tenant_id),
+                "X-User-ID": str(user_id),
+                "Idempotency-Key": client_key,
+            }
+
+            first_response = client.post(
+                "/research-runs",
+                headers=headers,
+                json={
+                    "query": query,
+                    "llm_provider": "qwen",
+                },
+            )
+            replay_response = client.post(
+                "/research-runs",
+                headers=headers,
+                json={
+                    "query": query,
+                    "llm_provider": "qwen",
+                },
+            )
+            conflict_response = client.post(
+                "/research-runs",
+                headers=headers,
+                json={
+                    "query": conflicting_query,
+                    "llm_provider": "qwen",
+                },
+            )
+
+        assert first_response.status_code == 200
+        assert replay_response.status_code == 200
+        assert conflict_response.status_code == 409
+
+        first_body = first_response.json()
+        replay_body = replay_response.json()
+        conflict_body = conflict_response.json()
+
+        assert first_body["idempotency_replayed"] is False
+        assert replay_body["idempotency_replayed"] is True
+
+        assert first_body["research_run_id"] == (replay_body["research_run_id"])
+        assert first_body["answer"] == replay_body["answer"]
+        assert first_body["llm_provider"] == "ollama"
+        assert replay_body["llm_provider"] == "ollama"
+        assert first_body["status"] == "completed"
+        assert replay_body["status"] == "completed"
+
+        assert conflict_body["detail"] == (
+            "Idempotency key was already used for a different research request."
+        )
+
+        research_run_id = UUID(first_body["research_run_id"])
+        stored_run = asyncio.run(
+            load_research_run(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+            )
+        )
+        stored_run_count = asyncio.run(
+            count_research_runs(
+                tenant_id=tenant_id,
+            )
+        )
+
+        assert stored_run is not None
+        assert stored_run.query == query
+        assert stored_run.status == "completed"
+        assert stored_run.requested_by_user_id == user_id
+        assert stored_run_count == 1
+
+    finally:
+        try:
+            asyncio.run(
+                delete_test_idempotency_record(
+                    tenant_id=tenant_id,
+                    client_key=client_key,
+                )
+            )
+        finally:
+            try:
+                asyncio.run(
+                    delete_test_cache(
+                        tenant_id=tenant_id,
+                        query=query,
+                    )
+                )
+            finally:
+                asyncio.run(
+                    delete_test_identity(
+                        tenant_id,
+                    )
+                )
