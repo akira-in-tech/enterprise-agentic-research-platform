@@ -5,8 +5,8 @@ across technical, business, policy, market, and internal-knowledge domains.
 
 The product is domain-neutral. Backend, infrastructure, cloud, networking,
 database, and distributed-systems questions are used as the primary demo and
-evaluation dataset because they align with the target engineering roles and
-the HENNGE Global Internship Program.
+evaluation dataset because they provide concrete, technically demanding
+research scenarios.
 
 The platform is being built incrementally with FastAPI, LangGraph, Claude,
 Qwen through Ollama, Tavily, PostgreSQL, Redis, Milvus, and MCP. A component is
@@ -15,9 +15,9 @@ listed as tested only after its automated checks pass in this repository.
 ## Current Phase
 
 ```text
-Completed: Phase 0 through Phase 10
-Phase 10: MCP client boundaries and evidence-quality research pipeline
-Next: Phase 11 - durable reports and asynchronous delivery
+Completed: Phase 0 through Phase 11
+Phase 11: durable reports, background jobs, SSE, and bounded revision
+Next: Phase 12 - Vue 3 operator interface and local stack packaging
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -109,6 +109,22 @@ MCP Streamable HTTP tool boundary
 → report and quality state in the workflow, cache, and API
 ```
 
+Phase 11 makes those research artifacts durable and independently consumable:
+
+```text
+POST /research-runs/jobs
+→ commit a tenant-scoped queued run before returning HTTP 202
+→ execute the workflow in an application-owned background task
+→ allow one evidence-guided report revision after the initial draft
+→ atomically commit completed lifecycle, report, and evidence sources
+→ stream Redis progress through tenant-scoped SSE
+→ retrieve the durable report through GET /research-runs/{run_id}/report
+```
+
+The asynchronous path has been live tested against PostgreSQL and Redis. The
+test starts a background job, observes its terminal progress snapshot, reads
+its report and scored source from PostgreSQL, and leaves both services empty.
+
 ## Project Status
 
 | Component | Status |
@@ -167,9 +183,11 @@ MCP Streamable HTTP tool boundary
 | Analyst report generation and reflection quality gate | Tested |
 | Deep-research evidence-quality LangGraph path | Tested |
 | Citation and reflection API/cache visibility | Tested |
-| Durable report persistence | Planned |
-| Iterative reflection loop | Planned |
-| SSE progress streaming | Planned |
+| Durable report and evidence-source persistence | Tested with reversible live migration and integration test |
+| Tenant-scoped research report retrieval API | Tested |
+| Durable queued background research jobs | Tested with unit and live integration tests |
+| Bounded reflection revision loop | Tested |
+| SSE progress and terminal-state streaming | Tested |
 | Vue 3 + TypeScript + Vite frontend | Planned |
 | Docker Compose project stack | Planned |
 | GitHub Actions | Planned |
@@ -260,8 +278,9 @@ deep-research web sources
 The same evidence model also accepts tenant-scoped private sources and
 successful MCP text results. The scorer is deterministic and records separate
 relevance, content-quality, and traceability signals rather than presenting an
-opaque model judgment. Reflection currently acts as one explicit quality gate;
-automatic multi-pass revision remains planned.
+opaque model judgment. Reflection can request one evidence-guided rewrite after
+the initial draft. The workflow stops after two total analyst attempts and
+retains an explicit revision-required result if the second audit still fails.
 
 ### Durable Request Execution
 
@@ -277,6 +296,21 @@ POST /research-runs
 → return run ID, provider, route, status, and answer
 ```
 
+The asynchronous contract separates durable acceptance from execution:
+
+```text
+POST /research-runs/jobs
+→ validate tenant, user, provider, and rate limit
+→ commit the queued PostgreSQL row
+→ return HTTP 202 with progress, events, and report URLs
+→ run the remaining lifecycle in an owned asyncio task
+→ mark cancelled shutdown work failed instead of leaving it running
+```
+
+The current task owner is application-local. PostgreSQL preserves the accepted
+run and completed artifacts, but a multi-process or restart-safe production
+deployment still needs an external durable work queue and worker lease model.
+
 ### Redis-Backed Result Caching
 
 ```text
@@ -285,6 +319,7 @@ POST /research-runs
 → look up tenant + canonical provider + normalized query in Redis
 → cache hit: restore API-visible state and skip the LLM workflow
 → cache miss: execute the workflow and commit the completed run
+→ preserve report, evidence, citation, and reflection state on either path
 → write the completed result to Redis with a bounded TTL
 → return cache_hit in the API response
 ```
@@ -346,15 +381,16 @@ ResearchExecutionService
 → expire the latest snapshot with a configurable Redis TTL
 ```
 
-Clients can poll `GET /research-runs/{research_run_id}/progress` with the
-`X-Tenant-ID` header. Keys include both the tenant UUID and research-run UUID,
-so another tenant cannot read the snapshot. Progress publishing fails open to
-preserve durable research execution when Redis is unavailable; the query API
-returns `503` when Redis cannot answer and `404` when no snapshot exists.
+Clients can poll `GET /research-runs/{research_run_id}/progress` or consume
+`GET /research-runs/{research_run_id}/events` with the `X-Tenant-ID` header.
+The SSE stream emits changed snapshots and closes after `completed` or `failed`.
+Keys include both the tenant UUID and research-run UUID, so another tenant
+cannot read the snapshot. Progress publishing fails open to preserve durable
+research execution when Redis is unavailable; query and stream consumers get
+an explicit unavailable or not-found result.
 
-This is a lifecycle snapshot and polling foundation. The current research POST
-endpoint still completes synchronously; background execution and SSE streaming
-remain planned rather than being represented as implemented.
+`POST /research-runs` remains the synchronous convenience contract, while
+`POST /research-runs/jobs` provides the tested HTTP 202 background path.
 
 ## Data Responsibilities
 
@@ -378,9 +414,12 @@ Milvus
 → tenant-scoped vector similarity search
 ```
 
-PostgreSQL persistence is implemented for tenants, users, research runs, and
-research-run lifecycle transitions. Reports, source persistence, agent-step
-records, and durable checkpoints remain planned.
+PostgreSQL persistence is implemented for tenants, users, research runs,
+reports, and scored evidence sources. A completed deep-research transition and
+its report artifacts share one transaction, preventing a completed run from
+being committed without its report. Tenant-scoped report retrieval, reversible
+migration, and live cleanup have been verified. Agent-step records and durable
+workflow checkpoints remain planned.
 
 Redis result caching is implemented with tenant/provider/query-scoped keys,
 bounded TTLs, application-scoped connection management, fail-open behavior,
@@ -390,10 +429,10 @@ execution exclusion, and completed-response replay are also implemented and
 live tested. Tenant-scoped fixed-window rate limiting is implemented with
 atomic Redis counters, bounded TTLs, API response headers, and live concurrent
 verification. Tenant-scoped progress snapshots, lifecycle publishing, TTL,
-polling API behavior, and live running-to-completed transitions are implemented
-and tested. Lock renewal remains a production-hardening item for executions
-that may exceed the coordination lease. Milvus private retrieval is implemented
-and live integration tested.
+polling and SSE behavior, background delivery, and live running-to-completed
+transitions are implemented and tested. Lock renewal remains a
+production-hardening item for executions that may exceed the coordination
+lease. Milvus private retrieval is implemented and live integration tested.
 
 ## Local Setup
 
@@ -437,6 +476,11 @@ fails closed, returns `429` when the configured tenant allowance is exhausted,
 and exposes the current limit, remaining allowance, and reset delay in response
 headers.
 
+For asynchronous delivery, submit the same JSON body to
+`POST /research-runs/jobs`. A successful request returns `202` only after the
+queued PostgreSQL row is committed, together with URLs for polling progress,
+consuming SSE events, and reading the completed durable report.
+
 Start the API:
 
 ```bash
@@ -473,15 +517,16 @@ mypy \
   app \
   tests \
   alembic/env.py \
-  alembic/versions/0eea26dcdef5_create_research_persistence_tables.py
+  alembic/versions/0eea26dcdef5_create_research_persistence_tables.py \
+  alembic/versions/9bd72c6f8a10_add_research_reports_and_sources.py
 pytest -q
 ```
 
 Current verified default result:
 
 ```text
-386 passed
-18 integration tests deselected
+406 passed
+20 integration tests deselected
 1 dependency deprecation warning
 ```
 
@@ -540,7 +585,16 @@ pytest -q -m integration \
 DATABASE_URL=postgresql+asyncpg://research_user:change_me@localhost:5433/research_platform \
 RUN_LIVE_TESTS=true \
 pytest -q -m integration \
-  tests/integration/test_research_execution_postgres_live.py
+  tests/integration/test_research_execution_postgres_live.py \
+  tests/integration/test_research_reports_postgres_live.py
+```
+
+```bash
+DATABASE_URL=postgresql+asyncpg://research_user:change_me@localhost:5433/research_platform \
+REDIS_URL=redis://localhost:6379/0 \
+RUN_LIVE_TESTS=true \
+pytest -q -m integration \
+  tests/integration/test_research_job_delivery_live.py
 ```
 
 ```bash
@@ -593,34 +647,34 @@ private engineering documents
 
 ## Next Phase
 
-Phase 10 is complete. Its tested scope is:
+Phase 11 is complete. Its tested scope is:
 
 ```text
-MCP 2025-11-25 initialization and session lifecycle
-cursor-paginated tools/list discovery
-validated tools/call results and JSON-RPC errors
-canonical Web, Private, and MCP evidence adapters
-deterministic relevance, content-quality, and traceability scoring
-canonical citation parsing and source allow-list validation
-paragraph-level uncited-claim detection and coverage
-evidence-constrained analyst report generation
-reflection approval or revision decisions with explicit reasons
-deep-research LangGraph integration
-report-quality cache and API fields
+reversible research_reports and research_sources migration
+atomic run-completion and artifact transaction
+tenant-scoped durable report retrieval
+cache-hit restoration of report and evidence state
+durably accepted HTTP 202 research jobs
+application-owned background task lifecycle
+tenant-scoped SSE progress and terminal delivery
+one bounded evidence-guided report revision
+live PostgreSQL and Redis background delivery round trip
 ```
 
-Phase 11 will make reports durable and independently consumable:
+Phase 12 will make the platform directly operable through a browser and a
+reproducible local stack:
 
 ```text
-report and source persistence
-research-run report retrieval APIs
-background execution
-SSE progress and completion delivery
-iterative reflection and bounded revision policy
+Vue 3 + TypeScript + Vite research console
+provider selection and tenant/user request context
+synchronous and asynchronous submission flows
+SSE progress visualization
+durable report, citation, and source-quality presentation
+Docker Compose packaging for API, PostgreSQL, Redis, and Milvus
 ```
 
 MCP is currently a contract-tested client boundary rather than a configured
 external integration. PostgreSQL remains the durable source of truth, while
-Redis stores temporary cache and coordination state. Coordination-lock renewal
-for workflows that can exceed the current lease remains explicit production
-hardening work.
+Redis stores temporary cache and coordination state. The current background
+runner is process-local; external queue ownership, lease renewal, and durable
+LangGraph checkpoints remain explicit production-hardening work.
