@@ -12,6 +12,10 @@ from app.services.cache.keys import (
     create_research_idempotency_redis_key,
     create_research_result_cache_key,
 )
+from app.services.cache.locks import (
+    RedisResearchIdempotencyLockManager,
+    ResearchIdempotencyLockLease,
+)
 from app.services.cache.redis import (
     RedisConnection,
     RedisUnavailableError,
@@ -34,4 +38,6 @@ __all__ = [
     "RedisResearchIdempotencyStore",
     "RESEARCH_IDEMPOTENCY_LOCK_VERSION",
     "create_research_idempotency_lock_redis_key",
+    "RedisResearchIdempotencyLockManager",
+    "ResearchIdempotencyLockLease",
 ]

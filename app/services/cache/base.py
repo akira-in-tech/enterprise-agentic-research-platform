@@ -28,5 +28,26 @@ class TextCacheClient(Protocol):
         """Delete one cached value."""
 
 
+class AtomicLockClient(Protocol):
+    """Atomic operations required by distributed lock services."""
+
+    async def set_if_absent(
+        self,
+        *,
+        key: str,
+        value: str,
+        ttl_seconds: int,
+    ) -> bool:
+        """Atomically create one expiring lock value."""
+
+    async def delete_if_value(
+        self,
+        *,
+        key: str,
+        expected_value: str,
+    ) -> bool:
+        """Atomically delete a lock owned by the expected value."""
+
+
 class CacheUnavailableError(RuntimeError):
     """Represent an unavailable optional cache provider."""
