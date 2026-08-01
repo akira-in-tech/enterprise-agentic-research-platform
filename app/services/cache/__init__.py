@@ -1,5 +1,6 @@
 from app.services.cache.base import CacheUnavailableError
 from app.services.cache.idempotency import (
+    RedisResearchIdempotencyStore,
     create_research_request_fingerprint,
 )
 from app.services.cache.keys import (
@@ -28,4 +29,5 @@ __all__ = [
     "RESEARCH_IDEMPOTENCY_KEY_VERSION",
     "create_research_idempotency_redis_key",
     "create_research_request_fingerprint",
+    "RedisResearchIdempotencyStore",
 ]

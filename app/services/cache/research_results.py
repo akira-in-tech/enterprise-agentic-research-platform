@@ -1,4 +1,3 @@
-from typing import Protocol
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -6,36 +5,10 @@ from pydantic import ValidationError
 from app.core.config import settings
 from app.schemas.cache import CachedResearchResult
 from app.schemas.research import PersistedLLMProvider
+from app.services.cache.base import TextCacheClient
 from app.services.cache.keys import (
     create_research_result_cache_key,
 )
-
-
-class TextCacheClient(Protocol):
-    """Text operations required by the research-result cache."""
-
-    async def get_text(
-        self,
-        *,
-        key: str,
-    ) -> str | None:
-        """Return one cached text value."""
-
-    async def set_text(
-        self,
-        *,
-        key: str,
-        value: str,
-        ttl_seconds: int,
-    ) -> None:
-        """Store one text value with expiration."""
-
-    async def delete(
-        self,
-        *,
-        key: str,
-    ) -> bool:
-        """Delete one cached value."""
 
 
 class RedisResearchResultCache:

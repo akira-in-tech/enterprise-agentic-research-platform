@@ -70,6 +70,11 @@ class Settings(BaseSettings):
         ge=1,
         le=86_400,
     )
+    redis_research_idempotency_ttl_seconds: int = Field(
+        default=86_400,
+        ge=1,
+        le=604_800,
+    )
 
 
 @lru_cache

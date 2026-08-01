@@ -14,6 +14,7 @@ def test_settings_accepts_custom_redis_configuration() -> None:
         redis_socket_timeout_seconds=3.0,
         redis_health_check_interval_seconds=15,
         redis_research_result_ttl_seconds=1_800,
+        redis_research_idempotency_ttl_seconds=86_400,
     )
 
     assert config.redis_url.get_secret_value() == "rediss://cache.internal.example:6380/2"
@@ -22,6 +23,14 @@ def test_settings_accepts_custom_redis_configuration() -> None:
     assert config.redis_socket_timeout_seconds == 3.0
     assert config.redis_health_check_interval_seconds == 15
     assert config.redis_research_result_ttl_seconds == 1_800
+    assert config.redis_research_idempotency_ttl_seconds == 86_400
+
+
+def test_settings_rejects_non_positive_idempotency_ttl() -> None:
+    with pytest.raises(ValidationError):
+        Settings(
+            redis_research_idempotency_ttl_seconds=0,
+        )
 
 
 def test_settings_rejects_empty_redis_connection_pool() -> None:
