@@ -17,7 +17,9 @@ listed as tested only after its automated checks pass in this repository.
 ```text
 Completed: Phase 0 through Phase 11
 Phase 11: durable reports, background jobs, SSE, and bounded revision
-Next: Phase 12 - Vue 3 operator interface and local stack packaging
+In progress: Phase 12 - Vue 3 operator interface and local stack packaging
+Completed within Phase 12: verified browser research console
+Next within Phase 12: reproducible Docker Compose project stack
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -188,7 +190,7 @@ its report and scored source from PostgreSQL, and leaves both services empty.
 | Durable queued background research jobs | Tested with unit and live integration tests |
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
-| Vue 3 + TypeScript + Vite frontend | Planned |
+| Vue 3 + TypeScript + Vite frontend | Typechecked, component tested, production built, and browser QA verified |
 | Docker Compose project stack | Planned |
 | GitHub Actions | Planned |
 | AWS deployment | Planned |
@@ -536,6 +538,31 @@ combination and does not represent a failed application test.
 The default test suite does not call Claude, Tavily, Ollama, Milvus,
 PostgreSQL, or Redis.
 
+The Vue research console is verified independently:
+
+```bash
+cd frontend
+npm install
+npm run typecheck
+npm test
+npm run build
+```
+
+Current frontend result:
+
+```text
+Vue and TypeScript typecheck passed
+6 component and streaming-contract tests passed
+Vite production build passed
+desktop provider, workspace, theme, and responsive states browser checked
+```
+
+The console uses the real asynchronous API contract. It submits durable jobs,
+parses tenant-authenticated SSE with `fetch`, retrieves completed reports, and
+presents evidence scores and source links. Tenant and optional user UUIDs are
+configured explicitly in the workspace dialog. Recent-run history remains
+browser-local until a tenant-scoped history endpoint is implemented.
+
 ## Live Integration Tests
 
 Live tests require only the services used by the selected test:
@@ -645,7 +672,7 @@ private engineering documents
 - Do not describe planned, mocked, or local-only features as production
   capabilities.
 
-## Next Phase
+## Current Phase 12 Scope
 
 Phase 11 is complete. Its tested scope is:
 
@@ -661,17 +688,22 @@ one bounded evidence-guided report revision
 live PostgreSQL and Redis background delivery round trip
 ```
 
-Phase 12 will make the platform directly operable through a browser and a
-reproducible local stack:
+The browser interface portion of Phase 12 is implemented and verified:
 
 ```text
 Vue 3 + TypeScript + Vite research console
 provider selection and tenant/user request context
-synchronous and asynchronous submission flows
-SSE progress visualization
+durable asynchronous job submission
+fetch-based SSE progress visualization with tenant headers
 durable report, citation, and source-quality presentation
-Docker Compose packaging for API, PostgreSQL, Redis, and Milvus
+running, completed, failed, empty, and unavailable states
+keyboard, focus, screen-reader, reduced-motion, light, dark, and mobile behavior
 ```
+
+The remaining Phase 12 deliverable is Docker Compose packaging for the API,
+frontend, PostgreSQL, Redis, and Milvus. A synchronous browser submission mode
+is intentionally not claimed; the console currently uses the durable
+background-job contract.
 
 MCP is currently a contract-tested client boundary rather than a configured
 external integration. PostgreSQL remains the durable source of truth, while
