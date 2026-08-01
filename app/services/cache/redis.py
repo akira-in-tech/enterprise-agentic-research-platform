@@ -5,6 +5,7 @@ from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
 from app.core.config import settings
+from app.services.cache.base import CacheUnavailableError
 
 
 class AsyncRedisClient(Protocol):
@@ -88,7 +89,7 @@ def _validate_key(
     return key
 
 
-class RedisUnavailableError(RuntimeError):
+class RedisUnavailableError(CacheUnavailableError):
     """Raised when Redis cannot complete an infrastructure operation."""
 
 

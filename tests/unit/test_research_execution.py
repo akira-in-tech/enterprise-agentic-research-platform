@@ -2,6 +2,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.schemas.cache import CachedResearchResult
+from app.services.cache import CacheUnavailableError
 from app.services.llm.factory import CanonicalLLMProvider
 from app.services.research.execution import (
     ResearchExecutionService,
@@ -90,6 +92,44 @@ class RecordingWorkflow:
         self.close_calls += 1
 
 
+class RecordingResearchResultCache:
+    def __init__(
+        self,
+        *,
+        result: CachedResearchResult | None = None,
+        error: CacheUnavailableError | None = None,
+    ) -> None:
+        self.result = result
+        self.error = error
+        self.get_calls: list[
+            tuple[
+                UUID,
+                CanonicalLLMProvider,
+                str,
+            ]
+        ] = []
+
+    async def get(
+        self,
+        *,
+        tenant_id: UUID,
+        llm_provider: CanonicalLLMProvider,
+        query: str,
+    ) -> CachedResearchResult | None:
+        self.get_calls.append(
+            (
+                tenant_id,
+                llm_provider,
+                query,
+            )
+        )
+
+        if self.error is not None:
+            raise self.error
+
+        return self.result
+
+
 @pytest.mark.anyio
 @pytest.mark.parametrize(
     ("provider", "canonical_provider"),
@@ -161,6 +201,8 @@ async def test_execution_normalizes_provider_and_completes(
     ]
 
     assert workflow.close_calls == 1
+
+    assert result.cache_hit is False
 
 
 @pytest.mark.anyio
@@ -234,3 +276,148 @@ async def test_execution_rejects_blank_query_before_persistence() -> None:
         )
 
     assert store.events == []
+
+
+@pytest.mark.anyio
+async def test_execution_uses_cached_result_without_workflow() -> None:
+    store = RecordingResearchRunStore()
+    tenant_id = uuid4()
+    cached_result = CachedResearchResult(
+        llm_provider="ollama",
+        workflow_status="direct_answer_completed",
+        route="direct",
+        route_reason=("The question can be answered using stable knowledge."),
+        answer="A mutex protects a critical section.",
+    )
+    cache = RecordingResearchResultCache(
+        result=cached_result,
+    )
+    workflow = RecordingWorkflow(
+        result={
+            "query": "This workflow should not run.",
+        },
+    )
+    workflow_factory_calls: list[CanonicalLLMProvider] = []
+
+    def create_workflow(
+        provider: CanonicalLLMProvider,
+    ) -> RecordingWorkflow:
+        workflow_factory_calls.append(provider)
+
+        return workflow
+
+    service = ResearchExecutionService(
+        store,
+        create_workflow,
+        result_cache=cache,
+    )
+
+    result = await service.execute(
+        tenant_id=tenant_id,
+        query="  What is a mutex?  ",
+        llm_provider="qwen",
+    )
+
+    assert result.cache_hit is True
+    assert result.state == {
+        "query": "What is a mutex?",
+        "status": "direct_answer_completed",
+        "route": "direct",
+        "route_reason": ("The question can be answered using stable knowledge."),
+        "answer": "A mutex protects a critical section.",
+    }
+    assert workflow_factory_calls == []
+    assert workflow.inputs == []
+    assert workflow.close_calls == 0
+    assert store.events == [
+        "queued",
+        "running",
+        "completed",
+    ]
+    assert cache.get_calls == [
+        (
+            tenant_id,
+            "ollama",
+            "What is a mutex?",
+        )
+    ]
+
+
+@pytest.mark.anyio
+async def test_execution_runs_workflow_after_cache_miss() -> None:
+    store = RecordingResearchRunStore()
+    tenant_id = uuid4()
+    cache = RecordingResearchResultCache(
+        result=None,
+    )
+    workflow_result: ResearchState = {
+        "query": "Explain Linux epoll.",
+        "status": "direct_answer_completed",
+        "route": "direct",
+        "answer": "epoll monitors multiple file descriptors.",
+    }
+    workflow = RecordingWorkflow(
+        result=workflow_result,
+    )
+    service = ResearchExecutionService(
+        store,
+        lambda _: workflow,
+        result_cache=cache,
+    )
+
+    result = await service.execute(
+        tenant_id=tenant_id,
+        query="Explain Linux epoll.",
+        llm_provider="qwen",
+    )
+
+    assert result.cache_hit is False
+    assert result.state == workflow_result
+    assert workflow.inputs == [
+        {
+            "query": "Explain Linux epoll.",
+        }
+    ]
+    assert workflow.close_calls == 1
+    assert store.events == [
+        "queued",
+        "running",
+        "completed",
+    ]
+
+
+@pytest.mark.anyio
+async def test_execution_fails_open_when_cache_read_is_unavailable() -> None:
+    store = RecordingResearchRunStore()
+    cache = RecordingResearchResultCache(
+        error=CacheUnavailableError("Redis is unavailable."),
+    )
+    workflow_result: ResearchState = {
+        "query": "Explain DNS recursive resolution.",
+        "status": "direct_answer_completed",
+        "route": "direct",
+        "answer": "A recursive resolver queries DNS servers.",
+    }
+    workflow = RecordingWorkflow(
+        result=workflow_result,
+    )
+    service = ResearchExecutionService(
+        store,
+        lambda _: workflow,
+        result_cache=cache,
+    )
+
+    result = await service.execute(
+        tenant_id=uuid4(),
+        query="Explain DNS recursive resolution.",
+        llm_provider="qwen",
+    )
+
+    assert result.cache_hit is False
+    assert result.state == workflow_result
+    assert workflow.close_calls == 1
+    assert store.events == [
+        "queued",
+        "running",
+        "completed",
+    ]

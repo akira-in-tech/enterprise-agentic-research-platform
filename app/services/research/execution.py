@@ -1,8 +1,11 @@
+import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Protocol, cast
 from uuid import UUID
 
+from app.schemas.cache import CachedResearchResult
+from app.services.cache import CacheUnavailableError
 from app.services.llm.base import ClosableLLMClient
 from app.services.llm.factory import (
     CanonicalLLMProvider,
@@ -14,6 +17,8 @@ from app.workflow.graph import (
     build_research_graph_for_client,
 )
 from app.workflow.state import ResearchState
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchWorkflow(Protocol):
@@ -101,6 +106,19 @@ class ResearchRunStore(Protocol):
         """Commit the transition from an active state to failed."""
 
 
+class ResearchResultCache(Protocol):
+    """Represent optional research-result cache reads."""
+
+    async def get(
+        self,
+        *,
+        tenant_id: UUID,
+        llm_provider: CanonicalLLMProvider,
+        query: str,
+    ) -> CachedResearchResult | None:
+        """Return one cached result or a cache miss."""
+
+
 WorkflowFactory = Callable[
     [CanonicalLLMProvider],
     ResearchWorkflow,
@@ -134,6 +152,7 @@ class ResearchExecutionResult:
     research_run_id: UUID
     llm_provider: CanonicalLLMProvider
     state: ResearchState
+    cache_hit: bool = False
 
 
 class ResearchExecutionService:
@@ -143,9 +162,12 @@ class ResearchExecutionService:
         self,
         store: ResearchRunStore,
         workflow_factory: WorkflowFactory = create_default_workflow,
+        *,
+        result_cache: ResearchResultCache | None = None,
     ) -> None:
         self._store = store
         self._workflow_factory = workflow_factory
+        self._result_cache = result_cache
 
     async def execute(
         self,
@@ -179,19 +201,35 @@ class ResearchExecutionService:
                 research_run_id=research_run_id,
             )
 
-            workflow = self._workflow_factory(
-                canonical_provider,
+            cached_result = await self._get_cached_result(
+                tenant_id=tenant_id,
+                llm_provider=canonical_provider,
+                query=normalized_query,
             )
-            initial_state: ResearchState = {
-                "query": normalized_query,
-            }
 
-            try:
-                final_state = await workflow.ainvoke(
-                    initial_state,
+            if cached_result is not None:
+                final_state = self._restore_cached_state(
+                    query=normalized_query,
+                    result=cached_result,
                 )
-            finally:
-                await workflow.close()
+                cache_hit = True
+
+            else:
+                workflow = self._workflow_factory(
+                    canonical_provider,
+                )
+                initial_state: ResearchState = {
+                    "query": normalized_query,
+                }
+
+                try:
+                    final_state = await workflow.ainvoke(
+                        initial_state,
+                    )
+                finally:
+                    await workflow.close()
+
+                cache_hit = False
 
             await self._store.mark_completed(
                 tenant_id=tenant_id,
@@ -210,7 +248,59 @@ class ResearchExecutionService:
             research_run_id=research_run_id,
             llm_provider=canonical_provider,
             state=final_state,
+            cache_hit=cache_hit,
         )
+
+    async def _get_cached_result(
+        self,
+        *,
+        tenant_id: UUID,
+        llm_provider: CanonicalLLMProvider,
+        query: str,
+    ) -> CachedResearchResult | None:
+        """Read the optional cache without breaking research execution."""
+
+        if self._result_cache is None:
+            return None
+
+        try:
+            return await self._result_cache.get(
+                tenant_id=tenant_id,
+                llm_provider=llm_provider,
+                query=query,
+            )
+        except CacheUnavailableError:
+            logger.warning(
+                ("Research result cache read failed for tenant %s and provider %s."),
+                tenant_id,
+                llm_provider,
+                exc_info=True,
+            )
+            return None
+
+    @staticmethod
+    def _restore_cached_state(
+        *,
+        query: str,
+        result: CachedResearchResult,
+    ) -> ResearchState:
+        """Restore API-visible workflow state from a cache payload."""
+
+        state: ResearchState = {
+            "query": query,
+            "status": result.workflow_status,
+        }
+
+        if result.route is not None:
+            state["route"] = result.route
+
+        if result.route_reason is not None:
+            state["route_reason"] = result.route_reason
+
+        if result.answer is not None:
+            state["answer"] = result.answer
+
+        return state
 
     @staticmethod
     def _format_error(

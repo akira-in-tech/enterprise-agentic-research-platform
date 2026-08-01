@@ -5,6 +5,7 @@ import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.services.cache import (
+    CacheUnavailableError,
     RedisConnection,
     RedisUnavailableError,
 )
@@ -427,3 +428,10 @@ async def test_set_text_rejects_non_positive_ttl() -> None:
             value="value",
             ttl_seconds=0,
         )
+
+
+def test_redis_unavailable_error_is_cache_error() -> None:
+    assert issubclass(
+        RedisUnavailableError,
+        CacheUnavailableError,
+    )
