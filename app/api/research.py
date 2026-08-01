@@ -5,6 +5,8 @@ from fastapi import (
     APIRouter,
     Depends,
     Header,
+    HTTPException,
+    status,
 )
 
 from app.api.dependencies import (
@@ -14,8 +16,13 @@ from app.schemas.research import (
     CreateResearchRunRequest,
     CreateResearchRunResponse,
 )
+from app.services.cache import (
+    MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH,
+)
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
+    ResearchIdempotencyConflictError,
+    ResearchIdempotencyUnavailableError,
 )
 
 router = APIRouter(
@@ -40,6 +47,15 @@ async def create_research_run(
         IdempotentResearchExecutionService,
         Depends(get_research_execution_service),
     ],
+    idempotency_key: Annotated[
+        str | None,
+        Header(
+            alias="Idempotency-Key",
+            min_length=1,
+            max_length=MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH,
+            pattern=r".*\S.*",
+        ),
+    ] = None,
     requested_by_user_id: Annotated[
         UUID | None,
         Header(alias="X-User-ID"),
@@ -47,18 +63,31 @@ async def create_research_run(
 ) -> CreateResearchRunResponse:
     """Execute one tenant-scoped research request."""
 
-    result = await service.execute(
-        tenant_id=tenant_id,
-        requested_by_user_id=requested_by_user_id,
-        query=payload.query,
-        llm_provider=payload.llm_provider,
-    )
+    try:
+        result = await service.execute(
+            tenant_id=tenant_id,
+            requested_by_user_id=requested_by_user_id,
+            query=payload.query,
+            llm_provider=payload.llm_provider,
+            idempotency_key=idempotency_key,
+        )
+    except ResearchIdempotencyConflictError as error:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=str(error),
+        ) from error
+    except ResearchIdempotencyUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(error),
+        ) from error
 
     return CreateResearchRunResponse(
         research_run_id=result.research_run_id,
         llm_provider=result.llm_provider,
         status="completed",
         cache_hit=result.cache_hit,
+        idempotency_replayed=result.idempotency_replayed,
         workflow_status=result.state.get(
             "status",
             "completed",

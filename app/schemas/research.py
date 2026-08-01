@@ -36,6 +36,7 @@ class CreateResearchRunResponse(BaseModel):
     llm_provider: PersistedLLMProvider
     status: Literal["completed"]
     cache_hit: bool
+    idempotency_replayed: bool = False
     workflow_status: str
     route: ResearchRoute | None = None
     route_reason: str | None = None
