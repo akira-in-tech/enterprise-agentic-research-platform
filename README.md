@@ -17,8 +17,8 @@ listed as tested only after its automated checks pass in this repository.
 ```text
 Completed: Phase 0 through Phase 8
 In progress: Phase 9 - Redis Caching and Coordination
-Completed within Phase 9: result caching and concurrent request idempotency
-Next: rate-limit primitives and progress coordination
+Completed within Phase 9: caching, concurrent idempotency, and tenant rate limiting
+Next: progress coordination and long-running lock renewal
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -133,7 +133,8 @@ later retry with the same key and payload
 | Atomic Redis coordination locks with TTL and token-checked release | Tested with unit and live integration tests |
 | Concurrent idempotent research execution and completed-response replay | Tested with unit and live integration tests |
 | Research idempotency API conflict and availability handling | Tested |
-| Redis rate-limit primitives | Planned |
+| Tenant-scoped Redis research rate limiting | Tested with unit and live integration tests |
+| Research API rate-limit headers and HTTP 429/503 handling | Tested |
 | MCP tools and client | Planned |
 | Evidence scoring and citation validation | Planned |
 | Analyst and reflection loop | Planned |
@@ -248,6 +249,24 @@ The coordination lock currently has a bounded 300-second default TTL. That
 prevents abandoned permanent locks, but lease renewal is still required before
 executions longer than the TTL can be treated as production-safe.
 
+### Tenant-Scoped Rate Limiting
+
+```text
+POST /research-runs
+→ derive a versioned tenant-scoped Redis key
+→ atomically increment the request counter with Lua
+→ initialize a bounded TTL for the fixed window
+→ allow requests within the configured tenant allowance
+→ return HTTP 429 and Retry-After when the allowance is exhausted
+→ expose X-RateLimit-Limit, Remaining, and Reset headers
+```
+
+The default policy allows 20 research requests per tenant per 60-second
+window. Both values are configurable. Rate limiting fails closed with `503`
+when Redis cannot guarantee enforcement, protecting the LLM-backed endpoint
+from unbounded work during a coordination outage. The live Redis test verifies
+concurrent atomic increments, tenant isolation, TTL behavior, and cleanup.
+
 ## Data Responsibilities
 
 ```text
@@ -279,8 +298,10 @@ bounded TTLs, application-scoped connection management, fail-open behavior,
 and live miss/write/hit verification. Tenant-scoped idempotency records,
 canonical request fingerprints, atomic coordination locks, concurrent
 execution exclusion, and completed-response replay are also implemented and
-live tested. Progress state, lock renewal, and rate limiting remain planned.
-Milvus private retrieval is implemented and live integration tested.
+live tested. Tenant-scoped fixed-window rate limiting is implemented with
+atomic Redis counters, bounded TTLs, API response headers, and live concurrent
+verification. Progress state and lock renewal remain planned. Milvus private
+retrieval is implemented and live integration tested.
 
 ## Local Setup
 
@@ -319,7 +340,10 @@ The synchronous MVP endpoint requires:
 The response includes `cache_hit` and `idempotency_replayed`. Redis result
 caching accelerates repeated equivalent requests and fails open when
 unavailable. Requests that explicitly include `Idempotency-Key` instead fail
-closed when Redis cannot guarantee idempotency.
+closed when Redis cannot guarantee idempotency. Rate-limit enforcement also
+fails closed, returns `429` when the configured tenant allowance is exhausted,
+and exposes the current limit, remaining allowance, and reset delay in response
+headers.
 
 Start the API:
 
@@ -364,8 +388,8 @@ pytest -q
 Current verified default result:
 
 ```text
-349 passed
-16 integration tests deselected
+364 passed
+17 integration tests deselected
 1 dependency deprecation warning
 ```
 
@@ -444,6 +468,7 @@ RUN_LIVE_TESTS=true \
 pytest -q -m integration \
   tests/integration/test_redis_live.py \
   tests/integration/test_redis_idempotency_live.py \
+  tests/integration/test_redis_rate_limit_live.py \
   tests/integration/test_redis_research_result_cache_live.py \
   tests/integration/test_research_execution_redis_live.py \
   tests/integration/test_research_idempotency_concurrency_live.py
@@ -498,12 +523,17 @@ concurrent duplicate-execution prevention
 HTTP 409 conflict/in-progress handling
 fail-closed HTTP 503 behavior when idempotency is unavailable
 real Redis lock and concurrency verification
+tenant-scoped fixed-window rate-limit keys
+atomic Redis increment and TTL initialization
+configurable request allowance and window
+API X-RateLimit headers, HTTP 429, and Retry-After
+fail-closed HTTP 503 behavior when rate limiting is unavailable
+live concurrent counter and tenant-isolation verification
 ```
 
 The remaining Phase 9 coordination work is:
 
 ```text
-rate-limit primitives
 progress and coordination state
 lock renewal for executions longer than the current TTL
 unit and live integration coverage for those primitives
