@@ -7,6 +7,7 @@ RESEARCH_RESULT_CACHE_VERSION = "v1"
 RESEARCH_IDEMPOTENCY_KEY_VERSION = "v1"
 MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH = 200
 RESEARCH_IDEMPOTENCY_LOCK_VERSION = "v1"
+RESEARCH_RATE_LIMIT_VERSION = "v1"
 
 
 def create_research_result_cache_key(
@@ -96,4 +97,15 @@ def create_research_idempotency_lock_redis_key(
         f":{RESEARCH_IDEMPOTENCY_LOCK_VERSION}"
         f":tenant:{tenant_id}"
         f":research-idempotency-lock:{client_key_digest}"
+    )
+
+
+def create_research_rate_limit_redis_key(
+    *,
+    tenant_id: UUID,
+) -> str:
+    """Create a versioned, tenant-scoped research rate-limit key."""
+
+    return (
+        f"enterprise-research:{RESEARCH_RATE_LIMIT_VERSION}:tenant:{tenant_id}:research-rate-limit"
     )

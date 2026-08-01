@@ -80,6 +80,16 @@ class Settings(BaseSettings):
         ge=1,
         le=3600,
     )
+    redis_research_rate_limit_requests: int = Field(
+        default=20,
+        ge=1,
+        le=10_000,
+    )
+    redis_research_rate_limit_window_seconds: int = Field(
+        default=60,
+        ge=1,
+        le=3600,
+    )
 
 
 @lru_cache

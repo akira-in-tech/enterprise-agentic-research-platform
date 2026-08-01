@@ -49,5 +49,17 @@ class AtomicLockClient(Protocol):
         """Atomically delete a lock owned by the expected value."""
 
 
+class RateLimitCounterClient(Protocol):
+    """Atomic counter operation required by rate-limit services."""
+
+    async def increment_with_ttl(
+        self,
+        *,
+        key: str,
+        ttl_seconds: int,
+    ) -> tuple[int, int]:
+        """Increment a counter and return its value and remaining TTL."""
+
+
 class CacheUnavailableError(RuntimeError):
     """Represent an unavailable optional cache provider."""

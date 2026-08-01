@@ -14,6 +14,15 @@ end
 return 0
 """.strip()
 
+_INCREMENT_WITH_TTL_SCRIPT = """
+local current = redis.call("INCR", KEYS[1])
+if current == 1 then
+    redis.call("EXPIRE", KEYS[1], ARGV[1])
+end
+local remaining_ttl = redis.call("TTL", KEYS[1])
+return {current, remaining_ttl}
+""".strip()
+
 
 class AsyncRedisClient(Protocol):
     """Redis operations required by the application wrapper."""
@@ -54,7 +63,7 @@ class AsyncRedisClient(Protocol):
         script: str,
         numkeys: int,
         *keys_and_args: str,
-    ) -> Awaitable[int]:
+    ) -> Awaitable[object]:
         """Execute one Lua script atomically."""
 
     async def aclose(
@@ -273,7 +282,7 @@ class RedisConnection:
             raise ValueError("Redis expected_value must not be empty.")
 
         try:
-            deleted_count = await self._client.eval(
+            raw_deleted_count = await self._client.eval(
                 _COMPARE_AND_DELETE_SCRIPT,
                 1,
                 validated_key,
@@ -282,7 +291,66 @@ class RedisConnection:
         except RedisError as error:
             raise RedisUnavailableError("Redis compare-and-delete failed.") from error
 
-        return deleted_count > 0
+        if not isinstance(
+            raw_deleted_count,
+            int,
+        ):
+            raise RedisUnavailableError("Redis compare-and-delete returned an invalid response.")
+
+        return raw_deleted_count > 0
+
+    async def increment_with_ttl(
+        self,
+        *,
+        key: str,
+        ttl_seconds: int,
+    ) -> tuple[int, int]:
+        """Atomically increment a counter and initialize its expiration."""
+
+        validated_key = _validate_key(
+            key,
+        )
+
+        if ttl_seconds < 1:
+            raise ValueError("Redis ttl_seconds must be at least 1.")
+
+        try:
+            raw_result = await self._client.eval(
+                _INCREMENT_WITH_TTL_SCRIPT,
+                1,
+                validated_key,
+                str(ttl_seconds),
+            )
+        except RedisError as error:
+            raise RedisUnavailableError("Redis rate-limit increment failed.") from error
+
+        if (
+            not isinstance(
+                raw_result,
+                (list, tuple),
+            )
+            or len(raw_result) != 2
+        ):
+            raise RedisUnavailableError("Redis rate-limit increment returned an invalid response.")
+
+        request_count, remaining_ttl = raw_result
+
+        if (
+            not isinstance(request_count, int)
+            or isinstance(request_count, bool)
+            or not isinstance(remaining_ttl, int)
+            or isinstance(remaining_ttl, bool)
+            or request_count < 1
+            or remaining_ttl < 0
+        ):
+            raise RedisUnavailableError(
+                "Redis rate-limit increment returned invalid counter values."
+            )
+
+        return (
+            request_count,
+            remaining_ttl,
+        )
 
     async def delete(
         self,

@@ -23,7 +23,7 @@ class FakeAsyncRedisClient:
         delete_result: int = 1,
         ttl_result: int = 900,
         operation_error: RedisConnectionError | None = None,
-        eval_result: int = 1,
+        eval_result: object = 1,
     ) -> None:
         self.ping_result = ping_result
         self.ping_error = ping_error
@@ -110,7 +110,7 @@ class FakeAsyncRedisClient:
         script: str,
         numkeys: int,
         *keys_and_args: str,
-    ) -> int:
+    ) -> object:
         self.eval_calls.append(
             (
                 script,
@@ -612,4 +612,89 @@ async def test_delete_if_value_wraps_redis_error() -> None:
         await connection.delete_if_value(
             key="enterprise-research:v1:lock",
             expected_value="owner-token",
+        )
+
+
+@pytest.mark.anyio
+async def test_increment_with_ttl_returns_counter_and_expiration() -> None:
+    raw_client = FakeAsyncRedisClient(
+        eval_result=[
+            3,
+            42,
+        ],
+    )
+    connection = RedisConnection(
+        raw_client,
+    )
+
+    result = await connection.increment_with_ttl(
+        key="enterprise-research:v1:tenant:test:research-rate-limit",
+        ttl_seconds=60,
+    )
+
+    assert result == (
+        3,
+        42,
+    )
+
+    script, numkeys, keys_and_args = raw_client.eval_calls[0]
+
+    assert 'redis.call("INCR", KEYS[1])' in script
+    assert 'redis.call("EXPIRE", KEYS[1], ARGV[1])' in script
+    assert numkeys == 1
+    assert keys_and_args == (
+        "enterprise-research:v1:tenant:test:research-rate-limit",
+        "60",
+    )
+
+
+@pytest.mark.anyio
+async def test_increment_with_ttl_rejects_non_positive_ttl() -> None:
+    connection = RedisConnection(
+        FakeAsyncRedisClient(),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="ttl_seconds must be at least 1",
+    ):
+        await connection.increment_with_ttl(
+            key="enterprise-research:v1:tenant:test:research-rate-limit",
+            ttl_seconds=0,
+        )
+
+
+@pytest.mark.anyio
+async def test_increment_with_ttl_rejects_invalid_response() -> None:
+    connection = RedisConnection(
+        FakeAsyncRedisClient(
+            eval_result="invalid",
+        ),
+    )
+
+    with pytest.raises(
+        RedisUnavailableError,
+        match="invalid response",
+    ):
+        await connection.increment_with_ttl(
+            key="enterprise-research:v1:tenant:test:research-rate-limit",
+            ttl_seconds=60,
+        )
+
+
+@pytest.mark.anyio
+async def test_increment_with_ttl_wraps_redis_error() -> None:
+    connection = RedisConnection(
+        FakeAsyncRedisClient(
+            operation_error=RedisConnectionError("Redis connection was lost."),
+        ),
+    )
+
+    with pytest.raises(
+        RedisUnavailableError,
+        match="rate-limit increment failed",
+    ):
+        await connection.increment_with_ttl(
+            key="enterprise-research:v1:tenant:test:research-rate-limit",
+            ttl_seconds=60,
         )

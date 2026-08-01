@@ -6,11 +6,13 @@ from fastapi import (
     Depends,
     Header,
     HTTPException,
+    Response,
     status,
 )
 
 from app.api.dependencies import (
     get_research_execution_service,
+    get_research_rate_limiter,
 )
 from app.schemas.research import (
     CreateResearchRunRequest,
@@ -18,6 +20,9 @@ from app.schemas.research import (
 )
 from app.services.cache import (
     MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH,
+    RedisResearchRateLimiter,
+    ResearchRateLimitDecision,
+    ResearchRateLimitUnavailableError,
 )
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
@@ -34,6 +39,18 @@ router = APIRouter(
 )
 
 
+def _rate_limit_headers(
+    decision: ResearchRateLimitDecision,
+) -> dict[str, str]:
+    """Build response headers for one rate-limit decision."""
+
+    return {
+        "X-RateLimit-Limit": str(decision.limit),
+        "X-RateLimit-Remaining": str(decision.remaining),
+        "X-RateLimit-Reset": str(decision.reset_after_seconds),
+    }
+
+
 @router.post(
     "",
     response_model=CreateResearchRunResponse,
@@ -48,6 +65,11 @@ async def create_research_run(
         IdempotentResearchExecutionService,
         Depends(get_research_execution_service),
     ],
+    rate_limiter: Annotated[
+        RedisResearchRateLimiter,
+        Depends(get_research_rate_limiter),
+    ],
+    response: Response,
     idempotency_key: Annotated[
         str | None,
         Header(
@@ -63,6 +85,34 @@ async def create_research_run(
     ] = None,
 ) -> CreateResearchRunResponse:
     """Execute one tenant-scoped research request."""
+
+    try:
+        rate_limit_decision = await rate_limiter.check(
+            tenant_id=tenant_id,
+        )
+    except ResearchRateLimitUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(error),
+        ) from error
+
+    rate_limit_headers = _rate_limit_headers(
+        rate_limit_decision,
+    )
+
+    if not rate_limit_decision.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Research request rate limit exceeded.",
+            headers={
+                **rate_limit_headers,
+                "Retry-After": str(rate_limit_decision.reset_after_seconds),
+            },
+        )
+
+    response.headers.update(
+        rate_limit_headers,
+    )
 
     try:
         result = await service.execute(

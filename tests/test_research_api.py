@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from uuid import UUID, uuid4
 
 import pytest
@@ -5,8 +6,13 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import (
     get_research_execution_service,
+    get_research_rate_limiter,
 )
 from app.main import app
+from app.services.cache import (
+    ResearchRateLimitDecision,
+    ResearchRateLimitUnavailableError,
+)
 from app.services.research.execution import (
     ResearchExecutionResult,
 )
@@ -65,7 +71,50 @@ class FakeResearchExecutionService:
         )
 
 
-def test_create_research_run_accepts_qwen_selection() -> None:
+class FakeResearchRateLimiter:
+    def __init__(
+        self,
+        *,
+        decision: ResearchRateLimitDecision | None = None,
+        error: ResearchRateLimitUnavailableError | None = None,
+    ) -> None:
+        self.decision = decision or ResearchRateLimitDecision(
+            allowed=True,
+            limit=20,
+            remaining=19,
+            reset_after_seconds=60,
+        )
+        self.error = error
+        self.calls: list[UUID] = []
+
+    async def check(
+        self,
+        *,
+        tenant_id: UUID,
+    ) -> ResearchRateLimitDecision:
+        self.calls.append(
+            tenant_id,
+        )
+
+        if self.error is not None:
+            raise self.error
+
+        return self.decision
+
+
+@pytest.fixture(autouse=True)
+def research_rate_limiter() -> Iterator[FakeResearchRateLimiter]:
+    limiter = FakeResearchRateLimiter()
+    app.dependency_overrides[get_research_rate_limiter] = lambda: limiter
+
+    yield limiter
+
+    app.dependency_overrides.clear()
+
+
+def test_create_research_run_accepts_qwen_selection(
+    research_rate_limiter: FakeResearchRateLimiter,
+) -> None:
     fake_service = FakeResearchExecutionService()
     tenant_id = uuid4()
     user_id = uuid4()
@@ -100,6 +149,12 @@ def test_create_research_run_accepts_qwen_selection() -> None:
     assert body["route"] == "direct"
     assert body["answer"] is not None
     assert body["idempotency_replayed"] is False
+    assert response.headers["X-RateLimit-Limit"] == "20"
+    assert response.headers["X-RateLimit-Remaining"] == "19"
+    assert response.headers["X-RateLimit-Reset"] == "60"
+    assert research_rate_limiter.calls == [
+        tenant_id,
+    ]
 
     assert fake_service.calls == [
         {
@@ -256,4 +311,69 @@ def test_create_research_run_rejects_long_idempotency_key() -> None:
         app.dependency_overrides.clear()
 
     assert response.status_code == 422
+    assert fake_service.calls == []
+
+
+def test_create_research_run_rejects_request_above_rate_limit(
+    research_rate_limiter: FakeResearchRateLimiter,
+) -> None:
+    research_rate_limiter.decision = ResearchRateLimitDecision(
+        allowed=False,
+        limit=2,
+        remaining=0,
+        reset_after_seconds=37,
+    )
+    fake_service = FakeResearchExecutionService()
+    app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/research-runs",
+                headers={
+                    "X-Tenant-ID": str(uuid4()),
+                },
+                json={
+                    "query": "What is a mutex?",
+                    "llm_provider": "qwen",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Research request rate limit exceeded."
+    assert response.headers["X-RateLimit-Limit"] == "2"
+    assert response.headers["X-RateLimit-Remaining"] == "0"
+    assert response.headers["X-RateLimit-Reset"] == "37"
+    assert response.headers["Retry-After"] == "37"
+    assert fake_service.calls == []
+
+
+def test_create_research_run_fails_closed_when_rate_limiter_is_unavailable(
+    research_rate_limiter: FakeResearchRateLimiter,
+) -> None:
+    research_rate_limiter.error = ResearchRateLimitUnavailableError(
+        "Research rate limiting is unavailable."
+    )
+    fake_service = FakeResearchExecutionService()
+    app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/research-runs",
+                headers={
+                    "X-Tenant-ID": str(uuid4()),
+                },
+                json={
+                    "query": "What is a mutex?",
+                    "llm_provider": "qwen",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "Research rate limiting is unavailable."
     assert fake_service.calls == []
