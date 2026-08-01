@@ -162,6 +162,7 @@ class ResearchExecutionResult:
     llm_provider: CanonicalLLMProvider
     state: ResearchState
     cache_hit: bool = False
+    idempotency_replayed: bool = False
 
 
 class ResearchExecutionService:
