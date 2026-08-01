@@ -15,10 +15,9 @@ listed as tested only after its automated checks pass in this repository.
 ## Current Phase
 
 ```text
-Completed: Phase 0 through Phase 8
-In progress: Phase 9 - Redis Caching and Coordination
-Completed within Phase 9: caching, concurrent idempotency, and tenant rate limiting
-Next: progress coordination and long-running lock renewal
+Completed: Phase 0 through Phase 9
+Phase 9: Redis caching, idempotency, concurrency, rate limiting, and progress
+Next: Phase 10 - MCP and evidence-quality pipeline
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -86,6 +85,18 @@ later retry with the same key and payload
 → idempotency_replayed=true
 ```
 
+Research progress coordination has been verified against a live Redis service:
+
+```text
+queued PostgreSQL research run
+→ tenant-scoped Redis progress snapshot
+→ running snapshot visible while the workflow is blocked
+→ completed or failed terminal snapshot
+→ GET /research-runs/{run_id}/progress
+→ cross-tenant lookup returns no record
+→ bounded TTL and test cleanup
+```
+
 ## Project Status
 
 | Component | Status |
@@ -135,6 +146,9 @@ later retry with the same key and payload
 | Research idempotency API conflict and availability handling | Tested |
 | Tenant-scoped Redis research rate limiting | Tested with unit and live integration tests |
 | Research API rate-limit headers and HTTP 429/503 handling | Tested |
+| Tenant-scoped Redis research progress snapshots and TTL | Tested with unit and live integration tests |
+| Research execution lifecycle progress publishing | Tested with unit and live integration tests |
+| Tenant-scoped research progress REST endpoint | Tested |
 | MCP tools and client | Planned |
 | Evidence scoring and citation validation | Planned |
 | Analyst and reflection loop | Planned |
@@ -267,6 +281,27 @@ when Redis cannot guarantee enforcement, protecting the LLM-backed endpoint
 from unbounded work during a coordination outage. The live Redis test verifies
 concurrent atomic increments, tenant isolation, TTL behavior, and cleanup.
 
+### Research Progress Coordination
+
+```text
+ResearchExecutionService
+→ publish queued after durable run creation
+→ publish running after the PostgreSQL transition
+→ publish completed with the final workflow status
+→ publish failed with a bounded error message
+→ expire the latest snapshot with a configurable Redis TTL
+```
+
+Clients can poll `GET /research-runs/{research_run_id}/progress` with the
+`X-Tenant-ID` header. Keys include both the tenant UUID and research-run UUID,
+so another tenant cannot read the snapshot. Progress publishing fails open to
+preserve durable research execution when Redis is unavailable; the query API
+returns `503` when Redis cannot answer and `404` when no snapshot exists.
+
+This is a lifecycle snapshot and polling foundation. The current research POST
+endpoint still completes synchronously; background execution and SSE streaming
+remain planned rather than being represented as implemented.
+
 ## Data Responsibilities
 
 ```text
@@ -300,8 +335,11 @@ canonical request fingerprints, atomic coordination locks, concurrent
 execution exclusion, and completed-response replay are also implemented and
 live tested. Tenant-scoped fixed-window rate limiting is implemented with
 atomic Redis counters, bounded TTLs, API response headers, and live concurrent
-verification. Progress state and lock renewal remain planned. Milvus private
-retrieval is implemented and live integration tested.
+verification. Tenant-scoped progress snapshots, lifecycle publishing, TTL,
+polling API behavior, and live running-to-completed transitions are implemented
+and tested. Lock renewal remains a production-hardening item for executions
+that may exceed the coordination lease. Milvus private retrieval is implemented
+and live integration tested.
 
 ## Local Setup
 
@@ -388,8 +426,8 @@ pytest -q
 Current verified default result:
 
 ```text
-364 passed
-17 integration tests deselected
+376 passed
+18 integration tests deselected
 1 dependency deprecation warning
 ```
 
@@ -471,7 +509,8 @@ pytest -q -m integration \
   tests/integration/test_redis_rate_limit_live.py \
   tests/integration/test_redis_research_result_cache_live.py \
   tests/integration/test_research_execution_redis_live.py \
-  tests/integration/test_research_idempotency_concurrency_live.py
+  tests/integration/test_research_idempotency_concurrency_live.py \
+  tests/integration/test_research_progress_redis_live.py
 ```
 
 The private-RAG test verifies the real path:
@@ -500,8 +539,7 @@ private engineering documents
 
 ## Next Phase
 
-Phase 9 has completed the research-result cache and concurrent idempotency
-paths:
+Phase 9 is complete. Its tested Redis caching and coordination scope is:
 
 ```text
 async Redis client foundation
@@ -529,15 +567,25 @@ configurable request allowance and window
 API X-RateLimit headers, HTTP 429, and Retry-After
 fail-closed HTTP 503 behavior when rate limiting is unavailable
 live concurrent counter and tenant-isolation verification
+versioned tenant/run-scoped progress keys
+validated progress JSON and configurable TTL
+queued, running, completed, and failed lifecycle publication
+fail-open progress publishing during Redis outages
+tenant-scoped progress polling API with HTTP 404/503 behavior
+live running-to-completed transition and cross-tenant isolation verification
 ```
 
-The remaining Phase 9 coordination work is:
+Phase 10 will move from infrastructure coordination into the evidence-quality
+pipeline:
 
 ```text
-progress and coordination state
-lock renewal for executions longer than the current TTL
-unit and live integration coverage for those primitives
+MCP tool and client boundaries
+evidence scoring
+citation validation
+analyst and reflection-loop foundations
 ```
 
 Redis will store temporary coordination state only. PostgreSQL remains the
-durable source of truth for tenants, users, and research runs.
+durable source of truth for tenants, users, and research runs. Background
+execution, SSE progress streaming, and coordination-lock renewal for workflows
+that can exceed the current lease remain explicit future hardening work.
