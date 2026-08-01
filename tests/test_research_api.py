@@ -11,6 +11,7 @@ from app.api.dependencies import (
     get_research_rate_limiter,
 )
 from app.main import app
+from app.schemas.evidence import CitationAudit, ReflectionDecision
 from app.schemas.progress import ResearchProgressRecord
 from app.services.cache import (
     CacheUnavailableError,
@@ -34,9 +35,11 @@ class FakeResearchExecutionService:
         *,
         idempotency_replayed: bool = False,
         error: Exception | None = None,
+        state: ResearchState | None = None,
     ) -> None:
         self.idempotency_replayed = idempotency_replayed
         self.error = error
+        self.state = state
         self.calls: list[dict[str, object]] = []
 
     async def execute(
@@ -59,7 +62,7 @@ class FakeResearchExecutionService:
         )
         if self.error is not None:
             raise self.error
-        state: ResearchState = {
+        state: ResearchState = self.state or {
             "query": query,
             "route": "direct",
             "route_reason": ("The question can be answered using stable knowledge."),
@@ -256,6 +259,48 @@ def test_create_research_run_accepts_qwen_selection(
             "idempotency_key": "request-123",
         }
     ]
+
+
+def test_create_research_run_exposes_report_quality() -> None:
+    source_id = "WEB-0123456789ABCDEF"
+    fake_service = FakeResearchExecutionService(
+        state={
+            "query": "Compare HTTP versions.",
+            "route": "deep_research",
+            "answer": f"HTTP/3 uses QUIC. [{source_id}]",
+            "status": "research_report_completed",
+            "citation_audit": CitationAudit(
+                valid=True,
+                cited_source_ids=[source_id],
+                unknown_source_ids=[],
+                uncited_claims=[],
+                coverage_ratio=1,
+            ),
+            "reflection": ReflectionDecision(
+                status="approved",
+                reasons=[],
+                evidence_count=2,
+                average_evidence_score=0.75,
+            ),
+        }
+    )
+    app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/research-runs",
+                headers={"X-Tenant-ID": str(uuid4())},
+                json={"query": "Compare HTTP versions.", "llm_provider": "qwen"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["citation_valid"] is True
+    assert response.json()["citation_coverage"] == 1.0
+    assert response.json()["reflection_status"] == "approved"
+    assert response.json()["reflection_reasons"] == []
 
 
 def test_create_research_run_exposes_idempotency_replay() -> None:

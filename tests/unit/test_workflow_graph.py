@@ -299,6 +299,7 @@ def test_default_graph_forwards_request_provider(
 
     def fake_build_research_graph(
         *_: object,
+        **__: object,
     ) -> Mock:
         return expected_graph
 

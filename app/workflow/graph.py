@@ -4,11 +4,25 @@ from typing import Literal
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
+from app.agents.analyst import AnalystAgent
 from app.agents.direct_answer import DirectAnswerAgent
 from app.agents.intent_router import IntentRouter
 from app.agents.planner import PlannerAgent
+from app.agents.reflection import ReflectionAgent
+from app.schemas.evidence import (
+    CitationAudit,
+    EvidenceScore,
+    EvidenceSource,
+    ReflectionDecision,
+)
 from app.schemas.intent import IntentDecision
 from app.schemas.planner import ResearchPlan
+from app.schemas.source import WebSource
+from app.services.evidence import (
+    CitationValidator,
+    EvidenceScorer,
+    normalize_web_sources,
+)
 from app.services.llm.base import LLMClient
 from app.services.llm.factory import create_llm_client
 from app.services.search.executor import (
@@ -25,6 +39,18 @@ DirectAnswerGenerator = Callable[[str], Awaitable[str]]
 SearchPlanExecutor = Callable[
     [ResearchPlan],
     Awaitable[list[ResearchTaskResult]],
+]
+EvidenceAnalyzer = Callable[
+    [str, list[WebSource]],
+    tuple[list[EvidenceSource], list[EvidenceScore]],
+]
+ReportGenerator = Callable[
+    [str, ResearchPlan, list[EvidenceSource], list[EvidenceScore]],
+    Awaitable[str],
+]
+ReportReviewer = Callable[
+    [str, list[EvidenceSource], list[EvidenceScore]],
+    tuple[CitationAudit, ReflectionDecision],
 ]
 
 ResearchGraph = CompiledStateGraph[
@@ -148,11 +174,82 @@ def build_web_search_node(
     return web_search_node
 
 
+def build_evidence_node(
+    analyze_evidence: EvidenceAnalyzer,
+) -> Callable[[ResearchState], dict[str, object]]:
+    """Create the deterministic evidence-scoring node."""
+
+    def evidence_node(state: ResearchState) -> dict[str, object]:
+        sources, scores = analyze_evidence(
+            state["query"],
+            state.get("web_sources", []),
+        )
+
+        return {
+            "evidence_sources": sources,
+            "evidence_scores": scores,
+            "status": "evidence_scored",
+        }
+
+    return evidence_node
+
+
+def build_analyst_node(
+    generate_report: ReportGenerator,
+) -> Callable[[ResearchState], Awaitable[dict[str, object]]]:
+    """Create the evidence-backed analyst node."""
+
+    async def analyst_node(state: ResearchState) -> dict[str, object]:
+        report = await generate_report(
+            state["query"],
+            state["plan"],
+            state["evidence_sources"],
+            state["evidence_scores"],
+        )
+
+        return {
+            "report": report,
+            "status": "report_generated",
+        }
+
+    return analyst_node
+
+
+def build_reflection_node(
+    review_report: ReportReviewer,
+) -> Callable[[ResearchState], dict[str, object]]:
+    """Create the citation and evidence quality-gate node."""
+
+    def reflection_node(state: ResearchState) -> dict[str, object]:
+        audit, decision = review_report(
+            state["report"],
+            state["evidence_sources"],
+            state["evidence_scores"],
+        )
+
+        return {
+            "answer": state["report"],
+            "citation_audit": audit,
+            "reflection": decision,
+            "status": (
+                "research_report_completed"
+                if decision.status == "approved"
+                else "research_report_revision_required"
+            ),
+        }
+
+    return reflection_node
+
+
 def build_research_graph(
     classifier: IntentClassifier,
     create_plan: PlanCreator,
     generate_direct_answer: DirectAnswerGenerator,
     execute_search: SearchPlanExecutor,
+    *,
+    analyze_evidence: EvidenceAnalyzer | None = None,
+    generate_report: ReportGenerator | None = None,
+    review_report: ReportReviewer | None = None,
 ) -> ResearchGraph:
     """Build and compile the answering and research workflow."""
 
@@ -178,6 +275,42 @@ def build_research_graph(
         "web_search",
         build_web_search_node(execute_search),
     )
+
+    quality_pipeline = (
+        analyze_evidence is not None and generate_report is not None and review_report is not None
+    )
+
+    if (
+        any(
+            item is not None
+            for item in (
+                analyze_evidence,
+                generate_report,
+                review_report,
+            )
+        )
+        and not quality_pipeline
+    ):
+        raise ValueError(
+            "The evidence, analyst, and reflection callbacks must be provided together."
+        )
+
+    if quality_pipeline:
+        assert analyze_evidence is not None
+        assert generate_report is not None
+        assert review_report is not None
+        graph_builder.add_node(  # type: ignore[call-overload]
+            "evidence",
+            build_evidence_node(analyze_evidence),
+        )
+        graph_builder.add_node(  # type: ignore[call-overload]
+            "analyst",
+            build_analyst_node(generate_report),
+        )
+        graph_builder.add_node(  # type: ignore[call-overload]
+            "reflection",
+            build_reflection_node(review_report),
+        )
 
     graph_builder.add_edge(
         START,
@@ -205,10 +338,13 @@ def build_research_graph(
         "planner",
         "web_search",
     )
-    graph_builder.add_edge(
-        "web_search",
-        END,
-    )
+    if quality_pipeline:
+        graph_builder.add_edge("web_search", "evidence")
+        graph_builder.add_edge("evidence", "analyst")
+        graph_builder.add_edge("analyst", "reflection")
+        graph_builder.add_edge("reflection", END)
+    else:
+        graph_builder.add_edge("web_search", END)
 
     return graph_builder.compile()
 
@@ -224,12 +360,58 @@ def build_research_graph_for_client(
     direct_answer_agent = DirectAnswerAgent(llm_client)
     planner = PlannerAgent(llm_client)
     search_executor = SearchExecutor(tavily_client)
+    evidence_scorer = EvidenceScorer()
+    analyst = AnalystAgent(llm_client)
+    citation_validator = CitationValidator()
+    reflection = ReflectionAgent()
+
+    def analyze_evidence(
+        query: str,
+        sources: list[WebSource],
+    ) -> tuple[list[EvidenceSource], list[EvidenceScore]]:
+        normalized_sources = normalize_web_sources(sources)
+
+        return normalized_sources, evidence_scorer.score(
+            query=query,
+            sources=normalized_sources,
+        )
+
+    async def generate_report(
+        query: str,
+        plan: ResearchPlan,
+        sources: list[EvidenceSource],
+        scores: list[EvidenceScore],
+    ) -> str:
+        return await analyst.write_report(
+            query=query,
+            plan=plan,
+            sources=sources,
+            scores=scores,
+        )
+
+    def review_report(
+        report: str,
+        sources: list[EvidenceSource],
+        scores: list[EvidenceScore],
+    ) -> tuple[CitationAudit, ReflectionDecision]:
+        audit = citation_validator.validate(
+            report=report,
+            sources=sources,
+        )
+
+        return audit, reflection.review(
+            citation_audit=audit,
+            evidence_scores=scores,
+        )
 
     return build_research_graph(
         intent_router.classify,
         planner.create_plan,
         direct_answer_agent.answer,
         search_executor.execute,
+        analyze_evidence=analyze_evidence,
+        generate_report=generate_report,
+        review_report=review_report,
     )
 
 

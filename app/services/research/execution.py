@@ -400,6 +400,8 @@ class ResearchExecutionService:
             route=state.get("route"),
             route_reason=state.get("route_reason"),
             answer=state.get("answer"),
+            citation_audit=state.get("citation_audit"),
+            reflection=state.get("reflection"),
         )
 
         try:
@@ -437,6 +439,12 @@ class ResearchExecutionService:
 
         if result.answer is not None:
             state["answer"] = result.answer
+
+        if result.citation_audit is not None:
+            state["citation_audit"] = result.citation_audit
+
+        if result.reflection is not None:
+            state["reflection"] = result.reflection
 
         return state
 

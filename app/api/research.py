@@ -196,4 +196,18 @@ async def create_research_run(
         answer=result.state.get(
             "answer",
         ),
+        citation_valid=(
+            result.state["citation_audit"].valid if "citation_audit" in result.state else None
+        ),
+        citation_coverage=(
+            result.state["citation_audit"].coverage_ratio
+            if "citation_audit" in result.state
+            else None
+        ),
+        reflection_status=(
+            result.state["reflection"].status if "reflection" in result.state else None
+        ),
+        reflection_reasons=(
+            result.state["reflection"].reasons if "reflection" in result.state else []
+        ),
     )

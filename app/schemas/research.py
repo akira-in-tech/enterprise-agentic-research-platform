@@ -41,3 +41,7 @@ class CreateResearchRunResponse(BaseModel):
     route: ResearchRoute | None = None
     route_reason: str | None = None
     answer: str | None = None
+    citation_valid: bool | None = None
+    citation_coverage: float | None = Field(default=None, ge=0.0, le=1.0)
+    reflection_status: Literal["approved", "revise"] | None = None
+    reflection_reasons: list[str] = Field(default_factory=list)
