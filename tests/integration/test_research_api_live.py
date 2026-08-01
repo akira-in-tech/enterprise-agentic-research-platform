@@ -17,6 +17,10 @@ from app.db.session import (
     create_session_factory,
 )
 from app.main import app
+from app.services.cache import (
+    RedisConnection,
+    create_research_result_cache_key,
+)
 
 
 async def create_test_identity() -> tuple[
@@ -115,58 +119,133 @@ async def delete_test_identity(
         await engine.dispose()
 
 
+async def delete_test_cache(
+    *,
+    tenant_id: UUID,
+    query: str,
+) -> None:
+    """Delete the Redis entry created by the live API test."""
+
+    connection = RedisConnection.from_url()
+    cache_key = create_research_result_cache_key(
+        tenant_id=tenant_id,
+        llm_provider="ollama",
+        query=query,
+    )
+
+    try:
+        await connection.delete(
+            key=cache_key,
+        )
+    finally:
+        await connection.close()
+
+
 @pytest.mark.integration
 def test_research_api_live_qwen_round_trip() -> None:
-    """Verify the real API, Qwen workflow and PostgreSQL round trip."""
+    """Verify PostgreSQL, Qwen and Redis through the real API."""
 
     if not settings.run_live_tests:
         pytest.skip("Set RUN_LIVE_TESTS=true to run external integration tests.")
 
     tenant_id, user_id = asyncio.run(create_test_identity())
+    query = "What is a mutex?"
 
     try:
+        asyncio.run(
+            delete_test_cache(
+                tenant_id=tenant_id,
+                query=query,
+            )
+        )
+
         with TestClient(app) as client:
-            response = client.post(
+            first_response = client.post(
                 "/research-runs",
                 headers={
                     "X-Tenant-ID": str(tenant_id),
                     "X-User-ID": str(user_id),
                 },
                 json={
-                    "query": "What is a mutex?",
+                    "query": query,
+                    "llm_provider": "qwen",
+                },
+            )
+            second_response = client.post(
+                "/research-runs",
+                headers={
+                    "X-Tenant-ID": str(tenant_id),
+                    "X-User-ID": str(user_id),
+                },
+                json={
+                    "query": query,
                     "llm_provider": "qwen",
                 },
             )
 
-        assert response.status_code == 200
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
 
-        body = response.json()
-        research_run_id = UUID(body["research_run_id"])
+        first_body = first_response.json()
+        second_body = second_response.json()
 
-        assert body["llm_provider"] == "ollama"
-        assert body["status"] == "completed"
-        assert body["route"] == "direct"
-        assert body["workflow_status"] == ("direct_answer_completed")
-        assert body["answer"]
+        assert first_body["cache_hit"] is False
+        assert second_body["cache_hit"] is True
 
-        stored_run = asyncio.run(
+        for body in (
+            first_body,
+            second_body,
+        ):
+            assert body["llm_provider"] == "ollama"
+            assert body["status"] == "completed"
+            assert body["route"] == "direct"
+            assert body["workflow_status"] == ("direct_answer_completed")
+            assert body["answer"]
+
+        first_research_run_id = UUID(first_body["research_run_id"])
+        second_research_run_id = UUID(second_body["research_run_id"])
+
+        assert first_research_run_id != second_research_run_id
+
+        first_stored_run = asyncio.run(
             load_research_run(
                 tenant_id=tenant_id,
-                research_run_id=research_run_id,
+                research_run_id=first_research_run_id,
+            )
+        )
+        second_stored_run = asyncio.run(
+            load_research_run(
+                tenant_id=tenant_id,
+                research_run_id=second_research_run_id,
             )
         )
 
-        assert stored_run is not None
-        assert stored_run.query == "What is a mutex?"
-        assert stored_run.llm_provider == "ollama"
-        assert stored_run.status == "completed"
-        assert stored_run.requested_by_user_id == user_id
-        assert stored_run.started_at is not None
-        assert stored_run.completed_at is not None
-        assert stored_run.error_message is None
+        assert first_stored_run is not None
+        assert second_stored_run is not None
+
+        for stored_run in (
+            first_stored_run,
+            second_stored_run,
+        ):
+            assert stored_run.query == query
+            assert stored_run.llm_provider == "ollama"
+            assert stored_run.status == "completed"
+            assert stored_run.requested_by_user_id == user_id
+            assert stored_run.started_at is not None
+            assert stored_run.completed_at is not None
+            assert stored_run.error_message is None
+
     finally:
-        asyncio.run(
-            delete_test_identity(
-                tenant_id,
+        try:
+            asyncio.run(
+                delete_test_cache(
+                    tenant_id=tenant_id,
+                    query=query,
+                )
             )
-        )
+        finally:
+            asyncio.run(
+                delete_test_identity(
+                    tenant_id,
+                )
+            )
