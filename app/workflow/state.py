@@ -28,3 +28,4 @@ class ResearchState(TypedDict):
     report: NotRequired[str]
     citation_audit: NotRequired[CitationAudit]
     reflection: NotRequired[ReflectionDecision]
+    reflection_attempts: NotRequired[int]

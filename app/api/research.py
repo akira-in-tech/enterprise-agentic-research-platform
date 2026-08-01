@@ -1,3 +1,6 @@
+import asyncio
+import json
+from collections.abc import AsyncIterator
 from typing import Annotated
 from uuid import UUID
 
@@ -9,14 +12,19 @@ from fastapi import (
     Response,
     status,
 )
+from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import (
     get_research_execution_service,
+    get_research_job_manager,
     get_research_progress_store,
     get_research_rate_limiter,
+    get_research_report_store,
 )
 from app.schemas.progress import ResearchProgressRecord
+from app.schemas.report import ResearchReportResponse
 from app.schemas.research import (
+    CreateResearchJobResponse,
     CreateResearchRunRequest,
     CreateResearchRunResponse,
 )
@@ -34,6 +42,8 @@ from app.services.research.idempotency import (
     ResearchIdempotencyInProgressError,
     ResearchIdempotencyUnavailableError,
 )
+from app.services.research.jobs import ResearchJobManager
+from app.services.research.reports import PostgresResearchReportStore
 
 router = APIRouter(
     prefix="/research-runs",
@@ -41,6 +51,51 @@ router = APIRouter(
         "research",
     ],
 )
+
+
+async def _research_progress_events(
+    *,
+    tenant_id: UUID,
+    research_run_id: UUID,
+    progress_store: RedisResearchProgressStore,
+    poll_interval_seconds: float = 0.25,
+) -> AsyncIterator[str]:
+    """Poll tenant-scoped progress and encode it as SSE frames."""
+
+    previous_payload: str | None = None
+
+    while True:
+        try:
+            record = await progress_store.get(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+            )
+        except CacheUnavailableError:
+            payload = json.dumps(
+                {"detail": "Research progress is temporarily unavailable."},
+                separators=(",", ":"),
+            )
+            yield f"event: error\ndata: {payload}\n\n"
+            return
+
+        if record is None:
+            payload = json.dumps(
+                {"detail": "Research progress was not found."},
+                separators=(",", ":"),
+            )
+            yield f"event: not_found\ndata: {payload}\n\n"
+            return
+
+        payload = record.model_dump_json()
+
+        if payload != previous_payload:
+            yield f"event: progress\ndata: {payload}\n\n"
+            previous_payload = payload
+
+        if record.status in {"completed", "failed"}:
+            return
+
+        await asyncio.sleep(poll_interval_seconds)
 
 
 @router.get(
@@ -80,6 +135,62 @@ async def get_research_run_progress(
     return record
 
 
+@router.get(
+    "/{research_run_id}/events",
+    response_class=StreamingResponse,
+)
+async def stream_research_run_progress(
+    research_run_id: UUID,
+    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    progress_store: Annotated[
+        RedisResearchProgressStore,
+        Depends(get_research_progress_store),
+    ],
+) -> StreamingResponse:
+    """Stream tenant-scoped progress snapshots until one terminal state."""
+
+    return StreamingResponse(
+        _research_progress_events(
+            tenant_id=tenant_id,
+            research_run_id=research_run_id,
+            progress_store=progress_store,
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+@router.get(
+    "/{research_run_id}/report",
+    response_model=ResearchReportResponse,
+)
+async def get_research_run_report(
+    research_run_id: UUID,
+    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    report_store: Annotated[
+        PostgresResearchReportStore,
+        Depends(get_research_report_store),
+    ],
+) -> ResearchReportResponse:
+    """Return one durable report only within its tenant boundary."""
+
+    report = await report_store.get(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )
+
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research report was not found.",
+        )
+
+    return report
+
+
 def _rate_limit_headers(
     decision: ResearchRateLimitDecision,
 ) -> dict[str, str]:
@@ -90,6 +201,85 @@ def _rate_limit_headers(
         "X-RateLimit-Remaining": str(decision.remaining),
         "X-RateLimit-Reset": str(decision.reset_after_seconds),
     }
+
+
+async def _enforce_rate_limit(
+    *,
+    tenant_id: UUID,
+    rate_limiter: RedisResearchRateLimiter,
+    response: Response,
+) -> None:
+    """Apply the same tenant limit to synchronous and asynchronous requests."""
+
+    try:
+        decision = await rate_limiter.check(
+            tenant_id=tenant_id,
+        )
+    except ResearchRateLimitUnavailableError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(error),
+        ) from error
+
+    headers = _rate_limit_headers(decision)
+
+    if not decision.allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Research request rate limit exceeded.",
+            headers={
+                **headers,
+                "Retry-After": str(decision.reset_after_seconds),
+            },
+        )
+
+    response.headers.update(headers)
+
+
+@router.post(
+    "/jobs",
+    response_model=CreateResearchJobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+async def create_research_job(
+    payload: CreateResearchRunRequest,
+    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    job_manager: Annotated[
+        ResearchJobManager,
+        Depends(get_research_job_manager),
+    ],
+    rate_limiter: Annotated[
+        RedisResearchRateLimiter,
+        Depends(get_research_rate_limiter),
+    ],
+    response: Response,
+    requested_by_user_id: Annotated[
+        UUID | None,
+        Header(alias="X-User-ID"),
+    ] = None,
+) -> CreateResearchJobResponse:
+    """Persist and accept one research run for background execution."""
+
+    await _enforce_rate_limit(
+        tenant_id=tenant_id,
+        rate_limiter=rate_limiter,
+        response=response,
+    )
+    research_run_id = await job_manager.submit(
+        tenant_id=tenant_id,
+        requested_by_user_id=requested_by_user_id,
+        query=payload.query,
+        llm_provider=payload.llm_provider,
+    )
+    base_url = f"/research-runs/{research_run_id}"
+
+    return CreateResearchJobResponse(
+        research_run_id=research_run_id,
+        status="queued",
+        progress_url=f"{base_url}/progress",
+        events_url=f"{base_url}/events",
+        report_url=f"{base_url}/report",
+    )
 
 
 @router.post(
@@ -127,32 +317,10 @@ async def create_research_run(
 ) -> CreateResearchRunResponse:
     """Execute one tenant-scoped research request."""
 
-    try:
-        rate_limit_decision = await rate_limiter.check(
-            tenant_id=tenant_id,
-        )
-    except ResearchRateLimitUnavailableError as error:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=str(error),
-        ) from error
-
-    rate_limit_headers = _rate_limit_headers(
-        rate_limit_decision,
-    )
-
-    if not rate_limit_decision.allowed:
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Research request rate limit exceeded.",
-            headers={
-                **rate_limit_headers,
-                "Retry-After": str(rate_limit_decision.reset_after_seconds),
-            },
-        )
-
-    response.headers.update(
-        rate_limit_headers,
+    await _enforce_rate_limit(
+        tenant_id=tenant_id,
+        rate_limiter=rate_limiter,
+        response=response,
     )
 
     try:

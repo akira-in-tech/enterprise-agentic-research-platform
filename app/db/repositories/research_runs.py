@@ -1,4 +1,4 @@
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -33,6 +33,7 @@ class ResearchRunRepository:
         query: str,
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
+        research_run_id: UUID | None = None,
     ) -> ResearchRun:
         """Create a queued run without committing its transaction."""
 
@@ -46,6 +47,7 @@ class ResearchRunRepository:
             raise ValueError("llm_provider must be 'anthropic' or 'ollama'.")
 
         research_run = ResearchRun(
+            id=research_run_id or uuid4(),
             tenant_id=tenant_id,
             requested_by_user_id=requested_by_user_id,
             query=normalized_query,

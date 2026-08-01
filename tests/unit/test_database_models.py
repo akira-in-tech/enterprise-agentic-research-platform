@@ -89,3 +89,34 @@ def test_research_run_has_tenant_query_indexes() -> None:
         "ix_research_runs_tenant_created_at",
         "ix_research_runs_tenant_status",
     }
+
+
+def test_research_report_is_bound_to_one_tenant_scoped_run() -> None:
+    report_table = metadata.tables["research_reports"]
+    constraint_names = {str(constraint.name) for constraint in report_table.constraints}
+
+    assert {
+        "pk_research_reports",
+        "fk_research_reports_tenant_run",
+        "uq_research_reports_research_run_id",
+    } <= constraint_names
+
+    foreign_key = next(iter(report_table.foreign_key_constraints))
+
+    assert foreign_key.ondelete == "CASCADE"
+    assert {element.target_fullname for element in foreign_key.elements} == {
+        "research_runs.tenant_id",
+        "research_runs.id",
+    }
+
+
+def test_research_source_is_unique_within_report() -> None:
+    source_table = metadata.tables["research_sources"]
+    constraint_names = {str(constraint.name) for constraint in source_table.constraints}
+
+    assert {
+        "pk_research_sources",
+        "fk_research_sources_report_id_research_reports",
+        "uq_research_sources_report_source",
+    } <= constraint_names
+    assert {index.name for index in source_table.indexes} == {"ix_research_sources_tenant_run"}

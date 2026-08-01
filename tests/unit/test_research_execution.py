@@ -3,6 +3,12 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.schemas.cache import CachedResearchResult
+from app.schemas.evidence import (
+    CitationAudit,
+    EvidenceScore,
+    EvidenceSource,
+    ReflectionDecision,
+)
 from app.schemas.progress import ResearchProgressRecord
 from app.services.cache import CacheUnavailableError
 from app.services.llm.factory import CanonicalLLMProvider
@@ -19,6 +25,7 @@ class RecordingResearchRunStore:
         self.query: str | None = None
         self.llm_provider: CanonicalLLMProvider | None = None
         self.error_message: str | None = None
+        self.completed_result: ResearchState | None = None
 
     async def create_queued(
         self,
@@ -27,10 +34,14 @@ class RecordingResearchRunStore:
         query: str,
         llm_provider: CanonicalLLMProvider,
         requested_by_user_id: UUID | None,
+        research_run_id: UUID | None = None,
     ) -> UUID:
         self.events.append("queued")
         self.query = query
         self.llm_provider = llm_provider
+
+        if research_run_id is not None:
+            self.research_run_id = research_run_id
 
         return self.research_run_id
 
@@ -48,9 +59,11 @@ class RecordingResearchRunStore:
         *,
         tenant_id: UUID,
         research_run_id: UUID,
+        result: ResearchState | None = None,
     ) -> None:
         assert research_run_id == self.research_run_id
         self.events.append("completed")
+        self.completed_result = result
 
     async def mark_failed(
         self,
@@ -212,6 +225,40 @@ async def test_execution_publishes_lifecycle_progress() -> None:
     completed_record = progress_store.calls[-1][1]
     assert completed_record.research_run_id == store.research_run_id
     assert completed_record.workflow_status == "direct_answer_completed"
+
+
+@pytest.mark.anyio
+async def test_execution_can_persist_queue_before_background_work() -> None:
+    store = RecordingResearchRunStore()
+    progress_store = RecordingResearchProgressStore()
+    workflow = RecordingWorkflow(
+        result={
+            "query": "Explain epoll.",
+            "status": "direct_answer_completed",
+            "answer": "epoll observes file descriptors.",
+        }
+    )
+    service = ResearchExecutionService(
+        store,
+        lambda _: workflow,
+        progress_store=progress_store,
+    )
+
+    queued = await service.queue(
+        tenant_id=uuid4(),
+        query="  Explain epoll.  ",
+        llm_provider="qwen",
+    )
+
+    assert store.events == ["queued"]
+    assert queued.query == "Explain epoll."
+    assert queued.llm_provider == "ollama"
+    assert [record.status for _, record in progress_store.calls] == ["queued"]
+
+    result = await service.execute_queued(queued)
+
+    assert result.research_run_id == queued.research_run_id
+    assert store.events == ["queued", "running", "completed"]
 
 
 @pytest.mark.anyio
@@ -480,6 +527,73 @@ async def test_execution_uses_cached_result_without_workflow() -> None:
         )
     ]
     assert cache.set_calls == []
+
+
+@pytest.mark.anyio
+async def test_cache_hit_restores_report_evidence_for_durable_persistence() -> None:
+    store = RecordingResearchRunStore()
+    source = EvidenceSource(
+        source_id="WEB-0123456789ABCDEF",
+        origin="web",
+        title="HTTP specification",
+        locator="https://example.com/http",
+        content="HTTP evidence.",
+        provider="fixture",
+    )
+    score = EvidenceScore(
+        source_id=source.source_id,
+        relevance=0.9,
+        content_quality=0.8,
+        traceability=1,
+        overall=0.88,
+    )
+    audit = CitationAudit(
+        valid=True,
+        cited_source_ids=[source.source_id],
+        unknown_source_ids=[],
+        uncited_claims=[],
+        coverage_ratio=1,
+    )
+    reflection = ReflectionDecision(
+        status="approved",
+        reasons=[],
+        evidence_count=1,
+        average_evidence_score=0.88,
+    )
+    cache = RecordingResearchResultCache(
+        result=CachedResearchResult(
+            llm_provider="ollama",
+            workflow_status="research_report_completed",
+            route="deep_research",
+            answer=f"HTTP report. [{source.source_id}]",
+            report=f"HTTP report. [{source.source_id}]",
+            evidence_sources=[source],
+            evidence_scores=[score],
+            citation_audit=audit,
+            reflection=reflection,
+            reflection_attempts=2,
+        )
+    )
+    workflow = RecordingWorkflow(result={"query": "must not run"})
+    service = ResearchExecutionService(
+        store,
+        lambda _: workflow,
+        result_cache=cache,
+    )
+
+    result = await service.execute(
+        tenant_id=uuid4(),
+        query="Compare HTTP transports.",
+        llm_provider="qwen",
+    )
+
+    assert result.cache_hit is True
+    assert result.state["report"] == f"HTTP report. [{source.source_id}]"
+    assert result.state["evidence_sources"] == [source]
+    assert result.state["evidence_scores"] == [score]
+    assert result.state["reflection_attempts"] == 2
+    assert store.completed_result == result.state
+    assert workflow.inputs == []
 
 
 @pytest.mark.anyio

@@ -6,6 +6,8 @@ from app.services.cache import RedisResearchProgressStore, RedisResearchRateLimi
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
 )
+from app.services.research.jobs import ResearchJobManager
+from app.services.research.reports import PostgresResearchReportStore
 
 
 def get_research_execution_service(
@@ -54,3 +56,29 @@ def get_research_progress_store(
         RedisResearchProgressStore,
         progress_store,
     )
+
+
+def get_research_report_store(
+    request: Request,
+) -> PostgresResearchReportStore:
+    """Return the application-scoped durable report reader."""
+
+    try:
+        report_store = request.app.state.research_report_store
+    except AttributeError as error:
+        raise RuntimeError("Research report store is not initialized.") from error
+
+    return cast(PostgresResearchReportStore, report_store)
+
+
+def get_research_job_manager(
+    request: Request,
+) -> ResearchJobManager:
+    """Return the application-scoped asynchronous job manager."""
+
+    try:
+        job_manager = request.app.state.research_job_manager
+    except AttributeError as error:
+        raise RuntimeError("Research job manager is not initialized.") from error
+
+    return cast(ResearchJobManager, job_manager)

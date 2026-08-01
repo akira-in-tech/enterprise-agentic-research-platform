@@ -71,10 +71,14 @@ async def write_report(
     plan: ResearchPlan,
     sources: list[EvidenceSource],
     scores: list[EvidenceScore],
+    previous_report: str | None,
+    revision_feedback: ReflectionDecision | None,
 ) -> str:
     assert query
     assert plan.goal
     assert len(scores) == 2
+    assert previous_report is None
+    assert revision_feedback is None
     return (
         f"HTTP/2 evidence is available. [{sources[0].source_id}]\n\n"
         f"HTTP/3 evidence is available. [{sources[1].source_id}]"
@@ -123,3 +127,123 @@ async def test_deep_research_runs_evidence_analyst_and_reflection_pipeline() -> 
     assert len(result["evidence_scores"]) == 2
     assert result["citation_audit"].valid is True
     assert result["reflection"].status == "approved"
+    assert result["reflection_attempts"] == 1
+
+
+@pytest.mark.anyio
+async def test_reflection_revises_once_before_approval() -> None:
+    reports: list[str] = []
+
+    async def write_revision(
+        query: str,
+        plan: ResearchPlan,
+        sources: list[EvidenceSource],
+        scores: list[EvidenceScore],
+        previous_report: str | None,
+        revision_feedback: ReflectionDecision | None,
+    ) -> str:
+        assert query
+        assert plan.goal
+        assert sources
+        assert scores
+        reports.append("draft" if previous_report is None else "revised")
+
+        if previous_report is None:
+            assert revision_feedback is None
+            return "Uncited draft."
+
+        assert revision_feedback is not None
+        return (
+            f"HTTP/2 evidence is available. [{sources[0].source_id}]\n\n"
+            f"HTTP/3 evidence is available. [{sources[1].source_id}]"
+        )
+
+    def review_revision(
+        report: str,
+        sources: list[EvidenceSource],
+        scores: list[EvidenceScore],
+    ) -> tuple[CitationAudit, ReflectionDecision]:
+        approved = report != "Uncited draft."
+        audit = CitationAudit(
+            valid=approved,
+            cited_source_ids=([source.source_id for source in sources] if approved else []),
+            unknown_source_ids=[],
+            uncited_claims=[] if approved else ["Uncited draft."],
+            coverage_ratio=1 if approved else 0,
+        )
+        return audit, ReflectionDecision(
+            status="approved" if approved else "revise",
+            reasons=[] if approved else ["Add canonical source citations."],
+            evidence_count=len(scores),
+            average_evidence_score=(sum(score.overall for score in scores) / len(scores)),
+        )
+
+    graph = build_research_graph(
+        classify,
+        create_plan,
+        direct_answer,
+        search,
+        analyze_evidence=analyze,
+        generate_report=write_revision,
+        review_report=review_revision,
+    )
+
+    result = await graph.ainvoke({"query": "Compare HTTP/2 and HTTP/3."})
+
+    assert reports == ["draft", "revised"]
+    assert result["reflection_attempts"] == 2
+    assert result["reflection"].status == "approved"
+    assert result["status"] == "research_report_completed"
+
+
+@pytest.mark.anyio
+async def test_reflection_stops_after_bounded_revision_attempts() -> None:
+    write_count = 0
+
+    async def write_rejected_report(
+        query: str,
+        plan: ResearchPlan,
+        sources: list[EvidenceSource],
+        scores: list[EvidenceScore],
+        previous_report: str | None,
+        revision_feedback: ReflectionDecision | None,
+    ) -> str:
+        nonlocal write_count
+        assert query and plan.goal and sources and scores
+        write_count += 1
+        return f"Uncited draft {write_count}."
+
+    def reject_report(
+        report: str,
+        sources: list[EvidenceSource],
+        scores: list[EvidenceScore],
+    ) -> tuple[CitationAudit, ReflectionDecision]:
+        return CitationAudit(
+            valid=False,
+            cited_source_ids=[],
+            unknown_source_ids=[],
+            uncited_claims=[report],
+            coverage_ratio=0,
+        ), ReflectionDecision(
+            status="revise",
+            reasons=["Canonical citations are still missing."],
+            evidence_count=len(sources),
+            average_evidence_score=(sum(score.overall for score in scores) / len(scores)),
+        )
+
+    graph = build_research_graph(
+        classify,
+        create_plan,
+        direct_answer,
+        search,
+        analyze_evidence=analyze,
+        generate_report=write_rejected_report,
+        review_report=reject_report,
+    )
+
+    result = await graph.ainvoke({"query": "Compare HTTP/2 and HTTP/3."})
+
+    assert write_count == 2
+    assert result["reflection_attempts"] == 2
+    assert result["reflection"].status == "revise"
+    assert result["status"] == "research_report_revision_required"

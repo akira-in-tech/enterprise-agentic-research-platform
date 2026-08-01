@@ -25,9 +25,11 @@ from app.services.research.execution import (
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
 )
+from app.services.research.jobs import ResearchJobManager
 from app.services.research.postgres import (
     PostgresResearchRunStore,
 )
+from app.services.research.reports import PostgresResearchReportStore
 
 configure_logging()
 
@@ -57,6 +59,9 @@ async def lifespan(
         research_store = PostgresResearchRunStore(
             session_factory,
         )
+        application.state.research_report_store = PostgresResearchReportStore(
+            session_factory,
+        )
         result_cache = RedisResearchResultCache(
             redis_connection,
         )
@@ -78,6 +83,13 @@ async def lifespan(
             result_cache=result_cache,
             progress_store=progress_store,
         )
+        research_job_manager = ResearchJobManager(
+            execution_service,
+        )
+        resource_stack.push_async_callback(
+            research_job_manager.close,
+        )
+        application.state.research_job_manager = research_job_manager
 
         application.state.research_execution_service = IdempotentResearchExecutionService(
             execution_service,

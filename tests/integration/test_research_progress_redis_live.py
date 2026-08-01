@@ -23,7 +23,10 @@ class LiveResearchRunStore:
         query: str,
         llm_provider: CanonicalLLMProvider,
         requested_by_user_id: UUID | None,
+        research_run_id: UUID | None = None,
     ) -> UUID:
+        if research_run_id is not None:
+            self.research_run_id = research_run_id
         return self.research_run_id
 
     async def mark_running(
@@ -39,6 +42,7 @@ class LiveResearchRunStore:
         *,
         tenant_id: UUID,
         research_run_id: UUID,
+        result: ResearchState | None = None,
     ) -> None:
         return None
 

@@ -27,8 +27,9 @@ class RecordingResearchRunStore:
         query: str,
         llm_provider: CanonicalLLMProvider,
         requested_by_user_id: UUID | None,
+        research_run_id: UUID | None = None,
     ) -> UUID:
-        research_run_id = uuid4()
+        research_run_id = research_run_id or uuid4()
         self.research_run_ids.append(
             research_run_id,
         )
@@ -50,6 +51,7 @@ class RecordingResearchRunStore:
         *,
         tenant_id: UUID,
         research_run_id: UUID,
+        result: ResearchState | None = None,
     ) -> None:
         assert research_run_id in self.research_run_ids
         self.events.append("completed")

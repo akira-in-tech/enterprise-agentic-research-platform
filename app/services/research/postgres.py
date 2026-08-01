@@ -5,8 +5,9 @@ from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.repositories import ResearchRunRepository
+from app.db.repositories import ResearchReportRepository, ResearchRunRepository
 from app.services.llm.factory import CanonicalLLMProvider
+from app.workflow.state import ResearchState
 
 
 class TransactionalSessionFactory(Protocol):
@@ -22,6 +23,7 @@ RepositoryFactory = Callable[
     [AsyncSession],
     ResearchRunRepository,
 ]
+ReportRepositoryFactory = Callable[[AsyncSession], ResearchReportRepository]
 
 
 class PostgresResearchRunStore:
@@ -31,9 +33,11 @@ class PostgresResearchRunStore:
         self,
         session_factory: TransactionalSessionFactory,
         repository_factory: RepositoryFactory = ResearchRunRepository,
+        report_repository_factory: ReportRepositoryFactory = ResearchReportRepository,
     ) -> None:
         self._session_factory = session_factory
         self._repository_factory = repository_factory
+        self._report_repository_factory = report_repository_factory
 
     async def create_queued(
         self,
@@ -42,6 +46,7 @@ class PostgresResearchRunStore:
         query: str,
         llm_provider: CanonicalLLMProvider,
         requested_by_user_id: UUID | None,
+        research_run_id: UUID | None = None,
     ) -> UUID:
         """Create and commit one queued research run."""
 
@@ -54,6 +59,7 @@ class PostgresResearchRunStore:
                 requested_by_user_id=requested_by_user_id,
                 query=query,
                 llm_provider=llm_provider,
+                research_run_id=research_run_id,
             )
 
             return research_run.id
@@ -80,6 +86,7 @@ class PostgresResearchRunStore:
         *,
         tenant_id: UUID,
         research_run_id: UUID,
+        result: ResearchState | None = None,
     ) -> None:
         """Commit the transition from running to completed."""
 
@@ -91,6 +98,14 @@ class PostgresResearchRunStore:
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
             )
+
+            if result is not None:
+                report_repository = self._report_repository_factory(session)
+                await report_repository.create_from_state(
+                    tenant_id=tenant_id,
+                    research_run_id=research_run_id,
+                    state=result,
+                )
 
     async def mark_failed(
         self,

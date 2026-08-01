@@ -45,3 +45,13 @@ class CreateResearchRunResponse(BaseModel):
     citation_coverage: float | None = Field(default=None, ge=0.0, le=1.0)
     reflection_status: Literal["approved", "revise"] | None = None
     reflection_reasons: list[str] = Field(default_factory=list)
+
+
+class CreateResearchJobResponse(BaseModel):
+    """Represent one accepted asynchronous research job."""
+
+    research_run_id: UUID
+    status: Literal["queued"]
+    progress_url: str
+    events_url: str
+    report_url: str

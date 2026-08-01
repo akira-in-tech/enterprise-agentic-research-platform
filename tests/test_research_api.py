@@ -7,12 +7,15 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import (
     get_research_execution_service,
+    get_research_job_manager,
     get_research_progress_store,
     get_research_rate_limiter,
+    get_research_report_store,
 )
 from app.main import app
 from app.schemas.evidence import CitationAudit, ReflectionDecision
 from app.schemas.progress import ResearchProgressRecord
+from app.schemas.report import ResearchReportResponse
 from app.services.cache import (
     CacheUnavailableError,
     ResearchRateLimitDecision,
@@ -134,6 +137,45 @@ class FakeResearchProgressStore:
         return self.record
 
 
+class FakeResearchJobManager:
+    def __init__(self, research_run_id: UUID | None = None) -> None:
+        self.research_run_id = research_run_id or uuid4()
+        self.calls: list[dict[str, object]] = []
+
+    async def submit(
+        self,
+        *,
+        tenant_id: UUID,
+        query: str,
+        llm_provider: str,
+        requested_by_user_id: UUID | None = None,
+    ) -> UUID:
+        self.calls.append(
+            {
+                "tenant_id": tenant_id,
+                "query": query,
+                "llm_provider": llm_provider,
+                "requested_by_user_id": requested_by_user_id,
+            }
+        )
+        return self.research_run_id
+
+
+class FakeResearchReportStore:
+    def __init__(self, report: ResearchReportResponse | None = None) -> None:
+        self.report = report
+        self.calls: list[tuple[UUID, UUID]] = []
+
+    async def get(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> ResearchReportResponse | None:
+        self.calls.append((tenant_id, research_run_id))
+        return self.report
+
+
 def test_get_research_progress_is_tenant_scoped() -> None:
     tenant_id = uuid4()
     research_run_id = uuid4()
@@ -196,6 +238,85 @@ def test_get_research_progress_returns_service_unavailable() -> None:
     assert response.json() == {"detail": "Research progress is temporarily unavailable."}
 
 
+def test_progress_events_stream_terminal_tenant_scoped_snapshot() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    record = ResearchProgressRecord(
+        research_run_id=research_run_id,
+        status="completed",
+        message="Research workflow completed.",
+        updated_at=datetime.now(UTC),
+        workflow_status="research_report_completed",
+    )
+    progress_store = FakeResearchProgressStore(record=record)
+    app.dependency_overrides[get_research_progress_store] = lambda: progress_store
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{research_run_id}/events",
+                headers={"X-Tenant-ID": str(tenant_id)},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/event-stream")
+    assert "event: progress" in response.text
+    assert '"status":"completed"' in response.text
+    assert progress_store.calls == [(tenant_id, research_run_id)]
+
+
+def test_get_research_report_is_tenant_scoped() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    report = ResearchReportResponse(
+        report_id=uuid4(),
+        research_run_id=research_run_id,
+        content="Durable report.",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        created_at=datetime.now(UTC),
+        sources=[],
+    )
+    report_store = FakeResearchReportStore(report)
+    app.dependency_overrides[get_research_report_store] = lambda: report_store
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{research_run_id}/report",
+                headers={"X-Tenant-ID": str(tenant_id)},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["content"] == "Durable report."
+    assert report_store.calls == [(tenant_id, research_run_id)]
+
+
+def test_get_research_report_returns_not_found() -> None:
+    report_store = FakeResearchReportStore()
+    app.dependency_overrides[get_research_report_store] = lambda: report_store
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{uuid4()}/report",
+                headers={"X-Tenant-ID": str(uuid4())},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Research report was not found."}
+
+
 @pytest.fixture(autouse=True)
 def research_rate_limiter() -> Iterator[FakeResearchRateLimiter]:
     limiter = FakeResearchRateLimiter()
@@ -204,6 +325,50 @@ def research_rate_limiter() -> Iterator[FakeResearchRateLimiter]:
     yield limiter
 
     app.dependency_overrides.clear()
+
+
+def test_create_research_job_returns_durable_delivery_urls(
+    research_rate_limiter: FakeResearchRateLimiter,
+) -> None:
+    tenant_id = uuid4()
+    user_id = uuid4()
+    research_run_id = uuid4()
+    job_manager = FakeResearchJobManager(research_run_id)
+    app.dependency_overrides[get_research_job_manager] = lambda: job_manager
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/research-runs/jobs",
+                headers={
+                    "X-Tenant-ID": str(tenant_id),
+                    "X-User-ID": str(user_id),
+                },
+                json={
+                    "query": "  Compare HTTP/2 and HTTP/3.  ",
+                    "llm_provider": "qwen",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 202
+    assert response.json() == {
+        "research_run_id": str(research_run_id),
+        "status": "queued",
+        "progress_url": f"/research-runs/{research_run_id}/progress",
+        "events_url": f"/research-runs/{research_run_id}/events",
+        "report_url": f"/research-runs/{research_run_id}/report",
+    }
+    assert job_manager.calls == [
+        {
+            "tenant_id": tenant_id,
+            "query": "Compare HTTP/2 and HTTP/3.",
+            "llm_provider": "qwen",
+            "requested_by_user_id": user_id,
+        }
+    ]
+    assert research_rate_limiter.calls == [tenant_id]
 
 
 def test_create_research_run_accepts_qwen_selection(

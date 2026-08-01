@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.schemas.cache import CachedResearchResult
+from app.schemas.evidence import EvidenceScore, EvidenceSource
 
 
 def test_cached_research_result_json_round_trip() -> None:
@@ -24,6 +25,41 @@ def test_cached_research_result_json_round_trip() -> None:
     assert restored.llm_provider == "ollama"
     assert restored.route == "direct"
     assert restored.answer is not None
+
+
+def test_cached_research_result_preserves_durable_evidence_payload() -> None:
+    source = EvidenceSource(
+        source_id="WEB-0123456789ABCDEF",
+        origin="web",
+        title="HTTP specification",
+        locator="https://example.com/http",
+        content="HTTP evidence.",
+        provider="fixture",
+    )
+    score = EvidenceScore(
+        source_id=source.source_id,
+        relevance=0.9,
+        content_quality=0.8,
+        traceability=1,
+        overall=0.88,
+    )
+    result = CachedResearchResult(
+        llm_provider="ollama",
+        workflow_status="research_report_completed",
+        route="deep_research",
+        answer="HTTP report.",
+        report="HTTP report.",
+        evidence_sources=[source],
+        evidence_scores=[score],
+        reflection_attempts=2,
+    )
+
+    restored = CachedResearchResult.model_validate_json(result.model_dump_json())
+
+    assert restored.report == "HTTP report."
+    assert restored.evidence_sources == [source]
+    assert restored.evidence_scores == [score]
+    assert restored.reflection_attempts == 2
 
 
 def test_cached_research_result_does_not_require_answer() -> None:

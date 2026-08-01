@@ -11,9 +11,11 @@ def test_database_base_exposes_registered_metadata() -> None:
     )
     assert metadata is Base.metadata
     assert set(metadata.tables) == {
+        "research_reports",
+        "research_runs",
+        "research_sources",
         "tenants",
         "users",
-        "research_runs",
     }
     assert Tenant.__table__ is metadata.tables["tenants"]
     assert User.__table__ is metadata.tables["users"]

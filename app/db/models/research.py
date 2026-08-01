@@ -9,6 +9,7 @@ from sqlalchemy import (
     Index,
     String,
     Text,
+    UniqueConstraint,
     Uuid,
     func,
 )
@@ -59,6 +60,11 @@ class ResearchRun(Base):
             "ix_research_runs_tenant_status",
             "tenant_id",
             "status",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "id",
+            name="uq_research_runs_tenant_id_id",
         ),
     )
 

@@ -22,6 +22,14 @@ class RecordingRedisConnection:
         self.closed = True
 
 
+class RecordingJobManager:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
+
 @pytest.mark.anyio
 async def test_lifespan_wires_and_closes_application_resources(
     monkeypatch: pytest.MonkeyPatch,
@@ -37,6 +45,8 @@ async def test_lifespan_wires_and_closes_application_resources(
     idempotency_lock_manager = object()
     rate_limiter = object()
     progress_store = object()
+    report_store = object()
+    job_manager = RecordingJobManager()
 
     create_engine = Mock(
         return_value=engine,
@@ -69,6 +79,12 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_progress_store = Mock(
         return_value=progress_store,
+    )
+    create_report_store = Mock(
+        return_value=report_store,
+    )
+    create_job_manager = Mock(
+        return_value=job_manager,
     )
     monkeypatch.setattr(
         main_module,
@@ -125,6 +141,16 @@ async def test_lifespan_wires_and_closes_application_resources(
         "RedisResearchProgressStore",
         create_progress_store,
     )
+    monkeypatch.setattr(
+        main_module,
+        "PostgresResearchReportStore",
+        create_report_store,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "ResearchJobManager",
+        create_job_manager,
+    )
 
     application = FastAPI()
 
@@ -134,11 +160,15 @@ async def test_lifespan_wires_and_closes_application_resources(
         assert application.state.research_execution_service is idempotent_execution_service
         assert application.state.research_rate_limiter is rate_limiter
         assert application.state.research_progress_store is progress_store
+        assert application.state.research_report_store is report_store
+        assert application.state.research_job_manager is job_manager
         assert engine.disposed is False
         assert redis_connection.closed is False
+        assert job_manager.closed is False
 
     assert redis_connection.closed is True
     assert engine.disposed is True
+    assert job_manager.closed is True
 
     create_idempotency_store.assert_called_once_with(
         redis_connection,
@@ -167,6 +197,12 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_progress_store.assert_called_once_with(
         redis_connection,
+    )
+    create_report_store.assert_called_once_with(
+        database_session_factory,
+    )
+    create_job_manager.assert_called_once_with(
+        execution_service,
     )
     create_execution_service.assert_called_once_with(
         research_store,

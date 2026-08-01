@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -79,6 +80,7 @@ class ResearchRunStore(Protocol):
         query: str,
         llm_provider: CanonicalLLMProvider,
         requested_by_user_id: UUID | None,
+        research_run_id: UUID | None = None,
     ) -> UUID:
         """Create and commit one queued research run."""
 
@@ -95,6 +97,7 @@ class ResearchRunStore(Protocol):
         *,
         tenant_id: UUID,
         research_run_id: UUID,
+        result: ResearchState | None = None,
     ) -> None:
         """Commit the transition from running to completed."""
 
@@ -179,6 +182,20 @@ class ResearchExecutionResult:
     idempotency_replayed: bool = False
 
 
+@dataclass(
+    frozen=True,
+    slots=True,
+)
+class QueuedResearchExecution:
+    """Carry one durably queued request into background execution."""
+
+    research_run_id: UUID
+    tenant_id: UUID
+    requested_by_user_id: UUID | None
+    query: str
+    llm_provider: CanonicalLLMProvider
+
+
 class ResearchExecutionService:
     """Coordinate persistence and one research workflow execution."""
 
@@ -202,8 +219,30 @@ class ResearchExecutionService:
         query: str,
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
+        research_run_id: UUID | None = None,
     ) -> ResearchExecutionResult:
         """Execute one durable research request."""
+
+        queued = await self.queue(
+            tenant_id=tenant_id,
+            query=query,
+            llm_provider=llm_provider,
+            requested_by_user_id=requested_by_user_id,
+            research_run_id=research_run_id,
+        )
+
+        return await self.execute_queued(queued)
+
+    async def queue(
+        self,
+        *,
+        tenant_id: UUID,
+        query: str,
+        llm_provider: str,
+        requested_by_user_id: UUID | None = None,
+        research_run_id: UUID | None = None,
+    ) -> QueuedResearchExecution:
+        """Create one durable queued run before asynchronous delivery."""
 
         normalized_query = query.strip()
 
@@ -219,6 +258,7 @@ class ResearchExecutionService:
             requested_by_user_id=requested_by_user_id,
             query=normalized_query,
             llm_provider=canonical_provider,
+            research_run_id=research_run_id,
         )
         await self._publish_progress(
             tenant_id=tenant_id,
@@ -226,6 +266,25 @@ class ResearchExecutionService:
             status="queued",
             message="Research request queued.",
         )
+
+        return QueuedResearchExecution(
+            research_run_id=research_run_id,
+            tenant_id=tenant_id,
+            requested_by_user_id=requested_by_user_id,
+            query=normalized_query,
+            llm_provider=canonical_provider,
+        )
+
+    async def execute_queued(
+        self,
+        queued: QueuedResearchExecution,
+    ) -> ResearchExecutionResult:
+        """Execute a previously persisted queued run."""
+
+        tenant_id = queued.tenant_id
+        research_run_id = queued.research_run_id
+        normalized_query = queued.query
+        canonical_provider = queued.llm_provider
 
         try:
             await self._store.mark_running(
@@ -272,6 +331,7 @@ class ResearchExecutionService:
             await self._store.mark_completed(
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
+                result=final_state,
             )
             await self._publish_progress(
                 tenant_id=tenant_id,
@@ -281,6 +341,21 @@ class ResearchExecutionService:
                 workflow_status=final_state.get("status"),
             )
 
+        except asyncio.CancelledError:
+            error_message = "Research execution was cancelled during application shutdown."
+            await self._store.mark_failed(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                error_message=error_message,
+            )
+            await self._publish_progress(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                status="failed",
+                message="Research workflow was cancelled.",
+                error_message=error_message,
+            )
+            raise
         except Exception as error:
             error_message = self._format_error(error)
             await self._store.mark_failed(
@@ -402,6 +477,10 @@ class ResearchExecutionService:
             answer=state.get("answer"),
             citation_audit=state.get("citation_audit"),
             reflection=state.get("reflection"),
+            report=state.get("report"),
+            evidence_sources=state.get("evidence_sources", []),
+            evidence_scores=state.get("evidence_scores", []),
+            reflection_attempts=state.get("reflection_attempts"),
         )
 
         try:
@@ -445,6 +524,18 @@ class ResearchExecutionService:
 
         if result.reflection is not None:
             state["reflection"] = result.reflection
+
+        if result.report is not None:
+            state["report"] = result.report
+
+        if result.evidence_sources:
+            state["evidence_sources"] = result.evidence_sources
+
+        if result.evidence_scores:
+            state["evidence_scores"] = result.evidence_scores
+
+        if result.reflection_attempts is not None:
+            state["reflection_attempts"] = result.reflection_attempts
 
         return state
 

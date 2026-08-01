@@ -1,6 +1,6 @@
 from collections.abc import Sequence
 
-from app.schemas.evidence import EvidenceScore, EvidenceSource
+from app.schemas.evidence import EvidenceScore, EvidenceSource, ReflectionDecision
 from app.schemas.planner import ResearchPlan
 from app.services.llm.base import LLMClient
 
@@ -18,6 +18,8 @@ class AnalystAgent:
         plan: ResearchPlan,
         sources: Sequence[EvidenceSource],
         scores: Sequence[EvidenceScore],
+        previous_report: str | None = None,
+        revision_feedback: ReflectionDecision | None = None,
     ) -> str:
         """Generate one report constrained to the supplied evidence."""
 
@@ -43,6 +45,20 @@ class AnalystAgent:
             f"- {section.title}: {section.purpose}" for section in plan.report_outline
         )
         evidence = "\n\n".join(evidence_blocks) or "NO VERIFIED EVIDENCE"
+        revision_context = ""
+
+        if previous_report is not None and revision_feedback is not None:
+            reasons = (
+                "\n".join(f"- {reason}" for reason in revision_feedback.reasons)
+                or "- Improve the report against the evidence quality gate."
+            )
+            revision_context = (
+                "\n\nThis is a bounded revision pass. Address every review reason "
+                "without weakening citation discipline.\n"
+                f"Review reasons:\n{reasons}\n\n"
+                f"Previous report:\n{previous_report}"
+            )
+
         prompt = (
             "You are the analyst in an evidence-backed research system.\n"
             f"Research question: {query}\n\n"
@@ -52,6 +68,7 @@ class AnalystAgent:
             "must end with one or more exact citations such as [WEB-0123456789ABCDEF]. "
             "Use only SOURCE_ID values shown above. If evidence is insufficient, say so "
             "explicitly and do not invent facts, sources, URLs, or citations."
+            f"{revision_context}"
         )
         report = (
             await self._llm_client.generate_text(

@@ -45,7 +45,14 @@ EvidenceAnalyzer = Callable[
     tuple[list[EvidenceSource], list[EvidenceScore]],
 ]
 ReportGenerator = Callable[
-    [str, ResearchPlan, list[EvidenceSource], list[EvidenceScore]],
+    [
+        str,
+        ResearchPlan,
+        list[EvidenceSource],
+        list[EvidenceScore],
+        str | None,
+        ReflectionDecision | None,
+    ],
     Awaitable[str],
 ]
 ReportReviewer = Callable[
@@ -205,10 +212,13 @@ def build_analyst_node(
             state["plan"],
             state["evidence_sources"],
             state["evidence_scores"],
+            state.get("report"),
+            state.get("reflection"),
         )
 
         return {
             "report": report,
+            "reflection_attempts": state.get("reflection_attempts", 0) + 1,
             "status": "report_generated",
         }
 
@@ -241,6 +251,22 @@ def build_reflection_node(
     return reflection_node
 
 
+def select_reflection_path(
+    state: ResearchState,
+    *,
+    max_attempts: int,
+) -> Literal["revise", "complete"]:
+    """Bound report revision while allowing one evidence-guided retry."""
+
+    if (
+        state["reflection"].status == "revise"
+        and state.get("reflection_attempts", 0) < max_attempts
+    ):
+        return "revise"
+
+    return "complete"
+
+
 def build_research_graph(
     classifier: IntentClassifier,
     create_plan: PlanCreator,
@@ -250,6 +276,7 @@ def build_research_graph(
     analyze_evidence: EvidenceAnalyzer | None = None,
     generate_report: ReportGenerator | None = None,
     review_report: ReportReviewer | None = None,
+    max_reflection_attempts: int = 2,
 ) -> ResearchGraph:
     """Build and compile the answering and research workflow."""
 
@@ -296,6 +323,9 @@ def build_research_graph(
         )
 
     if quality_pipeline:
+        if max_reflection_attempts < 1:
+            raise ValueError("max_reflection_attempts must be at least 1.")
+
         assert analyze_evidence is not None
         assert generate_report is not None
         assert review_report is not None
@@ -342,7 +372,17 @@ def build_research_graph(
         graph_builder.add_edge("web_search", "evidence")
         graph_builder.add_edge("evidence", "analyst")
         graph_builder.add_edge("analyst", "reflection")
-        graph_builder.add_edge("reflection", END)
+        graph_builder.add_conditional_edges(
+            "reflection",
+            lambda state: select_reflection_path(
+                state,
+                max_attempts=max_reflection_attempts,
+            ),
+            {
+                "revise": "analyst",
+                "complete": END,
+            },
+        )
     else:
         graph_builder.add_edge("web_search", END)
 
@@ -381,12 +421,16 @@ def build_research_graph_for_client(
         plan: ResearchPlan,
         sources: list[EvidenceSource],
         scores: list[EvidenceScore],
+        previous_report: str | None,
+        revision_feedback: ReflectionDecision | None,
     ) -> str:
         return await analyst.write_report(
             query=query,
             plan=plan,
             sources=sources,
             scores=scores,
+            previous_report=previous_report,
+            revision_feedback=revision_feedback,
         )
 
     def review_report(
