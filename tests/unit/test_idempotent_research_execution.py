@@ -6,12 +6,14 @@ from app.schemas.idempotency import ResearchIdempotencyRecord
 from app.schemas.research import CreateResearchRunResponse
 from app.services.cache import (
     CacheUnavailableError,
+    ResearchIdempotencyLockLease,
     create_research_request_fingerprint,
 )
 from app.services.research.execution import ResearchExecutionResult
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
     ResearchIdempotencyConflictError,
+    ResearchIdempotencyInProgressError,
     ResearchIdempotencyUnavailableError,
 )
 from app.workflow.state import ResearchState
@@ -21,8 +23,11 @@ class RecordingExecutor:
     def __init__(
         self,
         result: ResearchExecutionResult,
+        *,
+        execution_error: RuntimeError | None = None,
     ) -> None:
         self.result = result
+        self.execution_error = execution_error
         self.calls: list[dict[str, object]] = []
 
     async def execute(
@@ -41,6 +46,8 @@ class RecordingExecutor:
                 "requested_by_user_id": requested_by_user_id,
             }
         )
+        if self.execution_error is not None:
+            raise self.execution_error
 
         return self.result
 
@@ -52,10 +59,12 @@ class RecordingIdempotencyStore:
         record: ResearchIdempotencyRecord | None = None,
         get_error: CacheUnavailableError | None = None,
         set_error: CacheUnavailableError | None = None,
+        get_results: list[ResearchIdempotencyRecord | None] | None = None,
     ) -> None:
         self.record = record
         self.get_error = get_error
         self.set_error = set_error
+        self.get_results = get_results
         self.get_calls: list[tuple[UUID, str]] = []
         self.set_calls: list[
             tuple[
@@ -81,6 +90,9 @@ class RecordingIdempotencyStore:
         if self.get_error is not None:
             raise self.get_error
 
+        if self.get_results is not None:
+            return self.get_results.pop(0)
+
         return self.record
 
     async def set(
@@ -102,6 +114,58 @@ class RecordingIdempotencyStore:
             raise self.set_error
 
         self.record = record
+
+
+class RecordingIdempotencyLockManager:
+    def __init__(
+        self,
+        *,
+        acquired: bool = True,
+        acquire_error: CacheUnavailableError | None = None,
+        release_error: CacheUnavailableError | None = None,
+    ) -> None:
+        self.acquired = acquired
+        self.acquire_error = acquire_error
+        self.release_error = release_error
+        self.acquire_calls: list[tuple[UUID, str]] = []
+        self.release_calls: list[ResearchIdempotencyLockLease] = []
+
+    async def acquire(
+        self,
+        *,
+        tenant_id: UUID,
+        client_key: str,
+    ) -> ResearchIdempotencyLockLease | None:
+        self.acquire_calls.append(
+            (
+                tenant_id,
+                client_key,
+            )
+        )
+
+        if self.acquire_error is not None:
+            raise self.acquire_error
+
+        if not self.acquired:
+            return None
+
+        return ResearchIdempotencyLockLease(
+            redis_key="enterprise-research:v1:test-lock",
+            owner_token=uuid4().hex,
+        )
+
+    async def release(
+        self,
+        lease: ResearchIdempotencyLockLease,
+    ) -> bool:
+        self.release_calls.append(
+            lease,
+        )
+
+        if self.release_error is not None:
+            raise self.release_error
+
+        return True
 
 
 def create_execution_result() -> ResearchExecutionResult:
@@ -126,6 +190,7 @@ async def test_without_idempotency_key_delegates_directly() -> None:
     service = IdempotentResearchExecutionService(
         executor,
         store,
+        RecordingIdempotencyLockManager(),
     )
     tenant_id = uuid4()
 
@@ -145,12 +210,15 @@ async def test_without_idempotency_key_delegates_directly() -> None:
 async def test_idempotency_miss_executes_and_stores_record() -> None:
     executor = RecordingExecutor(create_execution_result())
     store = RecordingIdempotencyStore()
+    tenant_id = uuid4()
+    user_id = uuid4()
+
+    lock_manager = RecordingIdempotencyLockManager()
     service = IdempotentResearchExecutionService(
         executor,
         store,
+        lock_manager,
     )
-    tenant_id = uuid4()
-    user_id = uuid4()
 
     result = await service.execute(
         tenant_id=tenant_id,
@@ -167,8 +235,19 @@ async def test_idempotency_miss_executes_and_stores_record() -> None:
         (
             tenant_id,
             "request-123",
+        ),
+        (
+            tenant_id,
+            "request-123",
+        ),
+    ]
+    assert lock_manager.acquire_calls == [
+        (
+            tenant_id,
+            "request-123",
         )
     ]
+    assert len(lock_manager.release_calls) == 1
     assert len(store.set_calls) == 1
 
     stored_tenant, stored_key, stored_record = store.set_calls[0]
@@ -215,6 +294,7 @@ async def test_matching_idempotency_record_replays_without_execution() -> None:
     service = IdempotentResearchExecutionService(
         executor,
         store,
+        RecordingIdempotencyLockManager(),
     )
 
     result = await service.execute(
@@ -259,6 +339,7 @@ async def test_reused_key_with_different_request_conflicts() -> None:
     service = IdempotentResearchExecutionService(
         executor,
         store,
+        RecordingIdempotencyLockManager(),
     )
 
     with pytest.raises(
@@ -285,6 +366,7 @@ async def test_idempotency_lookup_failure_is_fail_closed() -> None:
     service = IdempotentResearchExecutionService(
         executor,
         store,
+        RecordingIdempotencyLockManager(),
     )
 
     with pytest.raises(
@@ -299,3 +381,143 @@ async def test_idempotency_lookup_failure_is_fail_closed() -> None:
         )
 
     assert executor.calls == []
+
+
+@pytest.mark.anyio
+async def test_held_lock_rejects_duplicate_execution() -> None:
+    executor = RecordingExecutor(create_execution_result())
+    store = RecordingIdempotencyStore()
+    lock_manager = RecordingIdempotencyLockManager(
+        acquired=False,
+    )
+    service = IdempotentResearchExecutionService(
+        executor,
+        store,
+        lock_manager,
+    )
+
+    with pytest.raises(
+        ResearchIdempotencyInProgressError,
+        match="already in progress",
+    ):
+        await service.execute(
+            tenant_id=uuid4(),
+            query="What is a mutex?",
+            llm_provider="qwen",
+            idempotency_key="request-123",
+        )
+
+    assert executor.calls == []
+    assert store.set_calls == []
+    assert lock_manager.release_calls == []
+
+
+@pytest.mark.anyio
+async def test_lock_acquisition_failure_is_fail_closed() -> None:
+    executor = RecordingExecutor(create_execution_result())
+    store = RecordingIdempotencyStore()
+    lock_manager = RecordingIdempotencyLockManager(
+        acquire_error=CacheUnavailableError("Redis is unavailable."),
+    )
+    service = IdempotentResearchExecutionService(
+        executor,
+        store,
+        lock_manager,
+    )
+
+    with pytest.raises(
+        ResearchIdempotencyUnavailableError,
+        match="lock is unavailable",
+    ):
+        await service.execute(
+            tenant_id=uuid4(),
+            query="What is a mutex?",
+            llm_provider="qwen",
+            idempotency_key="request-123",
+        )
+
+    assert executor.calls == []
+    assert store.set_calls == []
+
+
+@pytest.mark.anyio
+async def test_record_created_before_lock_double_check_is_replayed() -> None:
+    tenant_id = uuid4()
+    original_result = create_execution_result()
+    record = ResearchIdempotencyRecord(
+        request_fingerprint=(
+            create_research_request_fingerprint(
+                query="What is a mutex?",
+                llm_provider="ollama",
+                requested_by_user_id=None,
+            )
+        ),
+        response=CreateResearchRunResponse(
+            research_run_id=original_result.research_run_id,
+            llm_provider="ollama",
+            status="completed",
+            cache_hit=False,
+            workflow_status="direct_answer_completed",
+            route="direct",
+            answer="A mutex protects a critical section.",
+        ),
+    )
+    executor = RecordingExecutor(create_execution_result())
+    store = RecordingIdempotencyStore(
+        get_results=[
+            None,
+            record,
+        ],
+    )
+    lock_manager = RecordingIdempotencyLockManager()
+    service = IdempotentResearchExecutionService(
+        executor,
+        store,
+        lock_manager,
+    )
+
+    result = await service.execute(
+        tenant_id=tenant_id,
+        query="What is a mutex?",
+        llm_provider="qwen",
+        idempotency_key="request-123",
+    )
+
+    assert result.research_run_id == original_result.research_run_id
+    assert result.idempotency_replayed is True
+    assert executor.calls == []
+    assert store.set_calls == []
+    assert len(store.get_calls) == 2
+    assert len(lock_manager.acquire_calls) == 1
+    assert len(lock_manager.release_calls) == 1
+
+
+@pytest.mark.anyio
+async def test_executor_failure_still_releases_lock() -> None:
+    executor = RecordingExecutor(
+        create_execution_result(),
+        execution_error=RuntimeError("Workflow failed."),
+    )
+    store = RecordingIdempotencyStore()
+    lock_manager = RecordingIdempotencyLockManager()
+    service = IdempotentResearchExecutionService(
+        executor,
+        store,
+        lock_manager,
+    )
+
+    with pytest.raises(
+        RuntimeError,
+        match="Workflow failed",
+    ):
+        await service.execute(
+            tenant_id=uuid4(),
+            query="What is a mutex?",
+            llm_provider="qwen",
+            idempotency_key="request-123",
+        )
+
+    assert len(executor.calls) == 1
+    assert store.set_calls == []
+    assert len(lock_manager.acquire_calls) == 1
+    assert len(lock_manager.release_calls) == 1

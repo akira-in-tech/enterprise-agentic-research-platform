@@ -34,6 +34,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     idempotency_store = object()
     execution_service = object()
     idempotent_execution_service = object()
+    idempotency_lock_manager = object()
 
     create_engine = Mock(
         return_value=engine,
@@ -57,6 +58,9 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_idempotent_execution_service = Mock(
         return_value=idempotent_execution_service,
+    )
+    create_idempotency_lock_manager = Mock(
+        return_value=idempotency_lock_manager,
     )
     monkeypatch.setattr(
         main_module,
@@ -98,6 +102,11 @@ async def test_lifespan_wires_and_closes_application_resources(
         "ResearchExecutionService",
         create_execution_service,
     )
+    monkeypatch.setattr(
+        main_module,
+        "RedisResearchIdempotencyLockManager",
+        create_idempotency_lock_manager,
+    )
 
     application = FastAPI()
 
@@ -117,6 +126,10 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_idempotent_execution_service.assert_called_once_with(
         execution_service,
         idempotency_store,
+        idempotency_lock_manager,
+    )
+    create_idempotency_lock_manager.assert_called_once_with(
+        redis_connection,
     )
     create_engine.assert_called_once_with()
     create_sessions.assert_called_once_with(

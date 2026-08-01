@@ -1,3 +1,4 @@
+import logging
 from typing import Protocol
 from uuid import UUID
 
@@ -5,6 +6,7 @@ from app.schemas.idempotency import ResearchIdempotencyRecord
 from app.schemas.research import CreateResearchRunResponse
 from app.services.cache import (
     CacheUnavailableError,
+    ResearchIdempotencyLockLease,
     create_research_request_fingerprint,
 )
 from app.services.llm.factory import (
@@ -12,6 +14,8 @@ from app.services.llm.factory import (
 )
 from app.services.research.execution import ResearchExecutionResult
 from app.workflow.state import ResearchState
+
+logger = logging.getLogger(__name__)
 
 
 class ResearchExecutor(Protocol):
@@ -49,12 +53,34 @@ class ResearchIdempotencyStore(Protocol):
         """Store one completed record."""
 
 
+class ResearchIdempotencyLockManager(Protocol):
+    """Coordinate exclusive execution for one idempotency key."""
+
+    async def acquire(
+        self,
+        *,
+        tenant_id: UUID,
+        client_key: str,
+    ) -> ResearchIdempotencyLockLease | None:
+        """Acquire one lock lease or return None when already held."""
+
+    async def release(
+        self,
+        lease: ResearchIdempotencyLockLease,
+    ) -> bool:
+        """Release a currently owned lock lease."""
+
+
 class ResearchIdempotencyConflictError(ValueError):
     """Signal reuse of one key for a different request."""
 
 
 class ResearchIdempotencyUnavailableError(RuntimeError):
     """Signal that idempotency correctness cannot be guaranteed."""
+
+
+class ResearchIdempotencyInProgressError(RuntimeError):
+    """Signal that an equivalent idempotent request is still running."""
 
 
 class IdempotentResearchExecutionService:
@@ -64,9 +90,11 @@ class IdempotentResearchExecutionService:
         self,
         executor: ResearchExecutor,
         store: ResearchIdempotencyStore,
+        lock_manager: ResearchIdempotencyLockManager,
     ) -> None:
         self._executor = executor
         self._store = store
+        self._lock_manager = lock_manager
 
     async def execute(
         self,
@@ -106,42 +134,122 @@ class IdempotentResearchExecutionService:
             requested_by_user_id=requested_by_user_id,
         )
 
-        existing_record = await self._get_record(
+        existing_result = await self._restore_existing_record(
+            tenant_id=tenant_id,
+            client_key=normalized_key,
+            query=normalized_query,
+            request_fingerprint=request_fingerprint,
+        )
+
+        if existing_result is not None:
+            return existing_result
+
+        lease = await self._acquire_lock(
             tenant_id=tenant_id,
             client_key=normalized_key,
         )
 
-        if existing_record is not None:
-            if existing_record.request_fingerprint != request_fingerprint:
-                raise ResearchIdempotencyConflictError(
-                    "Idempotency key was already used for a different research request."
-                )
-
-            return self._restore_result(
-                query=normalized_query,
-                response=existing_record.response,
+        if lease is None:
+            raise ResearchIdempotencyInProgressError(
+                "Research request with this idempotency key is already in progress."
             )
 
-        result = await self._executor.execute(
+        try:
+            existing_result = await self._restore_existing_record(
+                tenant_id=tenant_id,
+                client_key=normalized_key,
+                query=normalized_query,
+                request_fingerprint=request_fingerprint,
+            )
+
+            if existing_result is not None:
+                return existing_result
+
+            result = await self._executor.execute(
+                tenant_id=tenant_id,
+                query=normalized_query,
+                llm_provider=llm_provider,
+                requested_by_user_id=requested_by_user_id,
+            )
+            record = ResearchIdempotencyRecord(
+                request_fingerprint=request_fingerprint,
+                response=self._build_response(
+                    result,
+                ),
+            )
+
+            await self._set_record(
+                tenant_id=tenant_id,
+                client_key=normalized_key,
+                record=record,
+            )
+
+            return result
+        finally:
+            await self._release_lock(
+                lease,
+            )
+
+    async def _restore_existing_record(
+        self,
+        *,
+        tenant_id: UUID,
+        client_key: str,
+        query: str,
+        request_fingerprint: str,
+    ) -> ResearchExecutionResult | None:
+        existing_record = await self._get_record(
             tenant_id=tenant_id,
-            query=normalized_query,
-            llm_provider=llm_provider,
-            requested_by_user_id=requested_by_user_id,
-        )
-        record = ResearchIdempotencyRecord(
-            request_fingerprint=request_fingerprint,
-            response=self._build_response(
-                result,
-            ),
+            client_key=client_key,
         )
 
-        await self._set_record(
-            tenant_id=tenant_id,
-            client_key=normalized_key,
-            record=record,
+        if existing_record is None:
+            return None
+
+        if existing_record.request_fingerprint != request_fingerprint:
+            raise ResearchIdempotencyConflictError(
+                "Idempotency key was already used for a different research request."
+            )
+
+        return self._restore_result(
+            query=query,
+            response=existing_record.response,
         )
 
-        return result
+    async def _acquire_lock(
+        self,
+        *,
+        tenant_id: UUID,
+        client_key: str,
+    ) -> ResearchIdempotencyLockLease | None:
+        try:
+            return await self._lock_manager.acquire(
+                tenant_id=tenant_id,
+                client_key=client_key,
+            )
+        except CacheUnavailableError as error:
+            raise ResearchIdempotencyUnavailableError(
+                "Research idempotency lock is unavailable."
+            ) from error
+
+    async def _release_lock(
+        self,
+        lease: ResearchIdempotencyLockLease,
+    ) -> None:
+        try:
+            released = await self._lock_manager.release(
+                lease,
+            )
+        except CacheUnavailableError:
+            logger.warning(
+                "Research idempotency lock could not be released; "
+                "the lock TTL will provide eventual cleanup.",
+                exc_info=True,
+            )
+            return
+
+        if not released:
+            logger.warning("Research idempotency lock lease no longer owns its Redis key.")
 
     async def _get_record(
         self,

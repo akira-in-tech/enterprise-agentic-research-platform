@@ -12,6 +12,7 @@ from app.services.research.execution import (
 )
 from app.services.research.idempotency import (
     ResearchIdempotencyConflictError,
+    ResearchIdempotencyInProgressError,
     ResearchIdempotencyUnavailableError,
 )
 from app.workflow.state import ResearchState
@@ -196,6 +197,10 @@ def test_create_research_run_requires_tenant_header() -> None:
         (
             ResearchIdempotencyUnavailableError("Idempotency service unavailable."),
             503,
+        ),
+        (
+            ResearchIdempotencyInProgressError("Research request is already in progress."),
+            409,
         ),
     ],
 )

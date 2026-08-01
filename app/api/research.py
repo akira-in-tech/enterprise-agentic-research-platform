@@ -22,6 +22,7 @@ from app.services.cache import (
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
     ResearchIdempotencyConflictError,
+    ResearchIdempotencyInProgressError,
     ResearchIdempotencyUnavailableError,
 )
 
@@ -71,7 +72,10 @@ async def create_research_run(
             llm_provider=payload.llm_provider,
             idempotency_key=idempotency_key,
         )
-    except ResearchIdempotencyConflictError as error:
+    except (
+        ResearchIdempotencyConflictError,
+        ResearchIdempotencyInProgressError,
+    ) as error:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=str(error),

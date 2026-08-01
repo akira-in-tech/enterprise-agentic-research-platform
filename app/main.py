@@ -13,6 +13,7 @@ from app.db.session import (
 )
 from app.services.cache import (
     RedisConnection,
+    RedisResearchIdempotencyLockManager,
     RedisResearchIdempotencyStore,
     RedisResearchResultCache,
 )
@@ -60,6 +61,9 @@ async def lifespan(
         idempotency_store = RedisResearchIdempotencyStore(
             redis_connection,
         )
+        idempotency_lock_manager = RedisResearchIdempotencyLockManager(
+            redis_connection,
+        )
         execution_service = ResearchExecutionService(
             research_store,
             result_cache=result_cache,
@@ -68,6 +72,7 @@ async def lifespan(
         application.state.research_execution_service = IdempotentResearchExecutionService(
             execution_service,
             idempotency_store,
+            idempotency_lock_manager,
         )
 
         logger.info("Application started")
