@@ -16,7 +16,9 @@ listed as tested only after its automated checks pass in this repository.
 
 ```text
 Completed: Phase 0 through Phase 8
-Next: Phase 9 - Redis Caching and Coordination
+In progress: Phase 9 - Redis Caching and Coordination
+Completed within Phase 9: tenant-scoped research-result caching
+Next: idempotency, coordination locks, and rate-limit primitives
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -43,6 +45,23 @@ FastAPI
 → PostgreSQL lifecycle persistence
 → tenant-scoped database verification
 → cleanup
+```
+
+The Redis-backed API path has also been live integration tested:
+
+```text
+first FastAPI request
+→ PostgreSQL lifecycle persistence
+→ Qwen through Ollama
+→ Redis result write with TTL
+→ cache_hit=false
+
+second tenant/provider/query-equivalent request
+→ new durable PostgreSQL research run
+→ Redis result read
+→ Qwen workflow skipped
+→ cache_hit=true
+→ PostgreSQL and Redis test cleanup
 ```
 
 ## Project Status
@@ -82,7 +101,14 @@ FastAPI
 | Atomic research-run lifecycle transitions | Tested |
 | Durable research execution service | Tested |
 | Tenant-scoped research REST endpoint | Tested with unit and live integration tests |
-| Redis caching and coordination | Planned |
+| Async Redis connection pool and health check | Tested with unit and live integration tests |
+| Tenant/provider/query-scoped Redis cache keys | Tested |
+| Redis research-result serialization and TTL | Tested with unit and live integration tests |
+| Research execution cache miss, write, and hit paths | Tested with unit and live integration tests |
+| Redis fail-open behavior for research execution | Tested |
+| FastAPI Redis lifecycle wiring and cleanup | Tested |
+| Redis idempotency and coordination locks | Planned |
+| Redis rate-limit primitives | Planned |
 | MCP tools and client | Planned |
 | Evidence scoring and citation validation | Planned |
 | Analyst and reflection loop | Planned |
@@ -157,6 +183,22 @@ POST /research-runs
 → return run ID, provider, route, status, and answer
 ```
 
+### Redis-Backed Result Caching
+
+```text
+POST /research-runs
+→ create a durable PostgreSQL research run
+→ look up tenant + canonical provider + normalized query in Redis
+→ cache hit: restore API-visible state and skip the LLM workflow
+→ cache miss: execute the workflow and commit the completed run
+→ write the completed result to Redis with a bounded TTL
+→ return cache_hit in the API response
+```
+
+Redis is an optional acceleration layer. Redis read or write failures are
+logged and fail open, while PostgreSQL remains the durable source of truth.
+Cache hits still create distinct research-run records for auditability.
+
 ## Data Responsibilities
 
 ```text
@@ -183,8 +225,11 @@ PostgreSQL persistence is implemented for tenants, users, research runs, and
 research-run lifecycle transitions. Reports, source persistence, agent-step
 records, and durable checkpoints remain planned.
 
-Redis is planned for Phase 9. Milvus private retrieval is implemented and live
-integration tested.
+Redis result caching is implemented with tenant/provider/query-scoped keys,
+bounded TTLs, application-scoped connection management, fail-open behavior,
+and live miss/write/hit verification. Progress state, idempotency keys,
+coordination locks, and rate limiting remain planned. Milvus private retrieval
+is implemented and live integration tested.
 
 ## Local Setup
 
@@ -219,6 +264,10 @@ The synchronous MVP endpoint requires:
 - an existing tenant ID
 - an optional user ID belonging to that tenant
 - the selected provider configuration
+
+The response includes `cache_hit`. Redis accelerates repeated equivalent
+requests when available, but a Redis outage does not prevent workflow
+execution or PostgreSQL lifecycle persistence.
 
 Start the API:
 
@@ -262,16 +311,16 @@ pytest -q
 Current verified default result:
 
 ```text
-228 passed
-8 integration tests deselected
+283 passed
+11 integration tests deselected
 1 dependency deprecation warning
 ```
 
 The warning comes from the current FastAPI/Starlette test-client dependency
 combination and does not represent a failed application test.
 
-The default test suite does not call Claude, Tavily, Ollama, Milvus, or
-PostgreSQL.
+The default test suite does not call Claude, Tavily, Ollama, Milvus,
+PostgreSQL, or Redis.
 
 ## Live Integration Tests
 
@@ -283,6 +332,7 @@ Live tests require only the services used by the selected test:
 - Ollama with `qwen3-embedding:0.6b` for embedding tests
 - Milvus listening at the configured `MILVUS_URI`
 - PostgreSQL with the current Alembic migration applied for persistence tests
+- Redis listening at the configured `REDIS_URL` for cache tests
 
 Run individual integrations:
 
@@ -326,10 +376,22 @@ pytest -q -m integration \
 
 ```bash
 DATABASE_URL=postgresql+asyncpg://research_user:change_me@localhost:5433/research_platform \
+REDIS_URL=redis://localhost:6379/0 \
 RUN_LIVE_TESTS=true \
 OLLAMA_MODEL=qwen3:8b \
 pytest -q -m integration \
   tests/integration/test_research_api_live.py
+```
+
+Run the Redis-only integration checks without an LLM provider:
+
+```bash
+REDIS_URL=redis://localhost:6379/0 \
+RUN_LIVE_TESTS=true \
+pytest -q -m integration \
+  tests/integration/test_redis_live.py \
+  tests/integration/test_redis_research_result_cache_live.py \
+  tests/integration/test_research_execution_redis_live.py
 ```
 
 The private-RAG test verifies the real path:
@@ -358,18 +420,28 @@ private engineering documents
 
 ## Next Phase
 
-Phase 9 adds Redis caching and coordination:
+Phase 9 has completed the research-result cache path:
 
 ```text
 async Redis client foundation
 health and connectivity checks
 tenant-scoped cache keys
-research-result caching
+research-result JSON serialization and TTL
+execution cache reads and writes
+cache_hit API visibility
+application lifecycle wiring
+fail-open behavior
+real API miss/write/hit verification
+```
+
+The remaining Phase 9 coordination work is:
+
+```text
 idempotency keys
 short-lived coordination locks
 rate-limit primitives
-failure and reconnect behavior
-unit and live integration tests
+progress and coordination state
+unit and live integration coverage for those primitives
 ```
 
 Redis will store temporary coordination state only. PostgreSQL remains the
