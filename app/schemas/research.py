@@ -35,6 +35,7 @@ class CreateResearchRunResponse(BaseModel):
     research_run_id: UUID
     llm_provider: PersistedLLMProvider
     status: Literal["completed"]
+    cache_hit: bool
     workflow_status: str
     route: ResearchRoute | None = None
     route_reason: str | None = None

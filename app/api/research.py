@@ -58,6 +58,7 @@ async def create_research_run(
         research_run_id=result.research_run_id,
         llm_provider=result.llm_provider,
         status="completed",
+        cache_hit=result.cache_hit,
         workflow_status=result.state.get(
             "status",
             "completed",

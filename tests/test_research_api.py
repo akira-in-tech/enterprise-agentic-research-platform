@@ -74,6 +74,7 @@ def test_create_research_run_accepts_qwen_selection() -> None:
 
     body = response.json()
 
+    assert body["cache_hit"] is False
     assert body["llm_provider"] == "ollama"
     assert body["status"] == "completed"
     assert body["workflow_status"] == ("direct_answer_completed")
