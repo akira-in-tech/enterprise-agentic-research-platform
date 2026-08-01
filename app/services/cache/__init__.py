@@ -1,6 +1,9 @@
 from app.services.cache.base import CacheUnavailableError
 from app.services.cache.keys import (
+    MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH,
+    RESEARCH_IDEMPOTENCY_KEY_VERSION,
     RESEARCH_RESULT_CACHE_VERSION,
+    create_research_idempotency_redis_key,
     create_research_result_cache_key,
 )
 from app.services.cache.redis import (
@@ -18,4 +21,7 @@ __all__ = [
     "RedisResearchResultCache",
     "RedisUnavailableError",
     "create_research_result_cache_key",
+    "MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH",
+    "RESEARCH_IDEMPOTENCY_KEY_VERSION",
+    "create_research_idempotency_redis_key",
 ]

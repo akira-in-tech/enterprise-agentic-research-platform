@@ -4,6 +4,8 @@ from uuid import UUID
 from app.schemas.research import PersistedLLMProvider
 
 RESEARCH_RESULT_CACHE_VERSION = "v1"
+RESEARCH_IDEMPOTENCY_KEY_VERSION = "v1"
+MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH = 200
 
 
 def create_research_result_cache_key(
@@ -35,4 +37,33 @@ def create_research_result_cache_key(
         f":tenant:{tenant_id}"
         f":research-result:{llm_provider}"
         f":{query_digest}"
+    )
+
+
+def create_research_idempotency_redis_key(
+    *,
+    tenant_id: UUID,
+    client_key: str,
+) -> str:
+    """Create a versioned, tenant-scoped Redis idempotency key."""
+
+    normalized_client_key = client_key.strip()
+
+    if not normalized_client_key:
+        raise ValueError("client_key must not be empty.")
+
+    if len(normalized_client_key) > MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH:
+        raise ValueError(
+            f"client_key must not exceed {MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH} characters."
+        )
+
+    client_key_digest = sha256(
+        normalized_client_key.encode(),
+    ).hexdigest()
+
+    return (
+        "enterprise-research"
+        f":{RESEARCH_IDEMPOTENCY_KEY_VERSION}"
+        f":tenant:{tenant_id}"
+        f":research-idempotency:{client_key_digest}"
     )
