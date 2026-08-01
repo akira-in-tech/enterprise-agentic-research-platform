@@ -1,4 +1,7 @@
 from app.services.cache.base import CacheUnavailableError
+from app.services.cache.idempotency import (
+    create_research_request_fingerprint,
+)
 from app.services.cache.keys import (
     MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH,
     RESEARCH_IDEMPOTENCY_KEY_VERSION,
@@ -24,4 +27,5 @@ __all__ = [
     "MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH",
     "RESEARCH_IDEMPOTENCY_KEY_VERSION",
     "create_research_idempotency_redis_key",
+    "create_research_request_fingerprint",
 ]
