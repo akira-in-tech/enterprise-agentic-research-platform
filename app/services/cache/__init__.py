@@ -6,7 +6,9 @@ from app.services.cache.idempotency import (
 from app.services.cache.keys import (
     MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH,
     RESEARCH_IDEMPOTENCY_KEY_VERSION,
+    RESEARCH_IDEMPOTENCY_LOCK_VERSION,
     RESEARCH_RESULT_CACHE_VERSION,
+    create_research_idempotency_lock_redis_key,
     create_research_idempotency_redis_key,
     create_research_result_cache_key,
 )
@@ -30,4 +32,6 @@ __all__ = [
     "create_research_idempotency_redis_key",
     "create_research_request_fingerprint",
     "RedisResearchIdempotencyStore",
+    "RESEARCH_IDEMPOTENCY_LOCK_VERSION",
+    "create_research_idempotency_lock_redis_key",
 ]

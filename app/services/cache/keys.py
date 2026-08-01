@@ -6,6 +6,7 @@ from app.schemas.research import PersistedLLMProvider
 RESEARCH_RESULT_CACHE_VERSION = "v1"
 RESEARCH_IDEMPOTENCY_KEY_VERSION = "v1"
 MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH = 200
+RESEARCH_IDEMPOTENCY_LOCK_VERSION = "v1"
 
 
 def create_research_result_cache_key(
@@ -40,12 +41,10 @@ def create_research_result_cache_key(
     )
 
 
-def create_research_idempotency_redis_key(
-    *,
-    tenant_id: UUID,
+def _create_idempotency_client_key_digest(
     client_key: str,
 ) -> str:
-    """Create a versioned, tenant-scoped Redis idempotency key."""
+    """Validate and hash one client-supplied idempotency key."""
 
     normalized_client_key = client_key.strip()
 
@@ -57,13 +56,44 @@ def create_research_idempotency_redis_key(
             f"client_key must not exceed {MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH} characters."
         )
 
-    client_key_digest = sha256(
+    return sha256(
         normalized_client_key.encode(),
     ).hexdigest()
+
+
+def create_research_idempotency_redis_key(
+    *,
+    tenant_id: UUID,
+    client_key: str,
+) -> str:
+    """Create a versioned, tenant-scoped Redis idempotency key."""
+
+    client_key_digest = _create_idempotency_client_key_digest(
+        client_key,
+    )
 
     return (
         "enterprise-research"
         f":{RESEARCH_IDEMPOTENCY_KEY_VERSION}"
         f":tenant:{tenant_id}"
         f":research-idempotency:{client_key_digest}"
+    )
+
+
+def create_research_idempotency_lock_redis_key(
+    *,
+    tenant_id: UUID,
+    client_key: str,
+) -> str:
+    """Create a tenant-scoped Redis coordination-lock key."""
+
+    client_key_digest = _create_idempotency_client_key_digest(
+        client_key,
+    )
+
+    return (
+        "enterprise-research"
+        f":{RESEARCH_IDEMPOTENCY_LOCK_VERSION}"
+        f":tenant:{tenant_id}"
+        f":research-idempotency-lock:{client_key_digest}"
     )
