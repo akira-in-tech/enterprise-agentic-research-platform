@@ -107,7 +107,7 @@ class ResearchRunStore(Protocol):
 
 
 class ResearchResultCache(Protocol):
-    """Represent optional research-result cache reads."""
+    """Represent optional research-result cache operations."""
 
     async def get(
         self,
@@ -117,6 +117,15 @@ class ResearchResultCache(Protocol):
         query: str,
     ) -> CachedResearchResult | None:
         """Return one cached result or a cache miss."""
+
+    async def set(
+        self,
+        *,
+        tenant_id: UUID,
+        query: str,
+        result: CachedResearchResult,
+    ) -> None:
+        """Store one completed research result."""
 
 
 WorkflowFactory = Callable[
@@ -244,6 +253,14 @@ class ResearchExecutionService:
             )
             raise
 
+        if not cache_hit:
+            await self._set_cached_result(
+                tenant_id=tenant_id,
+                llm_provider=canonical_provider,
+                query=normalized_query,
+                state=final_state,
+            )
+
         return ResearchExecutionResult(
             research_run_id=research_run_id,
             llm_provider=canonical_provider,
@@ -277,6 +294,46 @@ class ResearchExecutionService:
                 exc_info=True,
             )
             return None
+
+    async def _set_cached_result(
+        self,
+        *,
+        tenant_id: UUID,
+        llm_provider: CanonicalLLMProvider,
+        query: str,
+        state: ResearchState,
+    ) -> None:
+        """Write a completed result without breaking research execution."""
+
+        if self._result_cache is None:
+            return
+
+        workflow_status = state.get("status")
+
+        if not workflow_status:
+            return
+
+        result = CachedResearchResult(
+            llm_provider=llm_provider,
+            workflow_status=workflow_status,
+            route=state.get("route"),
+            route_reason=state.get("route_reason"),
+            answer=state.get("answer"),
+        )
+
+        try:
+            await self._result_cache.set(
+                tenant_id=tenant_id,
+                query=query,
+                result=result,
+            )
+        except CacheUnavailableError:
+            logger.warning(
+                ("Research result cache write failed for tenant %s and provider %s."),
+                tenant_id,
+                llm_provider,
+                exc_info=True,
+            )
 
     @staticmethod
     def _restore_cached_state(

@@ -97,15 +97,24 @@ class RecordingResearchResultCache:
         self,
         *,
         result: CachedResearchResult | None = None,
-        error: CacheUnavailableError | None = None,
+        get_error: CacheUnavailableError | None = None,
+        set_error: CacheUnavailableError | None = None,
     ) -> None:
         self.result = result
-        self.error = error
+        self.get_error = get_error
+        self.set_error = set_error
         self.get_calls: list[
             tuple[
                 UUID,
                 CanonicalLLMProvider,
                 str,
+            ]
+        ] = []
+        self.set_calls: list[
+            tuple[
+                UUID,
+                str,
+                CachedResearchResult,
             ]
         ] = []
 
@@ -124,10 +133,28 @@ class RecordingResearchResultCache:
             )
         )
 
-        if self.error is not None:
-            raise self.error
+        if self.get_error is not None:
+            raise self.get_error
 
         return self.result
+
+    async def set(
+        self,
+        *,
+        tenant_id: UUID,
+        query: str,
+        result: CachedResearchResult,
+    ) -> None:
+        self.set_calls.append(
+            (
+                tenant_id,
+                query,
+                result,
+            )
+        )
+
+        if self.set_error is not None:
+            raise self.set_error
 
 
 @pytest.mark.anyio
@@ -341,6 +368,7 @@ async def test_execution_uses_cached_result_without_workflow() -> None:
             "What is a mutex?",
         )
     ]
+    assert cache.set_calls == []
 
 
 @pytest.mark.anyio
@@ -384,13 +412,25 @@ async def test_execution_runs_workflow_after_cache_miss() -> None:
         "running",
         "completed",
     ]
+    assert cache.set_calls == [
+        (
+            tenant_id,
+            "Explain Linux epoll.",
+            CachedResearchResult(
+                llm_provider="ollama",
+                workflow_status="direct_answer_completed",
+                route="direct",
+                answer="epoll monitors multiple file descriptors.",
+            ),
+        )
+    ]
 
 
 @pytest.mark.anyio
 async def test_execution_fails_open_when_cache_read_is_unavailable() -> None:
     store = RecordingResearchRunStore()
     cache = RecordingResearchResultCache(
-        error=CacheUnavailableError("Redis is unavailable."),
+        get_error=CacheUnavailableError("Redis is unavailable."),
     )
     workflow_result: ResearchState = {
         "query": "Explain DNS recursive resolution.",
@@ -420,4 +460,56 @@ async def test_execution_fails_open_when_cache_read_is_unavailable() -> None:
         "queued",
         "running",
         "completed",
+    ]
+
+
+@pytest.mark.anyio
+async def test_execution_fails_open_when_cache_write_is_unavailable() -> None:
+    store = RecordingResearchRunStore()
+    cache = RecordingResearchResultCache(
+        result=None,
+        set_error=CacheUnavailableError(
+            "Redis is unavailable.",
+        ),
+    )
+    workflow_result: ResearchState = {
+        "query": "Explain HTTP keep-alive.",
+        "status": "direct_answer_completed",
+        "route": "direct",
+        "answer": "Keep-alive allows multiple requests over one connection.",
+    }
+    workflow = RecordingWorkflow(
+        result=workflow_result,
+    )
+    service = ResearchExecutionService(
+        store,
+        lambda _: workflow,
+        result_cache=cache,
+    )
+    tenant_id = uuid4()
+
+    result = await service.execute(
+        tenant_id=tenant_id,
+        query="Explain HTTP keep-alive.",
+        llm_provider="qwen",
+    )
+
+    assert result.cache_hit is False
+    assert result.state == workflow_result
+    assert store.events == [
+        "queued",
+        "running",
+        "completed",
+    ]
+    assert cache.set_calls == [
+        (
+            tenant_id,
+            "Explain HTTP keep-alive.",
+            CachedResearchResult(
+                llm_provider="ollama",
+                workflow_status="direct_answer_completed",
+                route="direct",
+                answer=("Keep-alive allows multiple requests over one connection."),
+            ),
+        )
     ]
