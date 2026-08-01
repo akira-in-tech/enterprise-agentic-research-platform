@@ -17,8 +17,8 @@ listed as tested only after its automated checks pass in this repository.
 ```text
 Completed: Phase 0 through Phase 8
 In progress: Phase 9 - Redis Caching and Coordination
-Completed within Phase 9: tenant-scoped research-result caching
-Next: idempotency, coordination locks, and rate-limit primitives
+Completed within Phase 9: result caching and concurrent request idempotency
+Next: rate-limit primitives and progress coordination
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -64,6 +64,28 @@ second tenant/provider/query-equivalent request
 → PostgreSQL and Redis test cleanup
 ```
 
+The idempotent API and Redis coordination paths have been verified across live
+API tests, live Redis tests, and deterministic concurrency coverage:
+
+```text
+first request with Idempotency-Key
+→ validate a canonical request fingerprint
+→ acquire a short-lived Redis lock with SET NX EX
+→ double-check for a completed record
+→ execute and persist one research run
+→ store the completed idempotency response
+→ release the lock only when the owner token still matches
+
+concurrent request with the same key
+→ lock acquisition rejected
+→ workflow not executed a second time
+→ API maps the in-progress result to HTTP 409
+
+later retry with the same key and payload
+→ replay the original research run and response
+→ idempotency_replayed=true
+```
+
 ## Project Status
 
 | Component | Status |
@@ -107,7 +129,10 @@ second tenant/provider/query-equivalent request
 | Research execution cache miss, write, and hit paths | Tested with unit and live integration tests |
 | Redis fail-open behavior for research execution | Tested |
 | FastAPI Redis lifecycle wiring and cleanup | Tested |
-| Redis idempotency and coordination locks | Planned |
+| Tenant-scoped Redis idempotency records and request fingerprints | Tested with unit and live integration tests |
+| Atomic Redis coordination locks with TTL and token-checked release | Tested with unit and live integration tests |
+| Concurrent idempotent research execution and completed-response replay | Tested with unit and live integration tests |
+| Research idempotency API conflict and availability handling | Tested |
 | Redis rate-limit primitives | Planned |
 | MCP tools and client | Planned |
 | Evidence scoring and citation validation | Planned |
@@ -199,6 +224,30 @@ Redis is an optional acceleration layer. Redis read or write failures are
 logged and fail open, while PostgreSQL remains the durable source of truth.
 Cache hits still create distinct research-run records for auditability.
 
+### Idempotent Request Coordination
+
+```text
+POST /research-runs with Idempotency-Key
+→ normalize the tenant-scoped client key and request payload
+→ read a completed idempotency record
+→ acquire an expiring Redis lock when no record exists
+→ read the completed record again after acquiring the lock
+→ execute at most once while the lease is held
+→ store the completed response for later replay
+→ release with an atomic compare-and-delete Lua script
+```
+
+Idempotency is a correctness feature rather than an optional acceleration.
+Requests carrying `Idempotency-Key` fail closed with `503` when the Redis
+record store or coordination lock is unavailable. Reusing a key for a
+different payload, or retrying while its original request is still running,
+returns `409`. A completed retry returns the original research-run ID without
+creating another run.
+
+The coordination lock currently has a bounded 300-second default TTL. That
+prevents abandoned permanent locks, but lease renewal is still required before
+executions longer than the TTL can be treated as production-safe.
+
 ## Data Responsibilities
 
 ```text
@@ -227,9 +276,11 @@ records, and durable checkpoints remain planned.
 
 Redis result caching is implemented with tenant/provider/query-scoped keys,
 bounded TTLs, application-scoped connection management, fail-open behavior,
-and live miss/write/hit verification. Progress state, idempotency keys,
-coordination locks, and rate limiting remain planned. Milvus private retrieval
-is implemented and live integration tested.
+and live miss/write/hit verification. Tenant-scoped idempotency records,
+canonical request fingerprints, atomic coordination locks, concurrent
+execution exclusion, and completed-response replay are also implemented and
+live tested. Progress state, lock renewal, and rate limiting remain planned.
+Milvus private retrieval is implemented and live integration tested.
 
 ## Local Setup
 
@@ -265,9 +316,10 @@ The synchronous MVP endpoint requires:
 - an optional user ID belonging to that tenant
 - the selected provider configuration
 
-The response includes `cache_hit`. Redis accelerates repeated equivalent
-requests when available, but a Redis outage does not prevent workflow
-execution or PostgreSQL lifecycle persistence.
+The response includes `cache_hit` and `idempotency_replayed`. Redis result
+caching accelerates repeated equivalent requests and fails open when
+unavailable. Requests that explicitly include `Idempotency-Key` instead fail
+closed when Redis cannot guarantee idempotency.
 
 Start the API:
 
@@ -284,6 +336,7 @@ curl \
   -H 'Content-Type: application/json' \
   -H 'X-Tenant-ID: 00000000-0000-0000-0000-000000000000' \
   -H 'X-User-ID: 00000000-0000-0000-0000-000000000000' \
+  -H 'Idempotency-Key: research-request-001' \
   -d '{
     "query": "What is a mutex?",
     "llm_provider": "qwen"
@@ -311,8 +364,8 @@ pytest -q
 Current verified default result:
 
 ```text
-283 passed
-11 integration tests deselected
+349 passed
+16 integration tests deselected
 1 dependency deprecation warning
 ```
 
@@ -390,8 +443,10 @@ REDIS_URL=redis://localhost:6379/0 \
 RUN_LIVE_TESTS=true \
 pytest -q -m integration \
   tests/integration/test_redis_live.py \
+  tests/integration/test_redis_idempotency_live.py \
   tests/integration/test_redis_research_result_cache_live.py \
-  tests/integration/test_research_execution_redis_live.py
+  tests/integration/test_research_execution_redis_live.py \
+  tests/integration/test_research_idempotency_concurrency_live.py
 ```
 
 The private-RAG test verifies the real path:
@@ -420,7 +475,8 @@ private engineering documents
 
 ## Next Phase
 
-Phase 9 has completed the research-result cache path:
+Phase 9 has completed the research-result cache and concurrent idempotency
+paths:
 
 ```text
 async Redis client foundation
@@ -432,15 +488,24 @@ cache_hit API visibility
 application lifecycle wiring
 fail-open behavior
 real API miss/write/hit verification
+tenant-scoped idempotency keys and request fingerprints
+completed-response storage and replay
+payload conflict detection
+atomic SET NX EX lock acquisition
+owner-token compare-and-delete release
+double-check after lock acquisition
+concurrent duplicate-execution prevention
+HTTP 409 conflict/in-progress handling
+fail-closed HTTP 503 behavior when idempotency is unavailable
+real Redis lock and concurrency verification
 ```
 
 The remaining Phase 9 coordination work is:
 
 ```text
-idempotency keys
-short-lived coordination locks
 rate-limit primitives
 progress and coordination state
+lock renewal for executions longer than the current TTL
 unit and live integration coverage for those primitives
 ```
 
