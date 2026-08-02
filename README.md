@@ -9,16 +9,18 @@ evaluation dataset because they provide concrete, technically demanding
 research scenarios.
 
 The platform is being built incrementally with FastAPI, LangGraph, Claude,
-Qwen through Ollama, Tavily, PostgreSQL, Redis, Milvus, and MCP. A component is
-listed as tested only after its automated checks pass in this repository.
+Qwen through Ollama, Tavily, PostgreSQL, Redis, Milvus, MCP, Vue, Docker, and
+AWS. A component is listed as tested only after its automated checks pass in
+this repository.
 
 ## Current Phase
 
 ```text
 Completed: Phase 0 through Phase 13
-Phase 13: GitHub Actions quality gates for backend, frontend, and containers
 Completed: canonical eight-agent backend and console alignment
-Next: Phase 14 - AWS deployment foundation
+Implemented and locally validated: Phase 14 AWS staging foundation
+Deployment status: not applied to an AWS account
+Next: bootstrap remote state, configure GitHub OIDC, apply staging, and run the live smoke test
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -237,7 +239,11 @@ explicit opt-in integration check rather than a default-test claim.
 | Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
 | Docker Compose project stack | Built and smoke tested across seven healthy services |
 | GitHub Actions | Remote verified across backend, frontend, and container quality gates |
-| AWS deployment | Planned |
+| Terraform state bootstrap | Formatted and validated locally; not applied |
+| Cost-controlled AWS staging infrastructure | Terraform validated and mock tested; not applied |
+| ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
+| GitHub OIDC deployment workflow | YAML and shell syntax validated locally; not run remotely |
+| AWS deployment | Implementation ready; account apply and live verification pending |
 | Open-source contribution | Planned |
 
 There are no published evaluation metrics or deployed environments yet.
@@ -245,6 +251,36 @@ Local Docker services and mocked providers are not described as production
 deployments.
 
 ## Current Architecture
+
+### AWS Staging Runtime
+
+```text
+browser
+→ CloudFront HTTPS and static-asset cache
+→ CloudFront-only Application Load Balancer ingress
+→ one ARM64 ECS Fargate task
+   ├── Nginx + Vue frontend
+   └── FastAPI + Alembic
+       ├── private encrypted RDS PostgreSQL
+       ├── private encrypted ElastiCache for Valkey
+       ├── Secrets Manager provider credentials
+       ├── external managed Milvus-compatible endpoint
+       └── Claude + Tavily over controlled outbound access
+```
+
+The staging topology deliberately omits a NAT Gateway. Fargate tasks receive
+explicit public egress addresses in public subnets, but accept application
+traffic only from the load balancer. RDS and Valkey remain in isolated data
+subnets and accept traffic only from the application security group. CloudFront
+provides the first HTTPS endpoint; a custom domain and certificate are not yet
+configured.
+
+The cloud image enables Claude only because the cost-controlled Fargate task
+does not run Ollama. Local builds continue to expose Qwen and Claude. The API
+still retains its provider-neutral Qwen contract for local deployments. Private
+RAG in AWS additionally requires an external embedding service compatible with
+the current embedding boundary; until that is configured, Local Scout isolates
+the retrieval failure and the web-research path can continue.
 
 ### Public Web Retrieval
 
@@ -572,7 +608,7 @@ pytest -q
 Current verified default result:
 
 ```text
-431 passed
+436 passed
 20 integration tests deselected
 1 dependency deprecation warning
 ```
@@ -597,7 +633,7 @@ Current frontend result:
 
 ```text
 Vue and TypeScript typecheck passed
-12 component and streaming-contract tests passed
+18 component, provider-configuration, and streaming-contract tests passed
 Vite production build passed
 desktop, mobile, provider, report, evidence, and operational states browser checked
 ```
@@ -610,7 +646,7 @@ browser-local until a tenant-scoped history endpoint is implemented.
 
 ## Continuous Integration
 
-GitHub Actions runs three explicit quality gates on pull requests and pushes to
+GitHub Actions runs four explicit quality gates on pull requests and pushes to
 `main`:
 
 ```text
@@ -627,17 +663,24 @@ Frontend quality
 → Vitest
 → Vite production build
 
+Terraform quality
+→ recursive formatting check
+→ bootstrap and staging initialization without remote state
+→ Terraform validation and mock plan-invariant test
+→ deployment and destroy script syntax checks
+
 Container packaging
 → validate Compose configuration and smoke-script syntax
 → build the FastAPI image
 → build the Vue and Nginx image
 ```
 
-The container job waits for both code-quality jobs. The seven-service Compose
-smoke test remains an explicit local integration check because starting Milvus,
-etcd, MinIO, PostgreSQL, and Redis on every pull request would add substantial
-latency. This separation keeps pull-request feedback bounded without claiming
-that image builds replace the live Compose verification documented below.
+The container job waits for backend, frontend, and Terraform quality. The
+seven-service Compose smoke test remains an explicit local integration check
+because starting Milvus, etcd, MinIO, PostgreSQL, and Redis on every pull
+request would add substantial latency. This separation keeps pull-request
+feedback bounded without claiming that image builds replace the live Compose
+verification documented below.
 
 ## Local Docker Compose Stack
 
@@ -685,6 +728,67 @@ started stack without deleting those volumes:
 ```bash
 docker compose down
 ```
+
+## AWS Staging Deployment
+
+Phase 14 provides separate Terraform roots for the protected remote-state
+bucket and disposable staging resources:
+
+```text
+infra/terraform/bootstrap
+→ encrypted, versioned, public-access-blocked S3 state bucket
+→ native S3 state locking
+→ prevent_destroy guard
+
+infra/terraform/staging
+→ two-AZ VPC with public application and isolated data subnets
+→ immutable, encrypted, scan-on-push ECR repositories
+→ single-AZ encrypted RDS PostgreSQL
+→ single-node encrypted Valkey cache
+→ Secrets Manager credentials and least-privilege ECS execution access
+→ ARM64 Fargate task, CloudWatch logs, ALB, and CloudFront
+→ monthly AWS Budget alerts
+```
+
+The staging defaults prioritize cost control, not high availability: zero
+running application tasks until images exist, 0.5 vCPU and 1 GiB per running
+task, small Graviton database/cache instances, seven-day logs, twenty retained
+images per repository, no NAT Gateway, and a USD 25 monthly budget alert. A
+budget alert does not stop charges. RDS, Valkey, ALB, CloudFront, Secrets
+Manager, ECR, and Fargate can all incur costs after apply, even when the ECS
+desired count is zero.
+
+After creating the bootstrap bucket, configuring a backend file, and supplying
+the required provider variables and secrets, deploy locally with:
+
+```bash
+TF_VAR_budget_notification_email=you@example.com \
+TF_VAR_anthropic_model=replace-with-supported-model-id \
+TF_VAR_milvus_uri=https://replace-with-managed-milvus-endpoint \
+ANTHROPIC_API_KEY=... \
+TAVILY_API_KEY=... \
+MILVUS_TOKEN=... \
+scripts/aws-deploy.sh
+```
+
+The script applies dependencies with zero tasks, stores provider secrets,
+pushes both Linux ARM64 images under one immutable Git SHA, starts the service,
+waits for ECS stability, invalidates CloudFront, and verifies `/api/health`.
+The manual `Deploy AWS staging` workflow performs the same operation through a
+protected GitHub environment and AWS OIDC, without long-lived AWS keys.
+
+Destroy billable staging resources only after reviewing the active account and
+the generated plan:
+
+```bash
+AWS_DESTROY_CONFIRM=destroy-staging scripts/aws-destroy.sh
+```
+
+The separate versioned Terraform state bucket remains protected during routine
+staging destruction. Full variables, bootstrap steps, GitHub environment
+configuration, and failure recovery are documented in
+`infra/terraform/staging/README.md`. No AWS account apply or public endpoint is
+claimed by this README yet.
 
 ## Live Integration Tests
 
@@ -842,7 +946,14 @@ comparison are recorded in `design-qa.md`.
 Phase 13 is complete and its backend, frontend, and container jobs have passed
 on a GitHub-hosted pull-request run. A synchronous browser submission mode is
 intentionally not claimed; the console uses the durable background-job
-contract. The next phase is the AWS deployment foundation.
+contract.
+
+Phase 14 infrastructure and deployment automation are implemented and locally
+validated. The work includes remote-state bootstrap, cost and lifecycle guards,
+private data services, CloudFront-restricted ingress, immutable ARM64 images,
+GitHub OIDC deployment, a Claude-only cloud console, and explicit teardown. It
+is not marked deployed because no AWS account plan/apply or live endpoint smoke
+test has been run.
 
 MCP is currently a contract-tested client boundary rather than a configured
 external integration. PostgreSQL remains the durable source of truth, while
