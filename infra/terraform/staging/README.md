@@ -73,6 +73,52 @@ An authenticated plan contacts AWS to resolve account and availability-zone
 data but does not create resources. Review the plan and the AWS Pricing
 Calculator before applying it.
 
+## Verified remote plan and cost boundary
+
+The protected GitHub Actions OIDC job generated a real remote-state-backed plan
+on 2026-08-02 with `application_desired_count = 0`:
+
+```text
+Plan: 48 to add, 0 to change, 0 to destroy.
+```
+
+No Terraform plan artifact is uploaded because plan files can contain sensitive
+values. The job emits only deterministic change counts to its step summary.
+
+The following fixed-cost estimate uses 730 hours per month and public
+`us-west-2` on-demand rates from the AWS Price List. It excludes traffic-driven
+ALB LCUs, CloudFront and internet transfer, CloudWatch ingestion, ECR storage,
+Secrets Manager API calls, external providers, and taxes.
+
+| Planned component | Estimated monthly cost |
+| --- | ---: |
+| RDS PostgreSQL `db.t4g.micro` | $11.68 |
+| RDS gp3 storage, 20 GiB | $2.30 |
+| ElastiCache Valkey `cache.t4g.micro` | $9.34 |
+| Application Load Balancer | $16.42 |
+| Two public IPv4 addresses | $7.30 |
+| Three Secrets Manager secrets | $1.20 |
+| Zero-task fixed baseline | **$48.25** |
+| One 0.5 vCPU / 1 GiB ARM64 Fargate task | +$14.42 |
+| Public IPv4 address assigned to the running task | +$3.65 |
+| One-task fixed baseline | **$66.32** |
+
+A four-hour demo with one task is approximately $0.36 before variable usage;
+a 24-hour demo is approximately $2.18. These are estimates, not billing caps.
+The configured $25 monthly budget sends alerts but does not stop resources.
+Current rates should be rechecked before every apply against the official
+[RDS](https://aws.amazon.com/rds/postgresql/pricing/),
+[ElastiCache](https://aws.amazon.com/elasticache/pricing/),
+[Elastic Load Balancing](https://aws.amazon.com/elasticloadbalancing/pricing/),
+[VPC IPv4](https://aws.amazon.com/vpc/pricing/), and
+[Secrets Manager](https://aws.amazon.com/secrets-manager/pricing/) pages.
+
+The plan still contains non-deployable placeholder values for the Anthropic
+model and managed Milvus endpoint. Configure those values and the three
+provider credentials before approving an application deployment. Creating the
+zero-task infrastructure before those inputs exist would incur the fixed
+baseline without producing a usable demo.
+
 The RDS password is generated and stored through the RDS-managed Secrets
 Manager integration. The cache token is randomly generated and stored in the
 encrypted remote Terraform state. Deployment automation pipes that token and

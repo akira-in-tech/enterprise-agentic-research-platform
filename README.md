@@ -23,8 +23,9 @@ Deployed and verified: protected Terraform remote-state bootstrap in us-west-2
 Initialized and validated: staging Terraform uses the protected S3 backend
 Deployed and verified: immutable-repository GitHub OIDC identity, 5 add / 0 change / 0 destroy
 Remotely verified: protected GitHub Actions OIDC role assumption with short-lived credentials
+Generated and remotely verified: zero-task staging plan, 48 add / 0 change / 0 destroy
 Deployment status: state bucket and CI identity only; staging application resources are not applied
-Next: generate and review the cost-controlled staging application plan
+Next: configure real cloud providers, approve a demo window, then apply and destroy on demand
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -244,10 +245,10 @@ explicit opt-in integration check rather than a default-test claim.
 | Docker Compose project stack | Built and smoke tested across seven healthy services |
 | GitHub Actions | Remote verified across backend, frontend, and container quality gates |
 | Terraform state bootstrap | Applied and AWS verified: protected S3 bucket plus five security controls; staging backend initialized |
-| Cost-controlled AWS staging infrastructure | Terraform validated and mock tested; not applied |
+| Cost-controlled AWS staging infrastructure | Terraform validated and mock tested; protected OIDC plan reports 48 add / 0 change / 0 destroy with zero running tasks; not applied |
 | ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
 | GitHub OIDC deployment identity | Applied and AWS verified: exact repository/environment trust, three reviewed inline policies, protected remote state, and zero Terraform drift |
-| GitHub OIDC deployment workflow | Remotely verified on GitHub Actions: protected staging environment assumed the expected AWS account and deployment role with short-lived credentials |
+| GitHub OIDC deployment workflow | Remotely verified on GitHub Actions: protected staging environment assumed the expected AWS account and deployment role, then generated the zero-task staging plan with short-lived credentials |
 | AWS deployment | Remote-state bootstrap deployed and staging backend initialized; application apply and live endpoint verification pending |
 | Open-source contribution | Planned |
 
@@ -986,7 +987,17 @@ limit, and three reviewed inline policies. Its protected remote state is
 versioned and encrypted, and the post-apply Terraform plan reports zero drift.
 The protected GitHub Actions workflow then assumed the expected staging role
 through OIDC and verified the AWS account and assumed-role ARN without storing
-long-lived AWS credentials.
+long-lived AWS credentials. The same protected job generated the first real
+staging plan: 48 resources to add, none to change or destroy, and ECS desired
+count held at zero. No plan artifact was uploaded and no application resource
+was applied.
+
+At public `us-west-2` rates checked on 2026-08-02, the planned zero-task stack
+has an estimated fixed baseline of about $48.25 per 730-hour month. One 0.5
+vCPU / 1 GiB ARM64 Fargate task plus its assigned public IPv4 address raises
+that baseline to about $66.32 before traffic, logs, image storage, provider
+APIs, and taxes. This is why the staging environment remains demo-on-demand
+and why the $25 AWS Budget is treated as an alert rather than a spending cap.
 
 MCP is currently a contract-tested client boundary rather than a configured
 external integration. PostgreSQL remains the durable source of truth, while
