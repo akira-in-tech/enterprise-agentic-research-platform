@@ -58,14 +58,14 @@ const reportApproved = computed(
 
 const activeAgent = computed<ResearchAgentId>(() => {
   const state = props.progress?.workflow_status?.toLowerCase() ?? "";
-  if (state.includes("scope") || state.includes("classif")) return "scope";
-  if (state.includes("plan")) return "plan";
-  if (state.includes("retriev") || state.includes("search")) return "retrieve";
-  if (state.includes("private") || state.includes("rag")) return "private_rag";
-  if (state.includes("verif") || state.includes("reflect")) return "verify";
-  if (state.includes("synth")) return "synthesize";
-  if (state.includes("report") || state.includes("write")) return "report";
-  return "analyze";
+  if (state.includes("intent") || state.includes("rout") || state.includes("classif")) return "intent_router";
+  if (state.includes("plan")) return "planner";
+  if (state.includes("private") || state.includes("local") || state.includes("rag")) return "local_scout";
+  if (state.includes("web") || state.includes("retriev") || state.includes("search")) return "web_scout";
+  if (state.includes("evidence") || state.includes("judg") || state.includes("verif")) return "evidence_judge";
+  if (state.includes("reflect") || state.includes("revision")) return "reflect";
+  if (state.includes("report") || state.includes("writ")) return "writer";
+  return "analyst";
 });
 
 function sourceIcon(source: ResearchReportSource): typeof PhGlobe {

@@ -21,21 +21,21 @@ const props = withDefaults(
     compact?: boolean;
   }>(),
   {
-    activeAgent: "analyze",
+    activeAgent: "analyst",
     completed: false,
     compact: false,
   },
 );
 
 const agents = [
-  { id: "scope", label: "Scope", icon: PhSlidersHorizontal },
-  { id: "plan", label: "Plan", icon: PhListChecks },
-  { id: "retrieve", label: "Retrieve", icon: PhMagnifyingGlass },
-  { id: "private_rag", label: "Private RAG", icon: PhLockKey },
-  { id: "analyze", label: "Analyze", icon: PhChartLineUp },
-  { id: "verify", label: "Verify", icon: PhShieldCheck },
-  { id: "synthesize", label: "Synthesize", icon: PhSparkle },
-  { id: "report", label: "Report", icon: PhFileText },
+  { id: "intent_router", label: "Intent Router", icon: PhSlidersHorizontal },
+  { id: "planner", label: "Planner", icon: PhListChecks },
+  { id: "web_scout", label: "Web Scout", icon: PhMagnifyingGlass },
+  { id: "local_scout", label: "Local Scout", icon: PhLockKey },
+  { id: "evidence_judge", label: "Evidence Judge", icon: PhShieldCheck },
+  { id: "analyst", label: "Analyst", icon: PhChartLineUp },
+  { id: "reflect", label: "Reflect", icon: PhSparkle },
+  { id: "writer", label: "Writer", icon: PhFileText },
 ] as const;
 
 const activeIndex = computed(() =>

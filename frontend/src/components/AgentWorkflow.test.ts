@@ -6,22 +6,22 @@ import AgentWorkflow from "./AgentWorkflow.vue";
 describe("AgentWorkflow", () => {
   it("presents all eight agents in a stable accessible order", () => {
     const wrapper = mount(AgentWorkflow, {
-      props: { activeAgent: "analyze" },
+      props: { activeAgent: "analyst" },
     });
 
     const steps = wrapper.findAll(".agent-step");
     expect(steps).toHaveLength(8);
     expect(steps.map((step) => step.text())).toEqual([
-      "Scope",
-      "Plan",
-      "Retrieve",
-      "Private RAG",
-      "AnalyzeWorking",
-      "Verify",
-      "Synthesize",
-      "Report",
+      "Intent Router",
+      "Planner",
+      "Web Scout",
+      "Local Scout",
+      "Evidence Judge",
+      "AnalystWorking",
+      "Reflect",
+      "Writer",
     ]);
-    expect(wrapper.get('[aria-current="step"]').text()).toContain("Analyze");
+    expect(wrapper.get('[aria-current="step"]').text()).toContain("Analyst");
   });
 
   it("marks the whole flow complete without leaving an active step", () => {

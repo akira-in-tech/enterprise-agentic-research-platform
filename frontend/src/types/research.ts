@@ -3,14 +3,14 @@ export type UserFacingProvider = "qwen" | "claude";
 export type ProgressStatus = "queued" | "running" | "completed" | "failed";
 
 export type ResearchAgentId =
-  | "scope"
-  | "plan"
-  | "retrieve"
-  | "private_rag"
-  | "analyze"
-  | "verify"
-  | "synthesize"
-  | "report";
+  | "intent_router"
+  | "planner"
+  | "web_scout"
+  | "local_scout"
+  | "evidence_judge"
+  | "analyst"
+  | "reflect"
+  | "writer";
 
 export type OperationalIssueKind =
   | "redis_unavailable"
