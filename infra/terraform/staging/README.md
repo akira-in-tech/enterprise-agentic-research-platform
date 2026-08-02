@@ -73,23 +73,13 @@ An authenticated plan contacts AWS to resolve account and availability-zone
 data but does not create resources. Review the plan and the AWS Pricing
 Calculator before applying it.
 
-After the first apply, replace the external-provider placeholders without
-putting credentials in Terraform variables or Git:
-
-```bash
-aws secretsmanager put-secret-value \
-  --secret-id "$(terraform output -raw provider_secret_arn)" \
-  --secret-string '{
-    "ANTHROPIC_API_KEY":"replace-me",
-    "TAVILY_API_KEY":"replace-me",
-    "MILVUS_TOKEN":"replace-me"
-  }'
-```
-
 The RDS password is generated and stored through the RDS-managed Secrets
 Manager integration. The cache token is randomly generated and stored in the
-encrypted remote Terraform state as well as Secrets Manager. Never commit a
-plan file because Terraform plans can contain sensitive values.
+encrypted remote Terraform state. Deployment automation pipes that token and
+the required environment-provided provider credentials directly into their
+Secrets Manager records without reading existing secret values or exposing
+secret strings as command arguments. Never commit a plan file because
+Terraform plans can contain sensitive values.
 
 The first full apply keeps `application_desired_count = 0`, so AWS can create
 the ECR repositories and dependencies before images exist. Push both ARM64
@@ -99,8 +89,8 @@ SHA, update the external provider secret, and then set
 
 ## Repeatable deployment
 
-The deployment script performs the dependency-first apply, optionally updates
-the provider secret from environment variables, pushes both Linux ARM64 images
+The deployment script performs the dependency-first apply, writes the cache
+and provider secrets from in-memory values, pushes both Linux ARM64 images
 under one immutable Git SHA, starts the service, waits for ECS stability,
 invalidates CloudFront, and verifies `/api/health`:
 

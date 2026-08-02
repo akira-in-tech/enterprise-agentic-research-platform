@@ -84,28 +84,8 @@ resource "aws_secretsmanager_secret" "cache" {
   recovery_window_in_days = 0
 }
 
-resource "aws_secretsmanager_secret_version" "cache" {
-  secret_id = aws_secretsmanager_secret.cache.id
-  secret_string = jsonencode({
-    auth_token = random_password.cache_auth_token.result
-  })
-}
-
 resource "aws_secretsmanager_secret" "providers" {
   name                    = "${local.name_prefix}/providers"
   description             = "External LLM, search, and managed Milvus credentials"
   recovery_window_in_days = 0
-}
-
-resource "aws_secretsmanager_secret_version" "providers" {
-  secret_id = aws_secretsmanager_secret.providers.id
-  secret_string = jsonencode({
-    ANTHROPIC_API_KEY = "replace-after-apply"
-    MILVUS_TOKEN      = "replace-after-apply"
-    TAVILY_API_KEY    = "replace-after-apply"
-  })
-
-  lifecycle {
-    ignore_changes = [secret_string]
-  }
 }

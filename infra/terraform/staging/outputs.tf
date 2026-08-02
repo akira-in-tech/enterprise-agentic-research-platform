@@ -38,8 +38,21 @@ output "cache_endpoint" {
   value       = aws_elasticache_replication_group.cache.primary_endpoint_address
 }
 
+output "cache_secret_arn" {
+  description = "Secrets Manager ARN populated by deployment automation with the cache token."
+  value       = aws_secretsmanager_secret.cache.arn
+}
+
+output "cache_secret_payload" {
+  description = "Sensitive cache payload piped directly to Secrets Manager by deployment automation."
+  value = jsonencode({
+    auth_token = random_password.cache_auth_token.result
+  })
+  sensitive = true
+}
+
 output "provider_secret_arn" {
-  description = "Secrets Manager ARN whose placeholder external provider keys must be replaced after apply."
+  description = "Secrets Manager ARN populated by deployment automation with external provider credentials."
   value       = aws_secretsmanager_secret.providers.arn
 }
 
