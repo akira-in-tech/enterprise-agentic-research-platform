@@ -77,12 +77,45 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+  terraform:
+    name: Terraform quality
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+
+      - name: Check Terraform formatting
+        run: terraform fmt -check -recursive infra/terraform
+
+      - name: Initialize and validate bootstrap
+        working-directory: infra/terraform/bootstrap
+        run: terraform init -backend=false && terraform validate
+
+      - name: Initialize and validate staging
+        working-directory: infra/terraform/staging
+        run: terraform init -backend=false && terraform validate
+
+      - name: Test staging plan invariants
+        working-directory: infra/terraform/staging
+        run: terraform test
+
+      - name: Validate deployment script syntax
+        run: bash -n scripts/aws-deploy.sh scripts/aws-destroy.sh
+
   containers:
     name: Container packaging
     runs-on: ubuntu-latest
     needs:
       - backend
       - frontend
+      - terraform
     timeout-minutes: 20
 
     steps:

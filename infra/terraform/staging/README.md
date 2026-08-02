@@ -86,3 +86,38 @@ the ECR repositories and dependencies before images exist. Push both ARM64
 images under the same immutable Git SHA, set both image-tag variables to that
 SHA, update the external provider secret, and then set
 `application_desired_count = 1`.
+
+## Repeatable deployment
+
+The deployment script performs the dependency-first apply, optionally updates
+the provider secret from environment variables, pushes both Linux ARM64 images
+under one immutable Git SHA, starts the service, waits for ECS stability,
+invalidates CloudFront, and verifies `/api/health`:
+
+```bash
+TF_VAR_budget_notification_email=you@example.com \
+TF_VAR_anthropic_model=replace-with-supported-model-id \
+TF_VAR_milvus_uri=https://replace-with-managed-milvus-endpoint \
+ANTHROPIC_API_KEY=... \
+TAVILY_API_KEY=... \
+MILVUS_TOKEN=... \
+scripts/aws-deploy.sh
+```
+
+GitHub Actions exposes the same operation as the manually dispatched
+`Deploy AWS staging` workflow. Configure a protected `staging` environment
+with repository variables `AWS_REGION`, `TF_STATE_BUCKET`,
+`BUDGET_NOTIFICATION_EMAIL`, `ANTHROPIC_MODEL`, and `MILVUS_URI`; configure
+environment secrets `AWS_DEPLOY_ROLE_ARN`, `ANTHROPIC_API_KEY`,
+`TAVILY_API_KEY`, and `MILVUS_TOKEN`. The AWS role must trust GitHub OIDC for
+this repository and environment. Long-lived AWS access keys are not used.
+
+Destroy the billable staging stack explicitly:
+
+```bash
+AWS_DESTROY_CONFIRM=destroy-staging scripts/aws-destroy.sh
+```
+
+The destroy script produces and applies a dedicated destroy plan. The separate
+versioned state bucket remains protected and must not be removed during routine
+staging cleanup.

@@ -1,0 +1,73 @@
+name: Deploy AWS staging
+
+on:
+  workflow_dispatch:
+    inputs:
+      desired_count:
+        description: Running Fargate task count
+        required: true
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "2"
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-aws-staging
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: staging
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials through GitHub OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Configure remote state
+        shell: bash
+        run: |
+          cat > "${RUNNER_TEMP}/backend.hcl" <<EOF
+          bucket       = "${{ vars.TF_STATE_BUCKET }}"
+          key          = "evident/staging/terraform.tfstate"
+          region       = "${{ vars.AWS_REGION }}"
+          encrypt      = true
+          use_lockfile = true
+          EOF
+
+      - name: Deploy immutable images and infrastructure
+        env:
+          TF_BACKEND_CONFIG: ${{ runner.temp }}/backend.hcl
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+          TF_VAR_budget_notification_email: ${{ vars.BUDGET_NOTIFICATION_EMAIL }}
+          TF_VAR_anthropic_model: ${{ vars.ANTHROPIC_MODEL }}
+          TF_VAR_milvus_uri: ${{ vars.MILVUS_URI }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          MILVUS_TOKEN: ${{ secrets.MILVUS_TOKEN }}
+          APPLICATION_DESIRED_COUNT: ${{ inputs.desired_count }}
+          AWS_DEPLOY_AUTO_APPROVE: "true"
+          IMAGE_TAG: ${{ github.sha }}
+        run: scripts/aws-deploy.sh

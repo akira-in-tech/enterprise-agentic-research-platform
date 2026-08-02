@@ -48,6 +48,11 @@ output "application_url" {
   value       = "https://${aws_cloudfront_distribution.application.domain_name}"
 }
 
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution invalidated after immutable image deployments."
+  value       = aws_cloudfront_distribution.application.id
+}
+
 output "ecs_cluster_name" {
   description = "ECS cluster used by deployment automation."
   value       = aws_ecs_cluster.this.name
