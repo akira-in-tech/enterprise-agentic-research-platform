@@ -19,9 +19,9 @@ this repository.
 Completed: Phase 0 through Phase 13
 Completed: canonical eight-agent backend and console alignment
 Implemented and locally validated: Phase 14 AWS staging foundation
-Account verified: remote-state bootstrap plan (6 add, 0 change, 0 destroy)
-Deployment status: no AWS resources applied
-Next: apply the protected remote-state bootstrap, configure GitHub OIDC, plan staging, and run the live smoke test
+Deployed and verified: protected Terraform remote-state bootstrap in us-west-2
+Deployment status: state bucket only; staging application resources are not applied
+Next: initialize the staging backend, configure GitHub OIDC, plan staging, and run the live smoke test
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -240,16 +240,17 @@ explicit opt-in integration check rather than a default-test claim.
 | Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
 | Docker Compose project stack | Built and smoke tested across seven healthy services |
 | GitHub Actions | Remote verified across backend, frontend, and container quality gates |
-| Terraform state bootstrap | Account-authenticated plan verified: 6 add, 0 change, 0 destroy; not applied |
+| Terraform state bootstrap | Applied and AWS verified: protected S3 bucket plus five security controls; post-apply plan has zero changes |
 | Cost-controlled AWS staging infrastructure | Terraform validated and mock tested; not applied |
 | ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
 | GitHub OIDC deployment workflow | YAML and shell syntax validated locally; not run remotely |
-| AWS deployment | Bootstrap plan verified against AWS; account apply and live verification pending |
+| AWS deployment | Remote-state bootstrap deployed; staging application apply and live endpoint verification pending |
 | Open-source contribution | Planned |
 
-There are no published evaluation metrics or deployed environments yet.
-Local Docker services and mocked providers are not described as production
-deployments.
+There are no published evaluation metrics or deployed application environments
+yet. The Terraform state bucket is infrastructure plumbing, not an application
+deployment. Local Docker services and mocked providers are not described as
+production deployments.
 
 ## Current Architecture
 
@@ -759,13 +760,15 @@ budget alert does not stop charges. RDS, Valkey, ALB, CloudFront, Secrets
 Manager, ECR, and Fargate can all incur costs after apply, even when the ECS
 desired count is zero.
 
-The account-authenticated bootstrap plan resolves the protected state bucket
-name for the active AWS account and reports six creates with no updates or
-deletes. The saved plan remains unapplied; this verification created no AWS
-infrastructure.
+The protected, account-scoped state bucket is deployed in `us-west-2` using the
+`evident-research-platform-<account-id>-tfstate` naming rule. Terraform applied
+six resources with no updates or deletes. AWS API verification confirmed
+versioning, AES256 encryption, `BucketOwnerEnforced` ownership, all four
+public-access blocks, the HTTPS-only bucket policy, and the expected resource
+tags. A post-apply Terraform plan reports zero changes.
 
-After creating the bootstrap bucket, configuring a backend file, and supplying
-the required provider variables and secrets, deploy locally with:
+After configuring the staging backend file and supplying the required provider
+variables and secrets, deploy locally with:
 
 ```bash
 TF_VAR_budget_notification_email=you@example.com \
@@ -958,8 +961,9 @@ Phase 14 infrastructure and deployment automation are implemented and locally
 validated. The work includes remote-state bootstrap, cost and lifecycle guards,
 private data services, CloudFront-restricted ingress, immutable ARM64 images,
 GitHub OIDC deployment, a Claude-only cloud console, and explicit teardown. It
-is not marked deployed because only the account-authenticated bootstrap plan has
-been verified; no AWS apply or live endpoint smoke test has been run.
+is not marked as an application deployment: only the protected remote-state
+bootstrap has been applied and verified. No staging application apply or live
+endpoint smoke test has been run.
 
 MCP is currently a contract-tested client boundary rather than a configured
 external integration. PostgreSQL remains the durable source of truth, while
