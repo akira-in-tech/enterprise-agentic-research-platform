@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import Protocol, cast
 from uuid import UUID
 
+from app.agents.local_scout import LocalScoutAgent
 from app.schemas.cache import CachedResearchResult
 from app.schemas.progress import ResearchProgressRecord, ResearchProgressStatus
 from app.services.cache import CacheUnavailableError
@@ -153,6 +154,8 @@ WorkflowFactory = Callable[
 
 def create_default_workflow(
     provider: CanonicalLLMProvider,
+    *,
+    local_scout: LocalScoutAgent | None = None,
 ) -> ResearchWorkflow:
     """Build one managed production workflow."""
 
@@ -163,6 +166,7 @@ def create_default_workflow(
     return LangGraphResearchWorkflow(
         build_research_graph_for_client(
             llm_client,
+            local_scout=local_scout,
         ),
         llm_client.close,
     )

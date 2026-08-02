@@ -1,9 +1,11 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import AsyncExitStack, asynccontextmanager
+from functools import partial
 
 from fastapi import FastAPI
 
+from app.agents.local_scout import LocalScoutAgent
 from app.api.research import router as research_router
 from app.core.config import settings
 from app.core.logging import configure_logging
@@ -19,8 +21,11 @@ from app.services.cache import (
     RedisResearchRateLimiter,
     RedisResearchResultCache,
 )
+from app.services.embeddings.ollama import OllamaEmbeddingClient
+from app.services.knowledge.retrieval import PrivateKnowledgeRetriever
 from app.services.research.execution import (
     ResearchExecutionService,
+    create_default_workflow,
 )
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
@@ -30,6 +35,7 @@ from app.services.research.postgres import (
     PostgresResearchRunStore,
 )
 from app.services.research.reports import PostgresResearchReportStore
+from app.services.vector_store.factory import create_vector_store
 
 configure_logging()
 
@@ -51,6 +57,21 @@ async def lifespan(
         redis_connection = RedisConnection.from_url()
         resource_stack.push_async_callback(
             redis_connection.close,
+        )
+
+        embedding_client = OllamaEmbeddingClient()
+        resource_stack.push_async_callback(
+            embedding_client.close,
+        )
+        vector_store = create_vector_store()
+        resource_stack.push_async_callback(
+            vector_store.close,
+        )
+        local_scout = LocalScoutAgent(
+            PrivateKnowledgeRetriever(
+                embedding_client,
+                vector_store,
+            )
         )
 
         session_factory = create_session_factory(
@@ -80,6 +101,10 @@ async def lifespan(
         )
         execution_service = ResearchExecutionService(
             research_store,
+            partial(
+                create_default_workflow,
+                local_scout=local_scout,
+            ),
             result_cache=result_cache,
             progress_store=progress_store,
         )

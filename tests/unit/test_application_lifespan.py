@@ -30,6 +30,22 @@ class RecordingJobManager:
         self.closed = True
 
 
+class RecordingEmbeddingClient:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class RecordingVectorStore:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
+
 @pytest.mark.anyio
 async def test_lifespan_wires_and_closes_application_resources(
     monkeypatch: pytest.MonkeyPatch,
@@ -47,6 +63,11 @@ async def test_lifespan_wires_and_closes_application_resources(
     progress_store = object()
     report_store = object()
     job_manager = RecordingJobManager()
+    embedding_client = RecordingEmbeddingClient()
+    vector_store = RecordingVectorStore()
+    private_retriever = object()
+    local_scout = object()
+    expected_workflow = object()
 
     create_engine = Mock(
         return_value=engine,
@@ -85,6 +106,21 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_job_manager = Mock(
         return_value=job_manager,
+    )
+    create_embedding_client = Mock(
+        return_value=embedding_client,
+    )
+    create_vector_store = Mock(
+        return_value=vector_store,
+    )
+    create_private_retriever = Mock(
+        return_value=private_retriever,
+    )
+    create_local_scout = Mock(
+        return_value=local_scout,
+    )
+    create_workflow = Mock(
+        return_value=expected_workflow,
     )
     monkeypatch.setattr(
         main_module,
@@ -151,6 +187,31 @@ async def test_lifespan_wires_and_closes_application_resources(
         "ResearchJobManager",
         create_job_manager,
     )
+    monkeypatch.setattr(
+        main_module,
+        "OllamaEmbeddingClient",
+        create_embedding_client,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "create_vector_store",
+        create_vector_store,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "PrivateKnowledgeRetriever",
+        create_private_retriever,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "LocalScoutAgent",
+        create_local_scout,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "create_default_workflow",
+        create_workflow,
+    )
 
     application = FastAPI()
 
@@ -165,10 +226,14 @@ async def test_lifespan_wires_and_closes_application_resources(
         assert engine.disposed is False
         assert redis_connection.closed is False
         assert job_manager.closed is False
+        assert embedding_client.closed is False
+        assert vector_store.closed is False
 
     assert redis_connection.closed is True
     assert engine.disposed is True
     assert job_manager.closed is True
+    assert embedding_client.closed is True
+    assert vector_store.closed is True
 
     create_idempotency_store.assert_called_once_with(
         redis_connection,
@@ -204,8 +269,24 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_job_manager.assert_called_once_with(
         execution_service,
     )
-    create_execution_service.assert_called_once_with(
-        research_store,
-        result_cache=result_cache,
-        progress_store=progress_store,
+    create_embedding_client.assert_called_once_with()
+    create_vector_store.assert_called_once_with()
+    create_private_retriever.assert_called_once_with(
+        embedding_client,
+        vector_store,
     )
+    create_local_scout.assert_called_once_with(
+        private_retriever,
+    )
+    execution_call = create_execution_service.call_args
+    assert execution_call.args[0] is research_store
+    workflow_factory = execution_call.args[1]
+    assert workflow_factory("ollama") is expected_workflow
+    create_workflow.assert_called_once_with(
+        "ollama",
+        local_scout=local_scout,
+    )
+    assert execution_call.kwargs == {
+        "result_cache": result_cache,
+        "progress_store": progress_store,
+    }

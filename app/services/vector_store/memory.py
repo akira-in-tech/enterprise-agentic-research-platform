@@ -131,6 +131,9 @@ class InMemoryVectorStore:
 
         return len(keys_to_delete)
 
+    async def close(self) -> None:
+        """Close the in-memory store without external cleanup."""
+
     def _validate_vector(
         self,
         vector: Sequence[float],
