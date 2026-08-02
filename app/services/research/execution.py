@@ -317,6 +317,7 @@ class ResearchExecutionService:
                 )
                 initial_state: ResearchState = {
                     "query": normalized_query,
+                    "tenant_id": tenant_id,
                 }
 
                 try:

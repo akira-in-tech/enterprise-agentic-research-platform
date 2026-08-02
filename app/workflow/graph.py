@@ -1,5 +1,6 @@
 from collections.abc import Awaitable, Callable
 from typing import Literal
+from uuid import UUID
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
@@ -7,6 +8,7 @@ from langgraph.graph.state import CompiledStateGraph
 from app.agents.analyst import AnalystAgent
 from app.agents.direct_answer import DirectAnswerAgent
 from app.agents.intent_router import IntentRouter
+from app.agents.local_scout import LocalScoutAgent, LocalScoutResult
 from app.agents.planner import PlannerAgent
 from app.agents.reflection import ReflectionAgent
 from app.schemas.evidence import (
@@ -39,6 +41,10 @@ DirectAnswerGenerator = Callable[[str], Awaitable[str]]
 SearchPlanExecutor = Callable[
     [ResearchPlan],
     Awaitable[list[ResearchTaskResult]],
+]
+LocalKnowledgeScout = Callable[
+    [ResearchPlan, UUID],
+    Awaitable[LocalScoutResult],
 ]
 EvidenceAnalyzer = Callable[
     [str, list[WebSource]],
@@ -181,6 +187,41 @@ def build_web_search_node(
     return web_search_node
 
 
+def build_local_scout_node(
+    scout_private_knowledge: LocalKnowledgeScout,
+) -> Callable[[ResearchState], Awaitable[dict[str, object]]]:
+    """Create the tenant-scoped Local Scout node."""
+
+    async def local_scout_node(state: ResearchState) -> dict[str, object]:
+        tenant_id = state.get("tenant_id")
+
+        if tenant_id is None:
+            raise ValueError("Local Scout requires tenant_id in ResearchState.")
+
+        result = await scout_private_knowledge(
+            state["plan"],
+            tenant_id,
+        )
+
+        if result.errors and not result.sources:
+            status = "local_scout_failed"
+        elif result.errors:
+            status = "local_scout_partial"
+        elif result.sources:
+            status = "local_scout_completed"
+        else:
+            status = "local_scout_empty"
+
+        return {
+            "active_agent": "local_scout",
+            "private_sources": result.sources,
+            "local_scout_errors": result.errors,
+            "status": status,
+        }
+
+    return local_scout_node
+
+
 def build_evidence_node(
     analyze_evidence: EvidenceAnalyzer,
 ) -> Callable[[ResearchState], dict[str, object]]:
@@ -273,6 +314,7 @@ def build_research_graph(
     generate_direct_answer: DirectAnswerGenerator,
     execute_search: SearchPlanExecutor,
     *,
+    scout_private_knowledge: LocalKnowledgeScout | None = None,
     analyze_evidence: EvidenceAnalyzer | None = None,
     generate_report: ReportGenerator | None = None,
     review_report: ReportReviewer | None = None,
@@ -302,6 +344,12 @@ def build_research_graph(
         "web_search",
         build_web_search_node(execute_search),
     )
+
+    if scout_private_knowledge is not None:
+        graph_builder.add_node(  # type: ignore[call-overload]
+            "local_scout",
+            build_local_scout_node(scout_private_knowledge),
+        )
 
     quality_pipeline = (
         analyze_evidence is not None and generate_report is not None and review_report is not None
@@ -364,10 +412,14 @@ def build_research_graph(
         "direct_answer",
         END,
     )
-    graph_builder.add_edge(
-        "planner",
-        "web_search",
-    )
+    if scout_private_knowledge is None:
+        graph_builder.add_edge(
+            "planner",
+            "web_search",
+        )
+    else:
+        graph_builder.add_edge("planner", "local_scout")
+        graph_builder.add_edge("local_scout", "web_search")
     if quality_pipeline:
         graph_builder.add_edge("web_search", "evidence")
         graph_builder.add_edge("evidence", "analyst")
@@ -391,6 +443,8 @@ def build_research_graph(
 
 def build_research_graph_for_client(
     llm_client: LLMClient,
+    *,
+    local_scout: LocalScoutAgent | None = None,
 ) -> ResearchGraph:
     """Build the production graph around one supplied LLM client."""
 
@@ -453,6 +507,7 @@ def build_research_graph_for_client(
         planner.create_plan,
         direct_answer_agent.answer,
         search_executor.execute,
+        scout_private_knowledge=(local_scout.scout if local_scout is not None else None),
         analyze_evidence=analyze_evidence,
         generate_report=generate_report,
         review_report=review_report,

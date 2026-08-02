@@ -34,6 +34,7 @@ class ResearchState(TypedDict):
     web_search_results: NotRequired[list[ResearchTaskResult]]
     web_sources: NotRequired[list[WebSource]]
     private_sources: NotRequired[list[PrivateSource]]
+    local_scout_errors: NotRequired[list[str]]
     evidence_sources: NotRequired[list[EvidenceSource]]
     evidence_scores: NotRequired[list[EvidenceScore]]
     evidence_gaps: NotRequired[list[EvidenceGap]]

@@ -358,8 +358,9 @@ async def test_execution_normalizes_provider_and_completes(
         create_workflow,
     )
 
+    tenant_id = uuid4()
     result = await service.execute(
-        tenant_id=uuid4(),
+        tenant_id=tenant_id,
         query="  Explain Linux epoll.  ",
         llm_provider=provider,
     )
@@ -382,6 +383,7 @@ async def test_execution_normalizes_provider_and_completes(
     assert workflow.inputs == [
         {
             "query": "Explain Linux epoll.",
+            "tenant_id": tenant_id,
         }
     ]
 
@@ -629,6 +631,7 @@ async def test_execution_runs_workflow_after_cache_miss() -> None:
     assert workflow.inputs == [
         {
             "query": "Explain Linux epoll.",
+            "tenant_id": tenant_id,
         }
     ]
     assert workflow.close_calls == 1
