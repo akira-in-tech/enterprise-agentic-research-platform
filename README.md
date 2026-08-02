@@ -192,7 +192,7 @@ its report and scored source from PostgreSQL, and leaves both services empty.
 | Eight-agent workflow and report information architecture | Browser and component verified |
 | Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
 | Docker Compose project stack | Built and smoke tested across seven healthy services |
-| GitHub Actions | Implemented locally; remote run pending first push |
+| GitHub Actions | Remote verified across backend, frontend, and container quality gates |
 | AWS deployment | Planned |
 | Open-source contribution | Planned |
 
@@ -794,8 +794,8 @@ length. A citation or evidence action expands the traceable source details only
 when the user needs them. Visual implementation evidence and the source-to-build
 comparison are recorded in `design-qa.md`.
 
-Phase 13 is complete in the repository. Its first GitHub-hosted run remains
-pending until the branch is pushed. A synchronous browser submission mode is
+Phase 13 is complete and its backend, frontend, and container jobs have passed
+on a GitHub-hosted pull-request run. A synchronous browser submission mode is
 intentionally not claimed; the console uses the durable background-job
 contract. The next phase is the AWS deployment foundation.
 
