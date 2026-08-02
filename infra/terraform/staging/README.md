@@ -138,7 +138,14 @@ SHA, update the external provider secret, and then set
 The deployment script performs the dependency-first apply, writes the cache
 and provider secrets from in-memory values, pushes both Linux ARM64 images
 under one immutable Git SHA, starts the service, waits for ECS stability,
-invalidates CloudFront, and verifies `/api/health`:
+invalidates CloudFront, and verifies `/api/health`.
+
+It fails before Terraform initialization when any required deployment input is
+missing or when the Anthropic model or Milvus endpoint still contains a
+documented placeholder. Error output names missing variables but never prints
+their values.
+
+Example:
 
 ```bash
 TF_VAR_budget_notification_email=you@example.com \

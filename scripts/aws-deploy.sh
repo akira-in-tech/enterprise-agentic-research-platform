@@ -8,6 +8,42 @@ backend_configuration=${TF_BACKEND_CONFIG:-"${repository_root}/infra/terraform/b
 image_tag=${IMAGE_TAG:-$(git -C "${repository_root}" rev-parse --short=12 HEAD)}
 desired_count=${APPLICATION_DESIRED_COUNT:-1}
 
+if [[ "${desired_count}" != "1" && "${desired_count}" != "2" ]]; then
+  echo "APPLICATION_DESIRED_COUNT must be 1 or 2 for deployment." >&2
+  exit 1
+fi
+
+required_environment_variables=(
+  TF_VAR_budget_notification_email
+  TF_VAR_anthropic_model
+  TF_VAR_milvus_uri
+  ANTHROPIC_API_KEY
+  TAVILY_API_KEY
+  MILVUS_TOKEN
+)
+missing_environment_variables=()
+for variable_name in "${required_environment_variables[@]}"; do
+  if [[ -z "${!variable_name:-}" ]]; then
+    missing_environment_variables+=("${variable_name}")
+  fi
+done
+
+if (( ${#missing_environment_variables[@]} > 0 )); then
+  printf 'Missing required deployment environment variables: %s\n' \
+    "${missing_environment_variables[*]}" >&2
+  exit 1
+fi
+
+if [[ "${TF_VAR_anthropic_model}" == replace-with-* ]]; then
+  echo "TF_VAR_anthropic_model must name a supported deployed model." >&2
+  exit 1
+fi
+
+if [[ "${TF_VAR_milvus_uri}" == *replace-with* ]]; then
+  echo "TF_VAR_milvus_uri must be a real managed HTTPS endpoint." >&2
+  exit 1
+fi
+
 required_commands=(aws curl docker git jq terraform)
 for command_name in "${required_commands[@]}"; do
   if ! command -v "${command_name}" >/dev/null 2>&1; then
@@ -18,16 +54,6 @@ done
 
 if [[ ! -f "${backend_configuration}" ]]; then
   echo "Terraform backend configuration not found: ${backend_configuration}" >&2
-  exit 1
-fi
-
-if [[ "${desired_count}" != "1" && "${desired_count}" != "2" ]]; then
-  echo "APPLICATION_DESIRED_COUNT must be 1 or 2 for deployment." >&2
-  exit 1
-fi
-
-if [[ -z "${ANTHROPIC_API_KEY:-}" || -z "${TAVILY_API_KEY:-}" || -z "${MILVUS_TOKEN:-}" ]]; then
-  echo "ANTHROPIC_API_KEY, TAVILY_API_KEY, and MILVUS_TOKEN are required for deployment." >&2
   exit 1
 fi
 

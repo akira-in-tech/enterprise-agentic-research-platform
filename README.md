@@ -798,6 +798,8 @@ The script applies dependencies with zero tasks, writes cache and provider
 credentials to Secrets Manager without reading existing values, pushes both
 Linux ARM64 images under one immutable Git SHA, starts the service, waits for
 ECS stability, invalidates CloudFront, and verifies `/api/health`.
+Before Terraform initialization, it rejects missing deployment inputs and the
+documented Anthropic or Milvus placeholder values without printing secrets.
 The manual `Deploy AWS staging` workflow performs the same operation through a
 protected GitHub environment and AWS OIDC, without long-lived AWS keys.
 
