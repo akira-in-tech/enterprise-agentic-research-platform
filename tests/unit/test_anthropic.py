@@ -11,7 +11,10 @@ from app.services.llm.anthropic import AnthropicClient
 async def test_generate_text_returns_anthropic_text(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = AnthropicClient(api_key="test-api-key")
+    client = AnthropicClient(
+        api_key="test-api-key",
+        model="test-model",
+    )
 
     mock_message = SimpleNamespace(
         content=[
@@ -45,7 +48,10 @@ async def test_generate_text_returns_anthropic_text(
 
 @pytest.mark.anyio
 async def test_generate_text_rejects_empty_prompt() -> None:
-    client = AnthropicClient(api_key="test-api-key")
+    client = AnthropicClient(
+        api_key="test-api-key",
+        model="test-model",
+    )
 
     with pytest.raises(ValueError, match="Prompt must not be empty"):
         await client.generate_text("   ")
@@ -55,7 +61,10 @@ async def test_generate_text_rejects_empty_prompt() -> None:
 async def test_generate_text_raises_when_no_text_is_returned(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = AnthropicClient(api_key="test-api-key")
+    client = AnthropicClient(
+        api_key="test-api-key",
+        model="test-model",
+    )
 
     mock_message = SimpleNamespace(
         content=[],
@@ -79,7 +88,10 @@ async def test_generate_text_raises_when_no_text_is_returned(
 async def test_close_releases_anthropic_client(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    client = AnthropicClient(api_key="test-api-key")
+    client = AnthropicClient(
+        api_key="test-api-key",
+        model="test-model",
+    )
     close_client = AsyncMock()
 
     monkeypatch.setattr(
