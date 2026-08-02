@@ -7,6 +7,28 @@ override_data {
   }
 }
 
+override_data {
+  target = data.aws_ec2_managed_prefix_list.cloudfront_origin_facing
+  values = {
+    id   = "pl-cloudfront"
+    name = "com.amazonaws.global.cloudfront.origin-facing"
+  }
+}
+
+override_data {
+  target = data.aws_cloudfront_cache_policy.optimized
+  values = {
+    id = "managed-caching-optimized"
+  }
+}
+
+override_data {
+  target = data.aws_cloudfront_cache_policy.disabled
+  values = {
+    id = "managed-caching-disabled"
+  }
+}
+
 run "cost_controlled_foundation" {
   command = plan
 
@@ -76,5 +98,30 @@ run "cost_controlled_foundation" {
   assert {
     condition     = aws_elasticache_replication_group.cache.transit_encryption_enabled == true
     error_message = "Cache traffic must use TLS."
+  }
+
+  assert {
+    condition     = aws_ecs_task_definition.application.cpu == "512"
+    error_message = "The staging task must remain on the cost-controlled 0.5-vCPU size."
+  }
+
+  assert {
+    condition     = aws_ecs_task_definition.application.memory == "1024"
+    error_message = "The staging task must remain on the cost-controlled 1-GiB size."
+  }
+
+  assert {
+    condition     = aws_ecs_service.application.desired_count == 0
+    error_message = "The default apply must not start billable tasks before images and secrets are ready."
+  }
+
+  assert {
+    condition     = aws_ecs_service.application.network_configuration[0].assign_public_ip == true
+    error_message = "The NAT-free task requires explicit public egress."
+  }
+
+  assert {
+    condition     = aws_cloudwatch_log_group.application.retention_in_days == 7
+    error_message = "Staging logs must use bounded retention."
   }
 }

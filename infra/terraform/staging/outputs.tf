@@ -42,3 +42,18 @@ output "provider_secret_arn" {
   description = "Secrets Manager ARN whose placeholder external provider keys must be replaced after apply."
   value       = aws_secretsmanager_secret.providers.arn
 }
+
+output "application_url" {
+  description = "CloudFront HTTPS URL for the staging research console and API."
+  value       = "https://${aws_cloudfront_distribution.application.domain_name}"
+}
+
+output "ecs_cluster_name" {
+  description = "ECS cluster used by deployment automation."
+  value       = aws_ecs_cluster.this.name
+}
+
+output "ecs_service_name" {
+  description = "ECS service used by deployment automation."
+  value       = aws_ecs_service.application.name
+}

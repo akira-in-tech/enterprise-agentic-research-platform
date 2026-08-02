@@ -106,11 +106,11 @@ resource "aws_security_group" "load_balancer" {
 
 resource "aws_vpc_security_group_ingress_rule" "load_balancer_http" {
   security_group_id = aws_security_group.load_balancer.id
-  description       = "Temporary public HTTP origin; CloudFront restriction is added with compute"
+  description       = "HTTP from the AWS-managed CloudFront origin-facing network"
   from_port         = 80
   to_port           = 80
   ip_protocol       = "tcp"
-  cidr_ipv4         = "0.0.0.0/0"
+  prefix_list_id    = data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id
 }
 
 resource "aws_vpc_security_group_egress_rule" "load_balancer" {

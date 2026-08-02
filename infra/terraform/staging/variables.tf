@@ -132,3 +132,69 @@ variable "cache_node_type" {
     error_message = "cache_node_type must be an ElastiCache node type."
   }
 }
+
+variable "api_image_tag" {
+  description = "Immutable API image tag already pushed to ECR."
+  type        = string
+  default     = "bootstrap"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$", var.api_image_tag))
+    error_message = "api_image_tag must be a valid Docker image tag."
+  }
+}
+
+variable "frontend_image_tag" {
+  description = "Immutable frontend image tag already pushed to ECR."
+  type        = string
+  default     = "bootstrap"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$", var.frontend_image_tag))
+    error_message = "frontend_image_tag must be a valid Docker image tag."
+  }
+}
+
+variable "application_desired_count" {
+  description = "Number of running staging tasks. Keep zero until both immutable images are pushed."
+  type        = number
+  default     = 0
+
+  validation {
+    condition     = var.application_desired_count >= 0 && var.application_desired_count <= 2
+    error_message = "application_desired_count must be between 0 and 2."
+  }
+}
+
+variable "anthropic_model" {
+  description = "Supported Anthropic model identifier used by the cloud staging path."
+  type        = string
+  default     = "replace-with-supported-model-id"
+
+  validation {
+    condition     = length(trimspace(var.anthropic_model)) >= 3
+    error_message = "anthropic_model must not be blank."
+  }
+}
+
+variable "milvus_uri" {
+  description = "HTTPS endpoint for the external managed Milvus-compatible cluster."
+  type        = string
+  default     = "https://replace-with-managed-milvus-endpoint"
+
+  validation {
+    condition     = startswith(var.milvus_uri, "https://")
+    error_message = "milvus_uri must use HTTPS."
+  }
+}
+
+variable "milvus_collection" {
+  description = "Tenant-scoped private-document collection name."
+  type        = string
+  default     = "private_document_chunks"
+
+  validation {
+    condition     = can(regex("^[A-Za-z_][A-Za-z0-9_]{0,254}$", var.milvus_collection))
+    error_message = "milvus_collection must be a valid Milvus collection name."
+  }
+}

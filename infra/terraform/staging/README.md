@@ -33,6 +33,10 @@ The first infrastructure increment includes:
 - private single-AZ RDS PostgreSQL with encrypted gp3 storage
 - private single-node Valkey-compatible ElastiCache with TLS and encryption
 - AWS-managed RDS credentials and Secrets Manager provider credentials
+- one ARM64 Fargate task containing the FastAPI and Nginx/Vue containers
+- an ALB restricted to the AWS-managed CloudFront origin network
+- a CloudFront HTTPS endpoint with caching disabled for `/api/*`
+- seven-day CloudWatch log retention and ECS deployment rollback
 
 No infrastructure is created by repository tests or `terraform validate`.
 Creating AWS resources requires an explicit `terraform apply`.
@@ -76,3 +80,9 @@ The RDS password is generated and stored through the RDS-managed Secrets
 Manager integration. The cache token is randomly generated and stored in the
 encrypted remote Terraform state as well as Secrets Manager. Never commit a
 plan file because Terraform plans can contain sensitive values.
+
+The first full apply keeps `application_desired_count = 0`, so AWS can create
+the ECR repositories and dependencies before images exist. Push both ARM64
+images under the same immutable Git SHA, set both image-tag variables to that
+SHA, update the external provider secret, and then set
+`application_desired_count = 1`.

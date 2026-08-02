@@ -15,9 +15,9 @@ services:
     build:
       context: .
     command:
-      - sh
-      - -c
-      - python -m alembic upgrade head && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+      - python
+      - -m
+      - app.entrypoint
     environment:
       APP_ENV: ${APP_ENV:-development}
       APP_DEBUG: ${APP_DEBUG:-false}
