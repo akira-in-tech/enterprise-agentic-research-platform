@@ -1,0 +1,5 @@
+bucket       = "evident-research-platform-REPLACE_WITH_ACCOUNT_ID-tfstate"
+key          = "evident/staging/terraform.tfstate"
+region       = "us-west-2"
+encrypt      = true
+use_lockfile = true

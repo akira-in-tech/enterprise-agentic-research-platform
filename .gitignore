@@ -36,3 +36,16 @@ dist/
 logs/
 data/
 uploads/
+
+# Terraform local state, caches, plans, and variable secrets
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.auto.tfvars
+!*.auto.tfvars.example
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
