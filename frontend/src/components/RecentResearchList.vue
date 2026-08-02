@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import {
   PhArrowRight,
-  PhCheckCircle,
+  PhCheck,
   PhCircleNotch,
   PhFileText,
-  PhWarningCircle,
+  PhWarning,
 } from "@phosphor-icons/vue";
 import { computed } from "vue";
 
@@ -30,18 +30,17 @@ function relativeTime(value: string): string {
   return `${Math.round(hours / 24)}d ago`;
 }
 
-function coverageLabel(value: number | undefined): string {
-  return value === undefined ? "Report ready" : `${Math.round(value * 100)}% cited`;
+function statusLabel(run: RecentResearchRun): string {
+  if (run.status === "completed") return "Report ready";
+  if (run.status === "failed") return "Needs attention";
+  return "In progress";
 }
 </script>
 
 <template>
   <section class="recent-section" aria-labelledby="recent-heading">
     <div class="section-heading-row">
-      <div>
-        <p class="eyebrow">Your workspace</p>
-        <h2 id="recent-heading">Recent research</h2>
-      </div>
+      <h2 id="recent-heading">Recent research</h2>
       <span class="local-history-label">Saved in this browser</span>
     </div>
 
@@ -53,36 +52,58 @@ function coverageLabel(value: number | undefined): string {
       </div>
     </div>
 
-    <div v-else class="run-list">
-      <button
-        v-for="run in visibleRuns"
-        :key="run.id"
-        class="run-row"
-        type="button"
-        @click="emit('select', run)"
-      >
-        <span class="run-status-icon" :class="`status-${run.status}`" aria-hidden="true">
-          <PhCircleNotch v-if="run.status === 'queued' || run.status === 'running'" class="spin" :size="20" />
-          <PhCheckCircle v-else-if="run.status === 'completed'" :size="20" weight="fill" />
-          <PhWarningCircle v-else :size="20" weight="fill" />
-        </span>
-        <span class="run-main">
-          <strong>{{ run.query }}</strong>
-          <span class="run-meta">
-            <span class="status-label" :class="`status-${run.status}`">
-              {{ run.status === "running" ? "Running" : run.status.charAt(0).toUpperCase() + run.status.slice(1) }}
-            </span>
-            <span aria-hidden="true">·</span>
-            <span v-if="run.status === 'completed'">{{ coverageLabel(run.citationCoverage) }}</span>
-            <span v-else>{{ run.message }}</span>
-          </span>
-        </span>
-        <span class="run-aside">
-          <span>{{ run.provider === "qwen" ? "Qwen Local" : "Claude Cloud" }}</span>
-          <span>{{ relativeTime(run.updatedAt) }}</span>
-        </span>
-        <PhArrowRight class="run-arrow" :size="17" />
-      </button>
+    <div v-else class="research-table-wrap">
+      <table class="research-table">
+        <caption class="sr-only">Recent research runs</caption>
+        <thead>
+          <tr>
+            <th scope="col">Status</th>
+            <th scope="col">Question</th>
+            <th scope="col">Sources</th>
+            <th scope="col">Citation coverage</th>
+            <th scope="col">Provider</th>
+            <th scope="col">Updated</th>
+            <th scope="col"><span class="sr-only">Open</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="run in visibleRuns" :key="run.id" :class="`research-row status-${run.status}`">
+            <td data-label="Status">
+              <span class="table-status">
+                <span class="table-status-icon" aria-hidden="true">
+                  <PhCircleNotch v-if="run.status === 'queued' || run.status === 'running'" class="spin" :size="15" />
+                  <PhCheck v-else-if="run.status === 'completed'" :size="14" weight="bold" />
+                  <PhWarning v-else :size="15" weight="fill" />
+                </span>
+                {{ statusLabel(run) }}
+              </span>
+            </td>
+            <td data-label="Question">
+              <button class="research-question-button" type="button" @click="emit('select', run)">
+                <strong>{{ run.query }}</strong>
+                <small>{{ run.message }}</small>
+              </button>
+            </td>
+            <td data-label="Sources">{{ run.sourceCount ?? "—" }}</td>
+            <td data-label="Citation coverage">
+              <span v-if="run.citationCoverage !== undefined" class="coverage-value">
+                {{ Math.round(run.citationCoverage * 100) }}%
+                <span class="coverage-track" aria-hidden="true">
+                  <span :style="{ width: `${Math.round(run.citationCoverage * 100)}%` }"></span>
+                </span>
+              </span>
+              <span v-else>—</span>
+            </td>
+            <td data-label="Provider">{{ run.provider === "qwen" ? "Qwen Local" : "Claude Cloud" }}</td>
+            <td data-label="Updated">{{ relativeTime(run.updatedAt) }}</td>
+            <td>
+              <button class="open-run-button" type="button" :aria-label="`Open research: ${run.query}`" @click="emit('select', run)">
+                <PhArrowRight :size="17" />
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </section>
 </template>

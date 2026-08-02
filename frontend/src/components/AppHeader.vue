@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import {
   PhBookOpen,
+  PhBriefcase,
   PhCaretDown,
-  PhClockCounterClockwise,
   PhMoon,
-  PhSparkle,
   PhSun,
 } from "@phosphor-icons/vue";
+
+import evidentMark from "../assets/evident-mark.png";
 
 defineProps<{
   darkMode: boolean;
   apiStatus: "checking" | "online" | "offline";
   workspaceConfigured: boolean;
+  workspaceName?: string;
 }>();
 
 const emit = defineEmits<{
@@ -26,7 +28,7 @@ const emit = defineEmits<{
   <header class="app-header">
     <div class="header-leading">
       <a class="brand" href="#main" aria-label="Evident home">
-        <span class="brand-mark" aria-hidden="true"><PhSparkle :size="16" weight="fill" /></span>
+        <img class="brand-mark" :src="evidentMark" alt="" width="34" height="34" />
         <span>Evident</span>
       </a>
       <nav class="product-nav" aria-label="Product navigation">
@@ -58,15 +60,15 @@ const emit = defineEmits<{
         :aria-label="workspaceConfigured ? 'Configure workspace' : 'Connect workspace'"
         @click="emit('openWorkspace')"
       >
-        <PhClockCounterClockwise v-if="!workspaceConfigured" :size="15" />
-        <span>{{ workspaceConfigured ? "Workspace" : "Connect" }}</span>
+        <PhBriefcase :size="16" />
+        <span>{{ workspaceConfigured ? workspaceName ?? "Acme Analytics" : "Connect workspace" }}</span>
         <PhCaretDown :size="13" />
       </button>
       <button
         class="avatar-button"
         type="button"
-        aria-label="Configure workspace"
-        title="Configure workspace"
+        aria-label="Open user and workspace settings"
+        title="User and workspace settings"
         @click="emit('openWorkspace')"
       >
         AK

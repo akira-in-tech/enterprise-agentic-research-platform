@@ -15,11 +15,9 @@ listed as tested only after its automated checks pass in this repository.
 ## Current Phase
 
 ```text
-Completed: Phase 0 through Phase 11
-Phase 11: durable reports, background jobs, SSE, and bounded revision
-In progress: Phase 12 - Vue 3 operator interface and local stack packaging
-Completed within Phase 12: verified browser research console
-Next within Phase 12: reproducible Docker Compose project stack
+Completed: Phase 0 through Phase 13
+Phase 13: GitHub Actions quality gates for backend, frontend, and containers
+Next: Phase 14 - AWS deployment foundation
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -190,9 +188,11 @@ its report and scored source from PostgreSQL, and leaves both services empty.
 | Durable queued background research jobs | Tested with unit and live integration tests |
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
-| Vue 3 + TypeScript + Vite frontend | Typechecked, component tested, production built, and browser QA verified |
-| Docker Compose project stack | Planned |
-| GitHub Actions | Planned |
+| Vue 3 + TypeScript + Vite frontend | Typechecked, 12 tests passed, production built, and desktop/mobile browser QA verified |
+| Eight-agent workflow and report information architecture | Browser and component verified |
+| Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
+| Docker Compose project stack | Built and smoke tested across seven healthy services |
+| GitHub Actions | Implemented locally; remote run pending first push |
 | AWS deployment | Planned |
 | Open-source contribution | Planned |
 
@@ -552,9 +552,9 @@ Current frontend result:
 
 ```text
 Vue and TypeScript typecheck passed
-6 component and streaming-contract tests passed
+12 component and streaming-contract tests passed
 Vite production build passed
-desktop provider, workspace, theme, and responsive states browser checked
+desktop, mobile, provider, report, evidence, and operational states browser checked
 ```
 
 The console uses the real asynchronous API contract. It submits durable jobs,
@@ -562,6 +562,84 @@ parses tenant-authenticated SSE with `fetch`, retrieves completed reports, and
 presents evidence scores and source links. Tenant and optional user UUIDs are
 configured explicitly in the workspace dialog. Recent-run history remains
 browser-local until a tenant-scoped history endpoint is implemented.
+
+## Continuous Integration
+
+GitHub Actions runs three explicit quality gates on pull requests and pushes to
+`main`:
+
+```text
+Backend quality
+→ install Python 3.13 dependencies
+→ Ruff
+→ strict mypy
+→ default pytest suite without live integrations
+
+Frontend quality
+→ reproducible npm ci install on Node.js 22
+→ dependency audit
+→ Vue and TypeScript typecheck
+→ Vitest
+→ Vite production build
+
+Container packaging
+→ validate Compose configuration and smoke-script syntax
+→ build the FastAPI image
+→ build the Vue and Nginx image
+```
+
+The container job waits for both code-quality jobs. The seven-service Compose
+smoke test remains an explicit local integration check because starting Milvus,
+etcd, MinIO, PostgreSQL, and Redis on every pull request would add substantial
+latency. This separation keeps pull-request feedback bounded without claiming
+that image builds replace the live Compose verification documented below.
+
+## Local Docker Compose Stack
+
+The complete local application stack is reproducible from the repository:
+
+```bash
+cp .env.example .env
+
+# Add provider credentials when needed, then start the stack.
+docker compose up --build --detach --wait
+```
+
+Open `http://localhost:3000`. The frontend Nginx service proxies `/api` to the
+FastAPI container, including unbuffered SSE responses. The API runs Alembic to
+the current head before Uvicorn starts.
+
+The Compose network contains:
+
+```text
+browser
+→ Nginx and Vue frontend
+→ FastAPI and Alembic
+→ PostgreSQL + Redis + Milvus
+                 → etcd + MinIO
+→ host Ollama through host.docker.internal when Qwen is selected
+```
+
+PostgreSQL, Redis, Milvus, etcd, and MinIO are not published to the host by
+default. Only the frontend and API bind to loopback. This avoids exposing state
+services and prevents conflicts with separately managed integration-test
+containers.
+
+Run the repeatable isolated smoke check on temporary host ports:
+
+```bash
+./scripts/compose-smoke.sh
+```
+
+The script validates Compose configuration, builds both application images,
+waits for all seven services to become healthy, calls the API through Nginx,
+checks the Alembic head and Redis, validates Nginx, and stops the containers.
+Named development volumes remain available across runs. To stop a manually
+started stack without deleting those volumes:
+
+```bash
+docker compose down
+```
 
 ## Live Integration Tests
 
@@ -672,7 +750,7 @@ private engineering documents
 - Do not describe planned, mocked, or local-only features as production
   capabilities.
 
-## Current Phase 12 Scope
+## Completed Phase 12 Scope
 
 Phase 11 is complete. Its tested scope is:
 
@@ -688,22 +766,38 @@ one bounded evidence-guided report revision
 live PostgreSQL and Redis background delivery round trip
 ```
 
-The browser interface portion of Phase 12 is implemented and verified:
+The Phase 12 browser interface and local packaging are implemented and verified:
 
 ```text
 Vue 3 + TypeScript + Vite research console
+original round eight-ray Evident brand mark and responsive application header
+warm editorial design tokens shared by the Vue components and real UI states
 provider selection and tenant/user request context
 durable asynchronous job submission
 fetch-based SSE progress visualization with tenant headers
-durable report, citation, and source-quality presentation
-running, completed, failed, empty, and unavailable states
+compact visualization of the Scope, Plan, Retrieve, Private RAG, Analyze,
+Verify, Synthesize, and Report agents
+conclusion-first reports, research quality second, and evidence on demand
+running, completed, failed, empty, Redis-unavailable, SSE-disconnected,
+report-unavailable, and citation-revision-required states
 keyboard, focus, screen-reader, reduced-motion, light, dark, and mobile behavior
+multi-stage Python and Node/Nginx application images
+health-gated PostgreSQL, Redis, Milvus, etcd, MinIO, API, and frontend services
+automatic Alembic upgrade before API startup
+same-origin Nginx API and unbuffered SSE proxy
+loopback-only frontend and API ports with internal-only state services
+repeatable Compose smoke verification and non-destructive shutdown
 ```
 
-The remaining Phase 12 deliverable is Docker Compose packaging for the API,
-frontend, PostgreSQL, Redis, and Milvus. A synchronous browser submission mode
-is intentionally not claimed; the console currently uses the durable
-background-job contract.
+The evidence panel is collapsed by default so the report keeps a readable line
+length. A citation or evidence action expands the traceable source details only
+when the user needs them. Visual implementation evidence and the source-to-build
+comparison are recorded in `design-qa.md`.
+
+Phase 13 is complete in the repository. Its first GitHub-hosted run remains
+pending until the branch is pushed. A synchronous browser submission mode is
+intentionally not claimed; the console uses the durable background-job
+contract. The next phase is the AWS deployment foundation.
 
 MCP is currently a contract-tested client boundary rather than a configured
 external integration. PostgreSQL remains the durable source of truth, while

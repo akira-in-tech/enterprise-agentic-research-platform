@@ -2,6 +2,30 @@ export type UserFacingProvider = "qwen" | "claude";
 
 export type ProgressStatus = "queued" | "running" | "completed" | "failed";
 
+export type ResearchAgentId =
+  | "scope"
+  | "plan"
+  | "retrieve"
+  | "private_rag"
+  | "analyze"
+  | "verify"
+  | "synthesize"
+  | "report";
+
+export type OperationalIssueKind =
+  | "redis_unavailable"
+  | "sse_disconnected"
+  | "job_failed"
+  | "report_unavailable"
+  | "citation_revision_required";
+
+export interface OperationalIssue {
+  kind: OperationalIssueKind;
+  title: string;
+  message: string;
+  actionLabel?: string;
+}
+
 export interface WorkspaceContext {
   tenantId: string;
   userId: string;
@@ -61,4 +85,5 @@ export interface RecentResearchRun {
   eventsUrl?: string;
   reportUrl?: string;
   citationCoverage?: number;
+  sourceCount?: number;
 }
