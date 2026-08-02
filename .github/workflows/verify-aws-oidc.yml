@@ -1,4 +1,4 @@
-name: Verify AWS OIDC
+name: Verify AWS OIDC and plan staging
 
 on:
   workflow_dispatch:
@@ -8,6 +8,7 @@ on:
     paths:
       - .github/workflows/verify-aws-oidc.yml
       - infra/terraform/identity/**
+      - infra/terraform/staging/**
 
 permissions:
   contents: read
@@ -15,12 +16,15 @@ permissions:
 
 jobs:
   verify:
-    name: Assume staging deployment role
+    name: Assume staging role and plan infrastructure
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     environment: staging
 
     steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
       - name: Configure AWS credentials through GitHub OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -49,3 +53,76 @@ jobs:
           fi
 
           echo "GitHub OIDC assumed the expected staging deployment role."
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.5
+          terraform_wrapper: false
+
+      - name: Configure protected remote state
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cat > "${RUNNER_TEMP}/backend.hcl" <<EOF
+          bucket       = "${{ vars.TF_STATE_BUCKET }}"
+          key          = "evident/staging/terraform.tfstate"
+          region       = "${{ vars.AWS_REGION }}"
+          encrypt      = true
+          use_lockfile = true
+          EOF
+
+      - name: Generate zero-task staging plan
+        env:
+          TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+          TF_VAR_budget_notification_email: ${{ vars.BUDGET_NOTIFICATION_EMAIL }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          terraform -chdir=infra/terraform/staging init \
+            -backend-config="${RUNNER_TEMP}/backend.hcl" \
+            -input=false
+
+          terraform -chdir=infra/terraform/staging plan \
+            -input=false \
+            -lock-timeout=5m \
+            -no-color \
+            -out="${RUNNER_TEMP}/staging.tfplan" \
+            -var="application_desired_count=0"
+
+          terraform -chdir=infra/terraform/staging show \
+            -json \
+            "${RUNNER_TEMP}/staging.tfplan" \
+            > "${RUNNER_TEMP}/staging-plan.json"
+
+          creates=$(jq '[.resource_changes[]? | select(
+            (.change.actions | index("create")) != null and
+            (.change.actions | index("delete")) == null
+          )] | length' "${RUNNER_TEMP}/staging-plan.json")
+          updates=$(jq '[.resource_changes[]? | select(
+            .change.actions == ["update"]
+          )] | length' "${RUNNER_TEMP}/staging-plan.json")
+          replacements=$(jq '[.resource_changes[]? | select(
+            (.change.actions | index("create")) != null and
+            (.change.actions | index("delete")) != null
+          )] | length' "${RUNNER_TEMP}/staging-plan.json")
+          destroys=$(jq '[.resource_changes[]? | select(
+            (.change.actions | index("delete")) != null and
+            (.change.actions | index("create")) == null
+          )] | length' "${RUNNER_TEMP}/staging-plan.json")
+
+          {
+            echo "### AWS staging plan"
+            echo
+            echo "| Change | Count |"
+            echo "| --- | ---: |"
+            echo "| Create | ${creates} |"
+            echo "| Update | ${updates} |"
+            echo "| Replace | ${replacements} |"
+            echo "| Destroy | ${destroys} |"
+            echo
+            echo "The reviewed plan keeps ECS desired count at zero."
+            echo "The plan file remains on the ephemeral runner and is not uploaded."
+          } >> "${GITHUB_STEP_SUMMARY}"
