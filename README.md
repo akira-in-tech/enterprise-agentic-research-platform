@@ -17,6 +17,7 @@ listed as tested only after its automated checks pass in this repository.
 ```text
 Completed: Phase 0 through Phase 13
 Phase 13: GitHub Actions quality gates for backend, frontend, and containers
+Completed: canonical eight-agent backend and console alignment
 Next: Phase 14 - AWS deployment foundation
 ```
 
@@ -125,6 +126,42 @@ The asynchronous path has been live tested against PostgreSQL and Redis. The
 test starts a background job, observes its terminal progress snapshot, reads
 its report and scored source from PostgreSQL, and leaves both services empty.
 
+The deep-research branch now uses eight explicit, independently testable
+roles rather than presenting eight UI labels over a smaller backend graph:
+
+```text
+Intent Router
+├── direct question → direct answer → END
+└── deep research → Planner
+                    ├── Web Scout ──┐
+                    └── Local Scout ┘  run in parallel
+                                      ↓
+                               Evidence Judge
+                                      ↓
+                                   Analyst
+                                      ↓
+                                   Reflect
+                    ├── evidence gap + budget → targeted scout round
+                    └── sufficient evidence  → Writer → END
+```
+
+`ResearchState` carries tenant scope, source collections, evidence gaps and
+conflicts, structured findings, supplementary queries, iteration budget, and
+the final report between roles. Web and private retrieval are joined before
+evidence judgment. Reflect can request a bounded supplementary round and route
+each query to web, private knowledge, or both. Writer receives approved
+analysis rather than raw search output and performs a bounded citation-repair
+attempt before returning a report.
+
+The FastAPI application constructs the production graph with an
+application-scoped Ollama embedding client, Milvus vector store, private
+retriever, and Local Scout. Local retrieval failures are isolated per task so
+available web evidence can still proceed. The canonical graph, parallel join,
+supplementary loop, source-preference routing, direct branch, tenant
+propagation, resource cleanup, and frontend role mapping are covered by the
+default automated suite. A real external deep-research round trip remains an
+explicit opt-in integration check rather than a default-test claim.
+
 ## Project Status
 
 | Component | Status |
@@ -136,7 +173,14 @@ its report and scored source from PostgreSQL, and leaves both services empty.
 | Intent router with deterministic fallback | Tested |
 | Direct-answer agent | Tested |
 | Structured research planner | Tested |
-| LangGraph routing and planning workflow | Tested |
+| Canonical eight-agent LangGraph workflow | Tested with deterministic graph and factory tests |
+| Intent Router direct/deep branch | Tested |
+| Planner structured research tasks | Tested |
+| Parallel Web Scout and tenant-scoped Local Scout fan-out | Tested |
+| Evidence Judge normalization, gaps, and conflicts | Tested |
+| Analyst structured findings | Tested |
+| Bounded Reflect supplementary-research loop | Tested |
+| Independent Writer and bounded citation repair | Tested |
 | Tavily search provider | Tested with mocks and live smoke test |
 | Bounded concurrent search executor | Tested |
 | Per-task search timeout and failure isolation | Tested |
@@ -189,7 +233,7 @@ its report and scored source from PostgreSQL, and leaves both services empty.
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
 | Vue 3 + TypeScript + Vite frontend | Typechecked, 12 tests passed, production built, and desktop/mobile browser QA verified |
-| Eight-agent workflow and report information architecture | Browser and component verified |
+| Canonical eight-agent workflow and console role mapping | Backend tested; frontend typechecked, component tested, and built |
 | Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
 | Docker Compose project stack | Built and smoke tested across seven healthy services |
 | GitHub Actions | Remote verified across backend, frontend, and container quality gates |
@@ -268,21 +312,22 @@ configured or described as live.
 ### Evidence Quality Pipeline
 
 ```text
-deep-research web sources
-→ provider-neutral EvidenceSource records
-→ explainable EvidenceScore records
-→ evidence-constrained analyst prompt
-→ Markdown report with canonical [SOURCE-ID] citations
-→ CitationAudit
-→ ReflectionDecision: approved or revise
+Web Scout + tenant-scoped Local Scout
+→ Evidence Judge normalization, scoring, gaps, and conflicts
+→ Analyst structured findings with canonical source IDs
+→ Reflect: write or request a bounded supplementary-research round
+→ Writer: conclusion-first Markdown with [SOURCE-ID] citations
+→ bounded citation audit and repair
 ```
 
-The same evidence model also accepts tenant-scoped private sources and
-successful MCP text results. The scorer is deterministic and records separate
-relevance, content-quality, and traceability signals rather than presenting an
-opaque model judgment. Reflection can request one evidence-guided rewrite after
-the initial draft. The workflow stops after two total analyst attempts and
-retains an explicit revision-required result if the second audit still fails.
+The same evidence model accepts web sources, tenant-scoped private sources,
+and successful MCP text results. Deterministic scoring records separate
+relevance, content-quality, and traceability signals. Evidence Judge adds a
+structured gap and conflict audit; Reflect decides whether another retrieval
+round is justified within the iteration budget; Writer owns final prose and
+one bounded citation-repair attempt. If the final audit still fails, the
+workflow retains an explicit revision-required result rather than presenting
+the report as fully approved.
 
 ### Durable Request Execution
 
@@ -402,7 +447,7 @@ PostgreSQL
 → research runs
 → reports
 → sources
-→ checkpoints
+→ agent-step records and checkpoints (planned)
 
 Redis
 → temporary cache
@@ -527,7 +572,7 @@ pytest -q
 Current verified default result:
 
 ```text
-406 passed
+431 passed
 20 integration tests deselected
 1 dependency deprecation warning
 ```
@@ -775,8 +820,8 @@ warm editorial design tokens shared by the Vue components and real UI states
 provider selection and tenant/user request context
 durable asynchronous job submission
 fetch-based SSE progress visualization with tenant headers
-compact visualization of the Scope, Plan, Retrieve, Private RAG, Analyze,
-Verify, Synthesize, and Report agents
+compact visualization of Intent Router, Planner, Web Scout, Local Scout,
+Evidence Judge, Analyst, Reflect, and Writer
 conclusion-first reports, research quality second, and evidence on demand
 running, completed, failed, empty, Redis-unavailable, SSE-disconnected,
 report-unavailable, and citation-revision-required states
