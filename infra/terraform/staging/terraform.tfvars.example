@@ -1,0 +1,7 @@
+aws_region                = "us-west-2"
+project_name              = "evident-research"
+environment               = "staging"
+vpc_cidr                  = "10.24.0.0/16"
+availability_zone_count   = 2
+monthly_budget_limit_usd  = 25
+budget_notification_email = "replace-with-your-email@example.com"
