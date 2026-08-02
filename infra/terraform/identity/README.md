@@ -22,6 +22,7 @@ Current verification status:
 - IAM Access Analyzer: zero findings across the bootstrap and deploy policies
 - AWS apply: 5 added, 0 changed, 0 destroyed
 - AWS API readback: issuer, audience, trust, role session, tags, and policies verified
+- GitHub Actions OIDC: protected staging job assumed the expected account and role
 - remote state: AES256 encrypted, versioned, and limited to the identity prefix
 - post-apply plan: no changes
 

@@ -22,8 +22,9 @@ Implemented and locally validated: Phase 14 AWS staging foundation
 Deployed and verified: protected Terraform remote-state bootstrap in us-west-2
 Initialized and validated: staging Terraform uses the protected S3 backend
 Deployed and verified: immutable-repository GitHub OIDC identity, 5 add / 0 change / 0 destroy
+Remotely verified: protected GitHub Actions OIDC role assumption with short-lived credentials
 Deployment status: state bucket and CI identity only; staging application resources are not applied
-Next: verify the protected GitHub OIDC assumption and generate the staging plan
+Next: generate and review the cost-controlled staging application plan
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -246,7 +247,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Cost-controlled AWS staging infrastructure | Terraform validated and mock tested; not applied |
 | ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
 | GitHub OIDC deployment identity | Applied and AWS verified: exact repository/environment trust, three reviewed inline policies, protected remote state, and zero Terraform drift |
-| GitHub OIDC deployment workflow | YAML and shell syntax validated locally; immutable repository and staging-environment trust prepared; not run remotely |
+| GitHub OIDC deployment workflow | Remotely verified on GitHub Actions: protected staging environment assumed the expected AWS account and deployment role with short-lived credentials |
 | AWS deployment | Remote-state bootstrap deployed and staging backend initialized; application apply and live endpoint verification pending |
 | Open-source contribution | Planned |
 
@@ -983,6 +984,9 @@ without changing or destroying existing resources. AWS API readback confirmed
 the exact issuer, audience, immutable repository and environment trust, session
 limit, and three reviewed inline policies. Its protected remote state is
 versioned and encrypted, and the post-apply Terraform plan reports zero drift.
+The protected GitHub Actions workflow then assumed the expected staging role
+through OIDC and verified the AWS account and assumed-role ARN without storing
+long-lived AWS credentials.
 
 MCP is currently a contract-tested client boundary rather than a configured
 external integration. PostgreSQL remains the durable source of truth, while
