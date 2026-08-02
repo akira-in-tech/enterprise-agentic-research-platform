@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -65,7 +66,19 @@ class LocalScoutAgent:
         plan: ResearchPlan,
         tenant_id: UUID,
     ) -> LocalScoutResult:
-        """Run bounded private retrieval and preserve partial successes."""
+        """Run the tasks in a research plan."""
+
+        return await self.scout_tasks(
+            plan.tasks,
+            tenant_id,
+        )
+
+    async def scout_tasks(
+        self,
+        tasks: Sequence[ResearchTask],
+        tenant_id: UUID,
+    ) -> LocalScoutResult:
+        """Run an explicit task batch and preserve partial successes."""
 
         semaphore = asyncio.Semaphore(self._max_concurrency)
         outcomes = await asyncio.gather(
@@ -75,7 +88,7 @@ class LocalScoutAgent:
                     tenant_id=tenant_id,
                     semaphore=semaphore,
                 )
-                for task in plan.tasks
+                for task in tasks
             )
         )
 

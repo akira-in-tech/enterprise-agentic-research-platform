@@ -13,7 +13,9 @@ from app.schemas.source import PrivateSource, WebSource
 from app.schemas.workflow import (
     EvidenceConflict,
     EvidenceGap,
+    ReflectionResult,
     ResearchAgentRole,
+    ResearchAnalysis,
     ResearchFinding,
     SupplementaryResearchQuery,
 )
@@ -33,14 +35,19 @@ class ResearchState(TypedDict):
     plan: NotRequired[ResearchPlan]
     web_search_results: NotRequired[list[ResearchTaskResult]]
     web_sources: NotRequired[list[WebSource]]
+    web_scout_status: NotRequired[str]
     private_sources: NotRequired[list[PrivateSource]]
     local_scout_errors: NotRequired[list[str]]
+    local_scout_status: NotRequired[str]
     evidence_sources: NotRequired[list[EvidenceSource]]
     evidence_scores: NotRequired[list[EvidenceScore]]
     evidence_gaps: NotRequired[list[EvidenceGap]]
     evidence_conflicts: NotRequired[list[EvidenceConflict]]
+    analysis: NotRequired[ResearchAnalysis]
     analysis_findings: NotRequired[list[ResearchFinding]]
+    reflection_result: NotRequired[ReflectionResult]
     supplementary_queries: NotRequired[list[SupplementaryResearchQuery]]
+    attempted_queries: NotRequired[list[str]]
     iteration: NotRequired[int]
     max_iterations: NotRequired[int]
     draft_report: NotRequired[str]
