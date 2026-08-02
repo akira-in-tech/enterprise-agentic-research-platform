@@ -34,4 +34,16 @@ describe("ProviderMenu", () => {
     expect(options[0]?.attributes("aria-selected")).toBe("false");
     expect(options[1]?.attributes("aria-selected")).toBe("true");
   });
+
+  it("does not offer local Qwen when the cloud build enables only Claude", async () => {
+    const wrapper = mount(ProviderMenu, {
+      props: { modelValue: "claude", enabledProviders: ["claude"] },
+    });
+
+    await wrapper.get('[aria-haspopup="listbox"]').trigger("click");
+
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(1);
+    expect(wrapper.text()).not.toContain("Qwen Local");
+    expect(wrapper.text()).toContain("Claude Cloud");
+  });
 });

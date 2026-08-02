@@ -12,6 +12,7 @@ import ResearchDetail from "./components/ResearchDetail.vue";
 import WorkspaceDialog from "./components/WorkspaceDialog.vue";
 import { createDesignPreviewReport, createDesignPreviewRuns } from "./lib/design-fixtures";
 import { loadResearchHistory, saveResearchHistory } from "./lib/history";
+import { defaultProvider, enabledProviders } from "./lib/provider-config";
 import {
   createResearchJob,
   getApiHealth,
@@ -35,7 +36,7 @@ const designPreview =
 const designPreviewState = designPreview ? new URLSearchParams(window.location.search).get("state") : null;
 
 const query = ref("");
-const provider = ref<UserFacingProvider>("qwen");
+const provider = ref<UserFacingProvider>(defaultProvider);
 const submitting = ref(false);
 const recentRuns = ref<RecentResearchRun[]>([]);
 const selectedRun = ref<RecentResearchRun | null>(null);
@@ -414,11 +415,16 @@ function saveWorkspace(next: WorkspaceContext): void {
           <ResearchComposer
             v-model:query="query"
             v-model:provider="provider"
+            :enabled-providers="enabledProviders"
             :submitting="submitting"
             @submit="submitResearch"
           />
 
-          <ProviderComparison v-model="provider" :disabled="submitting" />
+          <ProviderComparison
+            v-model="provider"
+            :enabled-providers="enabledProviders"
+            :disabled="submitting"
+          />
 
           <button
             v-if="!workspaceIsConfigured()"

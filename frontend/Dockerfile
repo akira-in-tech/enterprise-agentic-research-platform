@@ -8,6 +8,9 @@ RUN npm ci
 COPY index.html tsconfig*.json vite.config.ts ./
 COPY src ./src
 
+ARG VITE_ENABLED_LLM_PROVIDERS=qwen,claude
+ENV VITE_ENABLED_LLM_PROVIDERS=${VITE_ENABLED_LLM_PROVIDERS}
+
 RUN npm run build
 
 FROM nginx:1.27-alpine AS runtime

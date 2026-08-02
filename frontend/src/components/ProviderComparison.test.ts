@@ -17,4 +17,14 @@ describe("ProviderComparison", () => {
     await radios[1]?.setValue();
     expect(wrapper.emitted("update:modelValue")).toEqual([["claude"]]);
   });
+
+  it("renders only the provider enabled for cloud deployment", () => {
+    const wrapper = mount(ProviderComparison, {
+      props: { modelValue: "claude", enabledProviders: ["claude"] },
+    });
+
+    expect(wrapper.findAll('input[type="radio"]')).toHaveLength(1);
+    expect(wrapper.text()).not.toContain("Qwen Local");
+    expect(wrapper.text()).toContain("Claude Cloud");
+  });
 });

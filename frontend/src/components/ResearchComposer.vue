@@ -14,6 +14,7 @@ import ProviderMenu from "./ProviderMenu.vue";
 const props = defineProps<{
   query: string;
   provider: UserFacingProvider;
+  enabledProviders?: readonly UserFacingProvider[];
   submitting: boolean;
 }>();
 
@@ -51,6 +52,7 @@ function handleKeydown(event: KeyboardEvent): void {
       <div class="composer-options">
         <ProviderMenu
           :model-value="provider"
+          :enabled-providers="enabledProviders"
           :disabled="submitting"
           @update:model-value="emit('update:provider', $event)"
         />

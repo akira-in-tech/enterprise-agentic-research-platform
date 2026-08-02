@@ -3,10 +3,16 @@ import { PhCheck, PhCloud, PhCpu, PhShieldCheck } from "@phosphor-icons/vue";
 
 import type { UserFacingProvider } from "../types/research";
 
-defineProps<{
-  modelValue: UserFacingProvider;
-  disabled?: boolean;
-}>();
+withDefaults(
+  defineProps<{
+    modelValue: UserFacingProvider;
+    enabledProviders?: readonly UserFacingProvider[];
+    disabled?: boolean;
+  }>(),
+  {
+    enabledProviders: () => ["qwen", "claude"],
+  },
+);
 
 const emit = defineEmits<{
   "update:modelValue": [provider: UserFacingProvider];
@@ -18,7 +24,11 @@ const emit = defineEmits<{
     <legend>Choose a provider</legend>
     <p class="provider-estimate-label">Per request estimate</p>
 
-    <label class="provider-row" :class="{ selected: modelValue === 'qwen' }">
+    <label
+      v-if="enabledProviders.includes('qwen')"
+      class="provider-row"
+      :class="{ selected: modelValue === 'qwen' }"
+    >
       <input
         type="radio"
         name="provider-comparison"
@@ -40,7 +50,11 @@ const emit = defineEmits<{
       </span>
     </label>
 
-    <label class="provider-row" :class="{ selected: modelValue === 'claude' }">
+    <label
+      v-if="enabledProviders.includes('claude')"
+      class="provider-row"
+      :class="{ selected: modelValue === 'claude' }"
+    >
       <input
         type="radio"
         name="provider-comparison"

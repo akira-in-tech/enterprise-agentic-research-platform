@@ -95,6 +95,7 @@ docker buildx build \
 docker buildx build \
   --platform linux/arm64 \
   --provenance=false \
+  --build-arg VITE_ENABLED_LLM_PROVIDERS=claude \
   --tag "${frontend_repository}:${image_tag}" \
   --push \
   "${repository_root}/frontend"
