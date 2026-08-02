@@ -19,8 +19,9 @@ this repository.
 Completed: Phase 0 through Phase 13
 Completed: canonical eight-agent backend and console alignment
 Implemented and locally validated: Phase 14 AWS staging foundation
-Deployment status: not applied to an AWS account
-Next: bootstrap remote state, configure GitHub OIDC, apply staging, and run the live smoke test
+Account verified: remote-state bootstrap plan (6 add, 0 change, 0 destroy)
+Deployment status: no AWS resources applied
+Next: apply the protected remote-state bootstrap, configure GitHub OIDC, plan staging, and run the live smoke test
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -239,11 +240,11 @@ explicit opt-in integration check rather than a default-test claim.
 | Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
 | Docker Compose project stack | Built and smoke tested across seven healthy services |
 | GitHub Actions | Remote verified across backend, frontend, and container quality gates |
-| Terraform state bootstrap | Formatted and validated locally; not applied |
+| Terraform state bootstrap | Account-authenticated plan verified: 6 add, 0 change, 0 destroy; not applied |
 | Cost-controlled AWS staging infrastructure | Terraform validated and mock tested; not applied |
 | ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
 | GitHub OIDC deployment workflow | YAML and shell syntax validated locally; not run remotely |
-| AWS deployment | Implementation ready; account apply and live verification pending |
+| AWS deployment | Bootstrap plan verified against AWS; account apply and live verification pending |
 | Open-source contribution | Planned |
 
 There are no published evaluation metrics or deployed environments yet.
@@ -758,6 +759,11 @@ budget alert does not stop charges. RDS, Valkey, ALB, CloudFront, Secrets
 Manager, ECR, and Fargate can all incur costs after apply, even when the ECS
 desired count is zero.
 
+The account-authenticated bootstrap plan resolves the protected state bucket
+name for the active AWS account and reports six creates with no updates or
+deletes. The saved plan remains unapplied; this verification created no AWS
+infrastructure.
+
 After creating the bootstrap bucket, configuring a backend file, and supplying
 the required provider variables and secrets, deploy locally with:
 
@@ -952,8 +958,8 @@ Phase 14 infrastructure and deployment automation are implemented and locally
 validated. The work includes remote-state bootstrap, cost and lifecycle guards,
 private data services, CloudFront-restricted ingress, immutable ARM64 images,
 GitHub OIDC deployment, a Claude-only cloud console, and explicit teardown. It
-is not marked deployed because no AWS account plan/apply or live endpoint smoke
-test has been run.
+is not marked deployed because only the account-authenticated bootstrap plan has
+been verified; no AWS apply or live endpoint smoke test has been run.
 
 MCP is currently a contract-tested client boundary rather than a configured
 external integration. PostgreSQL remains the durable source of truth, while
