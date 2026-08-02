@@ -21,9 +21,9 @@ Completed: canonical eight-agent backend and console alignment
 Implemented and locally validated: Phase 14 AWS staging foundation
 Deployed and verified: protected Terraform remote-state bootstrap in us-west-2
 Initialized and validated: staging Terraform uses the protected S3 backend
-Planned and validated: immutable-repository GitHub OIDC identity, 5 add / 0 change / 0 destroy
-Deployment status: state bucket only; staging application resources are not applied
-Next: apply the reviewed OIDC identity, configure the protected GitHub environment, and generate the staging plan
+Deployed and verified: immutable-repository GitHub OIDC identity, 5 add / 0 change / 0 destroy
+Deployment status: state bucket and CI identity only; staging application resources are not applied
+Next: configure the protected GitHub environment, verify OIDC assumption, and generate the staging plan
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -245,7 +245,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Terraform state bootstrap | Applied and AWS verified: protected S3 bucket plus five security controls; staging backend initialized |
 | Cost-controlled AWS staging infrastructure | Terraform validated and mock tested; not applied |
 | ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
-| GitHub OIDC deployment identity | Terraform validated and mock tested; authenticated plan is 5 add / 0 change / 0 destroy; not applied |
+| GitHub OIDC deployment identity | Applied and AWS verified: exact repository/environment trust, three reviewed inline policies, protected remote state, and zero Terraform drift |
 | GitHub OIDC deployment workflow | YAML and shell syntax validated locally; immutable repository and staging-environment trust prepared; not run remotely |
 | AWS deployment | Remote-state bootstrap deployed and staging backend initialized; application apply and live endpoint verification pending |
 | Open-source contribution | Planned |
@@ -975,11 +975,14 @@ validated. The work includes remote-state bootstrap, cost and lifecycle guards,
 private data services, CloudFront-restricted ingress, immutable ARM64 images,
 GitHub OIDC deployment, a Claude-only cloud console, and explicit teardown. It
 is not marked as an application deployment: only the protected remote-state
-bootstrap has been applied and verified. No staging application apply or live
-endpoint smoke test has been run. The separate OIDC identity root has passed
-Terraform validation and contract tests, and its authenticated AWS plan adds
-five IAM/OIDC objects without changing or destroying existing resources. That
-identity plan has not been applied.
+bootstrap and CI deployment identity have been applied and verified. No
+staging application apply or live endpoint smoke test has been run. The
+separate OIDC identity root passed
+Terraform validation and contract tests, then applied five IAM/OIDC objects
+without changing or destroying existing resources. AWS API readback confirmed
+the exact issuer, audience, immutable repository and environment trust, session
+limit, and three reviewed inline policies. Its protected remote state is
+versioned and encrypted, and the post-apply Terraform plan reports zero drift.
 
 MCP is currently a contract-tested client boundary rather than a configured
 external integration. PostgreSQL remains the durable source of truth, while

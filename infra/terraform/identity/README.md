@@ -19,7 +19,11 @@ Current verification status:
 - authenticated account plan: 5 add, 0 change, 0 destroy
 - inline-policy aggregate: 8,954 characters of the 10,240-character role quota
 - every planned IAM action matched the AWS Service Authorization Reference
-- AWS apply: not run
+- IAM Access Analyzer: zero findings across the bootstrap and deploy policies
+- AWS apply: 5 added, 0 changed, 0 destroyed
+- AWS API readback: issuer, audience, trust, role session, tags, and policies verified
+- remote state: AES256 encrypted, versioned, and limited to the identity prefix
+- post-apply plan: no changes
 
 Initialize and plan without applying:
 
