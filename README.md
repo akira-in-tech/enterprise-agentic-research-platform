@@ -20,8 +20,9 @@ Completed: Phase 0 through Phase 13
 Completed: canonical eight-agent backend and console alignment
 Implemented and locally validated: Phase 14 AWS staging foundation
 Deployed and verified: protected Terraform remote-state bootstrap in us-west-2
+Initialized and validated: staging Terraform uses the protected S3 backend
 Deployment status: state bucket only; staging application resources are not applied
-Next: initialize the staging backend, configure GitHub OIDC, plan staging, and run the live smoke test
+Next: configure GitHub OIDC, review an authenticated staging plan, deploy on demand, and run the live smoke test
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -240,11 +241,11 @@ explicit opt-in integration check rather than a default-test claim.
 | Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
 | Docker Compose project stack | Built and smoke tested across seven healthy services |
 | GitHub Actions | Remote verified across backend, frontend, and container quality gates |
-| Terraform state bootstrap | Applied and AWS verified: protected S3 bucket plus five security controls; post-apply plan has zero changes |
+| Terraform state bootstrap | Applied and AWS verified: protected S3 bucket plus five security controls; staging backend initialized |
 | Cost-controlled AWS staging infrastructure | Terraform validated and mock tested; not applied |
 | ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
 | GitHub OIDC deployment workflow | YAML and shell syntax validated locally; not run remotely |
-| AWS deployment | Remote-state bootstrap deployed; staging application apply and live endpoint verification pending |
+| AWS deployment | Remote-state bootstrap deployed and staging backend initialized; application apply and live endpoint verification pending |
 | Open-source contribution | Planned |
 
 There are no published evaluation metrics or deployed application environments
@@ -760,12 +761,21 @@ budget alert does not stop charges. RDS, Valkey, ALB, CloudFront, Secrets
 Manager, ECR, and Fargate can all incur costs after apply, even when the ECS
 desired count is zero.
 
+The staging operating model is demo-on-demand. Apply the full stack only for an
+active review or interview session, verify the public endpoint, and destroy the
+staging stack afterward. Scaling ECS to zero is not sufficient because RDS,
+Valkey, the ALB, public IPv4 addresses, and secrets continue to incur charges.
+The separate protected state bucket intentionally remains after routine staging
+destruction.
+
 The protected, account-scoped state bucket is deployed in `us-west-2` using the
 `evident-research-platform-<account-id>-tfstate` naming rule. Terraform applied
 six resources with no updates or deletes. AWS API verification confirmed
 versioning, AES256 encryption, `BucketOwnerEnforced` ownership, all four
 public-access blocks, the HTTPS-only bucket policy, and the expected resource
-tags. A post-apply Terraform plan reports zero changes.
+tags. A post-apply Terraform plan reports zero changes. The staging Terraform
+root has been initialized against this backend; initialization created no state
+object and no application resources.
 
 After configuring the staging backend file and supplying the required provider
 variables and secrets, deploy locally with:

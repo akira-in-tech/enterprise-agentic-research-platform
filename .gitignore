@@ -44,6 +44,8 @@ uploads/
 *.tfplan
 *.auto.tfvars
 !*.auto.tfvars.example
+infra/terraform/bootstrap/backend.hcl
+infra/terraform/staging/terraform.tfvars
 crash.log
 override.tf
 override.tf.json

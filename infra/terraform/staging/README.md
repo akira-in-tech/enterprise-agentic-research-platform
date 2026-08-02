@@ -41,6 +41,16 @@ The first infrastructure increment includes:
 No infrastructure is created by repository tests or `terraform validate`.
 Creating AWS resources requires an explicit `terraform apply`.
 
+## Operating model
+
+This environment is demo-on-demand rather than an always-on production stack.
+Deploy it for an active review or interview session, complete the smoke test,
+and run the guarded destroy workflow afterward. Setting
+`application_desired_count = 0` stops Fargate task charges but does not stop
+charges for RDS, ElastiCache, the ALB, public IPv4 addresses, Secrets Manager,
+or stored images. Routine destruction preserves the separate protected S3
+Terraform state bucket.
+
 ## Local validation
 
 Create the shared state bucket first, then copy the examples without committing
