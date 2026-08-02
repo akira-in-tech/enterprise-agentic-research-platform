@@ -15,7 +15,7 @@ from app.services.llm.anthropic import AnthropicClient
 async def test_planner_returns_structured_research_plan(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    llm_client = AnthropicClient()
+    llm_client = AnthropicClient(api_key="test-api-key")
 
     expected_plan = ResearchPlan(
         goal="Compare HTTP/2 and HTTP/3 for production web services.",
@@ -95,7 +95,7 @@ async def test_planner_returns_structured_research_plan(
 
 @pytest.mark.anyio
 async def test_planner_rejects_empty_query() -> None:
-    llm_client = AnthropicClient()
+    llm_client = AnthropicClient(api_key="test-api-key")
     planner = PlannerAgent(llm_client)
 
     with pytest.raises(ValueError, match="Query must not be empty"):

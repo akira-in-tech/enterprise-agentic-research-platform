@@ -30,7 +30,7 @@ def test_rule_classifier_routes_comparison_to_deep_research() -> None:
 async def test_intent_router_returns_anthropic_decision(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    llm_client = AnthropicClient()
+    llm_client = AnthropicClient(api_key="test-api-key")
 
     generate_structured = AsyncMock(
         return_value=IntentDecision(
@@ -63,7 +63,7 @@ async def test_intent_router_returns_anthropic_decision(
 async def test_intent_router_uses_rule_fallback_on_claude_failure(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    llm_client = AnthropicClient()
+    llm_client = AnthropicClient(api_key="test-api-key")
 
     generate_structured = AsyncMock(
         side_effect=RuntimeError("Claude is temporarily unavailable.")
@@ -86,7 +86,7 @@ async def test_intent_router_uses_rule_fallback_on_claude_failure(
 
 @pytest.mark.anyio
 async def test_intent_router_rejects_empty_query() -> None:
-    llm_client = AnthropicClient()
+    llm_client = AnthropicClient(api_key="test-api-key")
     router = IntentRouter(llm_client)
 
     with pytest.raises(ValueError, match="Query must not be empty"):

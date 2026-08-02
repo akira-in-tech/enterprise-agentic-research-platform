@@ -14,19 +14,26 @@ StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 class AnthropicClient:
     """Provide a small application-facing wrapper around the Anthropic SDK."""
 
-    def __init__(self) -> None:
-        api_key = settings.anthropic_api_key.get_secret_value().strip()
-        model = settings.anthropic_model.strip()
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        configured_api_key = (
+            settings.anthropic_api_key.get_secret_value() if api_key is None else api_key
+        ).strip()
+        configured_model = (settings.anthropic_model if model is None else model).strip()
 
-        if not api_key:
+        if not configured_api_key:
             raise ValueError("ANTHROPIC_API_KEY is not configured.")
 
-        if not model:
+        if not configured_model:
             raise ValueError("ANTHROPIC_MODEL is not configured.")
 
-        self._model = model
+        self._model = configured_model
         self._client = AsyncAnthropic(
-            api_key=api_key,
+            api_key=configured_api_key,
             timeout=30.0,
             max_retries=2,
         )
