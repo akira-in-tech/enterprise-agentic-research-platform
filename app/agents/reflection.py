@@ -1,6 +1,13 @@
 from collections.abc import Sequence
 
 from app.schemas.evidence import CitationAudit, EvidenceScore, ReflectionDecision
+from app.schemas.workflow import (
+    EvidenceGap,
+    ReflectionResult,
+    ResearchAnalysis,
+    SupplementaryResearchQuery,
+)
+from app.services.llm.base import LLMClient
 
 
 class ReflectionAgent:
@@ -8,6 +15,7 @@ class ReflectionAgent:
 
     def __init__(
         self,
+        llm_client: LLMClient | None = None,
         *,
         minimum_evidence_count: int = 2,
         minimum_average_score: float = 0.25,
@@ -20,6 +28,115 @@ class ReflectionAgent:
 
         self._minimum_evidence_count = minimum_evidence_count
         self._minimum_average_score = minimum_average_score
+        self._llm_client = llm_client
+
+    async def reflect(
+        self,
+        *,
+        analysis: ResearchAnalysis,
+        evidence_gaps: Sequence[EvidenceGap],
+        attempted_queries: Sequence[str],
+    ) -> ReflectionResult:
+        """Decide whether evidence gaps require one focused retrieval round."""
+
+        gaps = [*evidence_gaps, *analysis.gaps]
+
+        if not analysis.needs_more_research and not gaps:
+            return ReflectionResult(
+                status="write",
+                summary="The evidence and analysis are sufficient for final writing.",
+            )
+
+        fallback = self._fallback_follow_up(
+            gaps=gaps,
+            attempted_queries=attempted_queries,
+        )
+
+        if self._llm_client is None:
+            return fallback
+
+        prompt = (
+            "You are the Reflect agent in an enterprise research workflow. "
+            "Create focused supplementary queries for unresolved evidence gaps. "
+            "Do not repeat attempted queries. Return status continue_research when at "
+            "least one new query is available; otherwise return status write and explain "
+            "the limitation.\n\n"
+            f"Analysis summary: {analysis.summary}\n"
+            f"Evidence gaps: {[gap.model_dump() for gap in gaps]}\n"
+            f"Attempted queries: {list(attempted_queries)}"
+        )
+
+        try:
+            result = await self._llm_client.generate_structured(
+                prompt,
+                ReflectionResult,
+                max_tokens=1_000,
+            )
+        except Exception:
+            return fallback
+
+        normalized_attempts = {query.strip().casefold() for query in attempted_queries}
+        unique_queries: list[SupplementaryResearchQuery] = []
+        seen_queries = set(normalized_attempts)
+
+        for query in result.supplementary_queries:
+            normalized_query = query.query.strip().casefold()
+
+            if normalized_query in seen_queries:
+                continue
+
+            seen_queries.add(normalized_query)
+            unique_queries.append(query)
+
+        if not unique_queries:
+            return ReflectionResult(
+                status="write",
+                summary=(
+                    "No new supplementary query remained after duplicate removal; "
+                    "write with explicit limitations."
+                ),
+            )
+
+        return ReflectionResult(
+            status="continue_research",
+            summary=result.summary,
+            supplementary_queries=unique_queries,
+        )
+
+    @staticmethod
+    def _fallback_follow_up(
+        *,
+        gaps: Sequence[EvidenceGap],
+        attempted_queries: Sequence[str],
+    ) -> ReflectionResult:
+        attempted = {query.strip().casefold() for query in attempted_queries}
+        queries: list[SupplementaryResearchQuery] = []
+
+        for gap in gaps:
+            query = gap.topic.strip()
+
+            if query.casefold() in attempted:
+                continue
+
+            queries.append(
+                SupplementaryResearchQuery(
+                    query=query,
+                    source_preference=gap.source_preference,
+                    reason=gap.reason,
+                )
+            )
+
+        if not queries:
+            return ReflectionResult(
+                status="write",
+                summary="No new query can fill the remaining evidence gaps.",
+            )
+
+        return ReflectionResult(
+            status="continue_research",
+            summary="Run focused follow-up retrieval for the unresolved evidence gaps.",
+            supplementary_queries=queries[:6],
+        )
 
     def review(
         self,

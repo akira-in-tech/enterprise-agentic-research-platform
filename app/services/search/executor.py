@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 from app.schemas.planner import ResearchPlan, ResearchTask
@@ -35,19 +36,13 @@ class SearchExecutor:
         task_timeout_seconds: float = 15.0,
     ) -> None:
         if max_concurrency < 1:
-            raise ValueError(
-                "max_concurrency must be at least 1."
-            )
+            raise ValueError("max_concurrency must be at least 1.")
 
         if not 1 <= max_results_per_task <= 20:
-            raise ValueError(
-                "max_results_per_task must be between 1 and 20."
-            )
+            raise ValueError("max_results_per_task must be between 1 and 20.")
 
         if task_timeout_seconds <= 0:
-            raise ValueError(
-                "task_timeout_seconds must be greater than 0."
-            )
+            raise ValueError("task_timeout_seconds must be greater than 0.")
 
         self._search_client = search_client
         self._max_concurrency = max_concurrency
@@ -60,18 +55,19 @@ class SearchExecutor:
     ) -> list[ResearchTaskResult]:
         """Execute all research tasks with bounded concurrency."""
 
-        semaphore = asyncio.Semaphore(
-            self._max_concurrency
-        )
+        return await self.execute_tasks(plan.tasks)
 
-        task_coroutines = [
-            self._execute_task(task, semaphore)
-            for task in plan.tasks
-        ]
+    async def execute_tasks(
+        self,
+        tasks: Sequence[ResearchTask],
+    ) -> list[ResearchTaskResult]:
+        """Execute an explicit task batch with bounded concurrency."""
 
-        outcomes = await asyncio.gather(
-            *task_coroutines
-        )
+        semaphore = asyncio.Semaphore(self._max_concurrency)
+
+        task_coroutines = [self._execute_task(task, semaphore) for task in tasks]
+
+        outcomes = await asyncio.gather(*task_coroutines)
 
         return list(outcomes)
 
@@ -90,9 +86,7 @@ class SearchExecutor:
             )
 
             try:
-                async with asyncio.timeout(
-                    self._task_timeout_seconds
-                ):
+                async with asyncio.timeout(self._task_timeout_seconds):
                     results = await self._search_client.search(
                         task.search_query,
                         max_results=self._max_results_per_task,
@@ -108,8 +102,7 @@ class SearchExecutor:
                     task=task,
                     results=[],
                     error=(
-                        "TimeoutError: search exceeded "
-                        f"{self._task_timeout_seconds:g} seconds."
+                        f"TimeoutError: search exceeded {self._task_timeout_seconds:g} seconds."
                     ),
                 )
             except Exception as error:
@@ -121,9 +114,7 @@ class SearchExecutor:
                 return ResearchTaskResult(
                     task=task,
                     results=[],
-                    error=(
-                        f"{type(error).__name__}: {error}"
-                    ),
+                    error=(f"{type(error).__name__}: {error}"),
                 )
 
             logger.info(

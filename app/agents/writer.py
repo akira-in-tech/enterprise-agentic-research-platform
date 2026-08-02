@@ -6,66 +6,24 @@ from app.schemas.workflow import ResearchAnalysis
 from app.services.llm.base import LLMClient
 
 
-class AnalystAgent:
-    """Produce evidence-backed analysis before final report writing."""
+class WriterAgent:
+    """Turn an approved analysis into the final source-traceable report."""
 
     def __init__(self, llm_client: LLMClient) -> None:
         self._llm_client = llm_client
-
-    async def analyze(
-        self,
-        *,
-        query: str,
-        sources: Sequence[EvidenceSource],
-        scores: Sequence[EvidenceScore],
-    ) -> ResearchAnalysis:
-        """Generate structured findings constrained to the supplied evidence."""
-
-        score_by_source = {score.source_id: score.model_dump() for score in scores}
-        evidence = [
-            {
-                **source.model_dump(),
-                "quality": score_by_source.get(source.source_id),
-            }
-            for source in sources
-        ]
-        prompt = (
-            "You are the Analyst in an evidence-backed research workflow. "
-            "Produce structured conclusions, not a final report. Every finding must "
-            "reference one or more supplied source IDs. Mark needs_more_research when "
-            "material questions remain unresolved. Never invent facts or source IDs.\n\n"
-            f"Research question: {query}\n"
-            f"Evidence: {evidence}"
-        )
-        analysis = await self._llm_client.generate_structured(
-            prompt,
-            ResearchAnalysis,
-            max_tokens=1_500,
-        )
-        known_source_ids = {source.source_id for source in sources}
-        cited_source_ids = {
-            source_id for finding in analysis.findings for source_id in finding.source_ids
-        }
-        unknown_source_ids = cited_source_ids - known_source_ids
-
-        if unknown_source_ids:
-            raise RuntimeError(
-                f"Analyst referenced unknown source IDs: {sorted(unknown_source_ids)}"
-            )
-
-        return analysis
 
     async def write_report(
         self,
         *,
         query: str,
         plan: ResearchPlan,
+        analysis: ResearchAnalysis,
         sources: Sequence[EvidenceSource],
         scores: Sequence[EvidenceScore],
         previous_report: str | None = None,
         revision_feedback: ReflectionDecision | None = None,
     ) -> str:
-        """Generate a legacy report while callers migrate to WriterAgent."""
+        """Generate one final report constrained to approved findings and evidence."""
 
         score_by_source = {score.source_id: score for score in scores}
         evidence_blocks = []
@@ -88,24 +46,30 @@ class AnalystAgent:
         outline = "\n".join(
             f"- {section.title}: {section.purpose}" for section in plan.report_outline
         )
+        findings = "\n".join(
+            f"- {finding.claim} ({finding.confidence}): {', '.join(finding.source_ids)}"
+            for finding in analysis.findings
+        )
         evidence = "\n\n".join(evidence_blocks) or "NO VERIFIED EVIDENCE"
         revision_context = ""
 
         if previous_report is not None and revision_feedback is not None:
             reasons = (
                 "\n".join(f"- {reason}" for reason in revision_feedback.reasons)
-                or "- Improve the report against the evidence quality gate."
+                or "- Improve the report against the citation quality gate."
             )
             revision_context = (
-                "\n\nThis is a bounded revision pass. Address every review reason "
+                "\n\nThis is a bounded Writer revision. Address every review reason "
                 "without weakening citation discipline.\n"
                 f"Review reasons:\n{reasons}\n\n"
                 f"Previous report:\n{previous_report}"
             )
 
         prompt = (
-            "You are the analyst in an evidence-backed research system.\n"
+            "You are the Writer in an evidence-backed research system.\n"
             f"Research question: {query}\n\n"
+            f"Approved analysis: {analysis.summary}\n"
+            f"Approved findings:\n{findings or 'NO APPROVED FINDINGS'}\n\n"
             f"Required outline:\n{outline}\n\n"
             f"Evidence:\n{evidence}\n\n"
             "Write a concise Markdown report. Every factual paragraph based on evidence "
@@ -122,6 +86,6 @@ class AnalystAgent:
         ).strip()
 
         if not report:
-            raise RuntimeError("LLM provider returned an empty analyst report.")
+            raise RuntimeError("LLM provider returned an empty Writer report.")
 
         return report
