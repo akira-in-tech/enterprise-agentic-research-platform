@@ -52,4 +52,29 @@ run "cost_controlled_foundation" {
     condition     = aws_budgets_budget.staging.limit_amount == "25"
     error_message = "The default staging budget must remain capped at 25 USD."
   }
+
+  assert {
+    condition     = aws_db_instance.postgres.publicly_accessible == false
+    error_message = "PostgreSQL must remain private."
+  }
+
+  assert {
+    condition     = aws_db_instance.postgres.multi_az == false
+    error_message = "The disposable staging database must remain single-AZ for cost control."
+  }
+
+  assert {
+    condition     = aws_db_instance.postgres.storage_encrypted == true
+    error_message = "PostgreSQL storage must be encrypted."
+  }
+
+  assert {
+    condition     = aws_elasticache_replication_group.cache.num_cache_clusters == 1
+    error_message = "The disposable staging cache must remain single-node for cost control."
+  }
+
+  assert {
+    condition     = aws_elasticache_replication_group.cache.transit_encryption_enabled == true
+    error_message = "Cache traffic must use TLS."
+  }
 }

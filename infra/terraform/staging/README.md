@@ -30,6 +30,9 @@ The first infrastructure increment includes:
 - immutable, encrypted, scan-on-push ECR repositories
 - image retention capped at 20 versions
 - forecasted 80% and actual 100% monthly budget notifications
+- private single-AZ RDS PostgreSQL with encrypted gp3 storage
+- private single-node Valkey-compatible ElastiCache with TLS and encryption
+- AWS-managed RDS credentials and Secrets Manager provider credentials
 
 No infrastructure is created by repository tests or `terraform validate`.
 Creating AWS resources requires an explicit `terraform apply`.
@@ -55,3 +58,21 @@ terraform plan -out staging.tfplan
 An authenticated plan contacts AWS to resolve account and availability-zone
 data but does not create resources. Review the plan and the AWS Pricing
 Calculator before applying it.
+
+After the first apply, replace the external-provider placeholders without
+putting credentials in Terraform variables or Git:
+
+```bash
+aws secretsmanager put-secret-value \
+  --secret-id "$(terraform output -raw provider_secret_arn)" \
+  --secret-string '{
+    "ANTHROPIC_API_KEY":"replace-me",
+    "TAVILY_API_KEY":"replace-me",
+    "MILVUS_TOKEN":"replace-me"
+  }'
+```
+
+The RDS password is generated and stored through the RDS-managed Secrets
+Manager integration. The cache token is randomly generated and stored in the
+encrypted remote Terraform state as well as Secrets Manager. Never commit a
+plan file because Terraform plans can contain sensitive values.

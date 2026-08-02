@@ -77,3 +77,58 @@ variable "budget_notification_email" {
     error_message = "budget_notification_email must be a valid email address."
   }
 }
+
+variable "database_name" {
+  description = "Initial PostgreSQL database name."
+  type        = string
+  default     = "research_platform"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9_]{2,62}$", var.database_name))
+    error_message = "database_name must be a valid lowercase PostgreSQL identifier."
+  }
+}
+
+variable "database_username" {
+  description = "PostgreSQL administrator username whose password is managed by RDS."
+  type        = string
+  default     = "research_admin"
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9_]{2,62}$", var.database_username))
+    error_message = "database_username must be a valid lowercase PostgreSQL identifier."
+  }
+}
+
+variable "database_instance_class" {
+  description = "Small staging RDS instance class."
+  type        = string
+  default     = "db.t4g.micro"
+
+  validation {
+    condition     = startswith(var.database_instance_class, "db.")
+    error_message = "database_instance_class must be an RDS instance class."
+  }
+}
+
+variable "database_allocated_storage_gib" {
+  description = "Initial encrypted PostgreSQL gp3 storage allocation."
+  type        = number
+  default     = 20
+
+  validation {
+    condition     = var.database_allocated_storage_gib >= 20 && var.database_allocated_storage_gib <= 50
+    error_message = "database_allocated_storage_gib must be between 20 and 50 GiB."
+  }
+}
+
+variable "cache_node_type" {
+  description = "Single-node staging ElastiCache instance class."
+  type        = string
+  default     = "cache.t4g.micro"
+
+  validation {
+    condition     = startswith(var.cache_node_type, "cache.")
+    error_message = "cache_node_type must be an ElastiCache node type."
+  }
+}

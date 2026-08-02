@@ -22,3 +22,23 @@ output "frontend_repository_url" {
   description = "ECR repository URL for the Vue and Nginx image."
   value       = aws_ecr_repository.frontend.repository_url
 }
+
+output "database_endpoint" {
+  description = "Private RDS PostgreSQL endpoint."
+  value       = aws_db_instance.postgres.address
+}
+
+output "database_master_secret_arn" {
+  description = "AWS-managed Secrets Manager ARN for the PostgreSQL master credentials."
+  value       = aws_db_instance.postgres.master_user_secret[0].secret_arn
+}
+
+output "cache_endpoint" {
+  description = "Private TLS ElastiCache primary endpoint."
+  value       = aws_elasticache_replication_group.cache.primary_endpoint_address
+}
+
+output "provider_secret_arn" {
+  description = "Secrets Manager ARN whose placeholder external provider keys must be replaced after apply."
+  value       = aws_secretsmanager_secret.providers.arn
+}
