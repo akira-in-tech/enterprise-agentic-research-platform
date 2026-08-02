@@ -107,10 +107,11 @@ scripts/aws-deploy.sh
 GitHub Actions exposes the same operation as the manually dispatched
 `Deploy AWS staging` workflow. Configure a protected `staging` environment
 with repository variables `AWS_REGION`, `TF_STATE_BUCKET`,
-`BUDGET_NOTIFICATION_EMAIL`, `ANTHROPIC_MODEL`, and `MILVUS_URI`; configure
-environment secrets `AWS_DEPLOY_ROLE_ARN`, `ANTHROPIC_API_KEY`,
-`TAVILY_API_KEY`, and `MILVUS_TOKEN`. The AWS role must trust GitHub OIDC for
-this repository and environment. Long-lived AWS access keys are not used.
+`AWS_ACCOUNT_ID`, `AWS_DEPLOY_ROLE_ARN`, `BUDGET_NOTIFICATION_EMAIL`,
+`ANTHROPIC_MODEL`, and `MILVUS_URI`; configure environment secrets
+`ANTHROPIC_API_KEY`, `TAVILY_API_KEY`, and `MILVUS_TOKEN`. The AWS role must
+trust GitHub OIDC for this repository and environment. Long-lived AWS access
+keys are not used.
 
 Destroy the billable staging stack explicitly:
 

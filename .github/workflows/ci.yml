@@ -102,8 +102,16 @@ jobs:
         working-directory: infra/terraform/staging
         run: terraform init -backend=false && terraform validate
 
+      - name: Initialize and validate deployment identity
+        working-directory: infra/terraform/identity
+        run: terraform init -backend=false && terraform validate
+
       - name: Test staging plan invariants
         working-directory: infra/terraform/staging
+        run: terraform test
+
+      - name: Test deployment identity invariants
+        working-directory: infra/terraform/identity
         run: terraform test
 
       - name: Validate deployment script syntax

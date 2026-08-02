@@ -23,7 +23,7 @@ Deployed and verified: protected Terraform remote-state bootstrap in us-west-2
 Initialized and validated: staging Terraform uses the protected S3 backend
 Deployed and verified: immutable-repository GitHub OIDC identity, 5 add / 0 change / 0 destroy
 Deployment status: state bucket and CI identity only; staging application resources are not applied
-Next: configure the protected GitHub environment, verify OIDC assumption, and generate the staging plan
+Next: verify the protected GitHub OIDC assumption and generate the staging plan
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
