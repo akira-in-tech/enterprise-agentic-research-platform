@@ -23,11 +23,12 @@ Deployed and verified: protected Terraform remote-state bootstrap in us-west-2
 Initialized and validated: staging Terraform uses the protected S3 backend
 Deployed and verified: immutable-repository GitHub OIDC identity, 5 add / 0 change / 0 destroy
 Remotely verified: protected GitHub Actions OIDC role assumption with short-lived credentials
-Generated and remotely verified: zero-task staging plan, 48 add / 0 change / 0 destroy
+Generated and remotely verified: configured-provider zero-task staging plan, 48 add / 0 change / 0 destroy
 Configured and live verified: Claude Sonnet 5 structured output through the Anthropic API
 Configured and live verified: managed Zilliz Cloud Milvus round trip in AWS us-west-2
+Configured and live verified: Tavily Basic Search and canonical web-source normalization
 Deployment status: state bucket and CI identity only; staging application resources are not applied
-Next: configure Tavily, rerun the protected plan, approve a demo window, then apply and destroy on demand
+Next: review the configured-provider plan, approve a demo window, then apply and destroy on demand
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -252,7 +253,7 @@ explicit opt-in integration check rather than a default-test claim.
 | ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
 | GitHub OIDC deployment identity | Applied and AWS verified: exact repository/environment trust, three reviewed inline policies, protected remote state, and zero Terraform drift |
 | GitHub OIDC deployment workflow | Remotely verified on GitHub Actions: protected staging environment assumed the expected AWS account and deployment role, then generated the zero-task staging plan with short-lived credentials |
-| AWS deployment | Remote-state bootstrap deployed and staging backend initialized; Claude and managed Milvus provider inputs verified, Tavily configuration plus application apply and live endpoint verification pending |
+| AWS deployment | Remote-state bootstrap deployed and staging backend initialized; Claude, Tavily, and managed Milvus inputs live verified; configured-provider plan reports 48 add / 0 change / 0 destroy; application apply and live endpoint verification pending |
 | Open-source contribution | Planned |
 
 There are no published evaluation metrics or deployed application environments
@@ -783,6 +784,12 @@ public-access blocks, the HTTPS-only bucket policy, and the expected resource
 tags. A post-apply Terraform plan reports zero changes. The staging Terraform
 root has been initialized against this backend; initialization created no state
 object and no application resources.
+
+After the external providers were configured and live verified, the protected
+GitHub Actions workflow generated a fresh zero-task plan using
+`claude-sonnet-5` and the managed Zilliz Cloud AWS `us-west-2` endpoint. The
+plan reports 48 resources to add, zero to change, and zero to destroy. The plan
+remained on the ephemeral runner and was not applied.
 
 After configuring the staging backend file and supplying the required provider
 variables and secrets, deploy locally with:
