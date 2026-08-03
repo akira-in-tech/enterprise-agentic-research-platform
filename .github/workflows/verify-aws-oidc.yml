@@ -76,7 +76,9 @@ jobs:
       - name: Generate zero-task staging plan
         env:
           TF_VAR_aws_region: ${{ vars.AWS_REGION }}
+          TF_VAR_anthropic_model: ${{ vars.ANTHROPIC_MODEL }}
           TF_VAR_budget_notification_email: ${{ vars.BUDGET_NOTIFICATION_EMAIL }}
+          TF_VAR_milvus_uri: ${{ vars.MILVUS_URI }}
         shell: bash
         run: |
           set -euo pipefail
