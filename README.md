@@ -263,6 +263,89 @@ production deployments.
 
 ## Current Architecture
 
+The portfolio MVP application is implemented and tested through Phase 13. That
+does not mean every production concern is finished: the Phase 14 AWS
+application stack has not been applied, AWS private RAG still needs an external
+embedding provider, and durable queue ownership, authentication, lock renewal,
+and workflow checkpoints remain production-hardening work.
+
+### System Architecture
+
+The diagram combines the implemented application with its planned AWS staging
+runtime. The ECS, RDS, Valkey, ALB, CloudFront, and ECR resources are declared
+in Terraform but are not deployed yet. The protected Terraform state bucket
+and GitHub OIDC deployment identity are the only applied AWS foundation.
+
+```mermaid
+flowchart TB
+    researcher["Researcher in browser"]
+    cloudfront["CloudFront HTTPS entry<br/>planned, not applied"]
+    alb["Application Load Balancer<br/>planned, not applied"]
+
+    subgraph ecs["ECS Fargate task - planned, not applied"]
+        frontend["Nginx + Vue 3 console"]
+        api["FastAPI API"]
+        jobs["Background Job Manager"]
+        workflow["LangGraph orchestrator"]
+    end
+
+    subgraph agents["Canonical eight-agent research workflow - implemented and tested"]
+        router["1. Intent Router"]
+        planner["2. Planner"]
+        web["3. Web Scout"]
+        local["4. Local Scout"]
+        judge["5. Evidence Judge"]
+        analyst["6. Analyst"]
+        reflect["7. Reflect"]
+        writer["8. Writer"]
+        direct["Direct answer branch"]
+    end
+
+    subgraph state["Application state"]
+        postgres["RDS PostgreSQL<br/>durable runs, reports, and evidence<br/>planned, not applied"]
+        redis["ElastiCache for Valkey<br/>cache, idempotency, locks, rate limits, and progress<br/>planned, not applied"]
+        milvus["Zilliz Cloud / Milvus<br/>tenant-scoped vector retrieval<br/>connection live verified"]
+    end
+
+    subgraph providers["External provider boundaries"]
+        claude["Claude<br/>structured LLM output live verified"]
+        tavily["Tavily<br/>web search live verified"]
+        embeddings["Embedding provider<br/>Ollama verified locally<br/>AWS provider pending"]
+        mcp["MCP servers<br/>contract tested, no live server configured"]
+    end
+
+    researcher --> cloudfront --> alb --> frontend --> api
+    api --> jobs --> workflow --> router
+    router -->|simple request| direct --> claude
+    router -->|deep research| planner
+    planner --> web
+    planner --> local
+    web --> tavily
+    local --> embeddings --> milvus
+    web --> judge
+    local --> judge
+    mcp -. optional evidence .-> judge
+    judge --> analyst --> reflect
+    reflect -->|evidence gap and budget available| web
+    reflect -->|private evidence gap| local
+    reflect -->|quality gate passed| writer
+    workflow <--> claude
+    api <--> redis
+    api <--> postgres
+    writer --> postgres
+    redis -->|SSE progress| api
+    api -->|report, quality, and evidence| frontend
+```
+
+Terraform is the Infrastructure as Code tool for the planned AWS boundary in
+this diagram. The application code says how Evident behaves; Terraform says
+which AWS resources should exist and how they connect. `terraform plan`
+previews the difference between the declaration and recorded state,
+`terraform apply` creates or changes resources, the remote state records what
+Terraform manages, and the guarded destroy workflow removes the billable
+staging resources after a demo. A successful plan is validation, not a
+deployment.
+
 ### AWS Staging Runtime
 
 ```text
