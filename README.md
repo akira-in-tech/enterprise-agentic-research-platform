@@ -24,8 +24,10 @@ Initialized and validated: staging Terraform uses the protected S3 backend
 Deployed and verified: immutable-repository GitHub OIDC identity, 5 add / 0 change / 0 destroy
 Remotely verified: protected GitHub Actions OIDC role assumption with short-lived credentials
 Generated and remotely verified: zero-task staging plan, 48 add / 0 change / 0 destroy
+Configured and live verified: Claude Sonnet 5 structured output through the Anthropic API
+Configured and live verified: managed Zilliz Cloud Milvus round trip in AWS us-west-2
 Deployment status: state bucket and CI identity only; staging application resources are not applied
-Next: configure real cloud providers, approve a demo window, then apply and destroy on demand
+Next: configure Tavily, rerun the protected plan, approve a demo window, then apply and destroy on demand
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -200,12 +202,13 @@ explicit opt-in integration check rather than a default-test claim.
 | Provider-neutral vector-store interface | Tested |
 | In-memory vector store | Tested |
 | Milvus collection initialization | Tested |
-| Milvus vector upsert, search, and deletion | Tested with unit and live integration tests |
+| Milvus vector upsert, search, and deletion | Tested with unit and live integration tests against local Milvus and managed Zilliz Cloud in AWS us-west-2 |
 | Tenant-scoped private knowledge retrieval | Tested |
 | Canonical private source generation | Tested |
 | Ollama-to-Milvus private RAG pipeline | Live integration tested |
 | Vector-store provider factory | Tested |
 | Per-request Claude/Qwen user selection | Tested |
+| Claude structured-output provider | Live integration tested with `claude-sonnet-5` |
 | Async PostgreSQL engine and session factory | Tested |
 | Alembic migration environment | Tested |
 | Tenant, user, and research-run schema | Tested with reversible live migration |
@@ -249,7 +252,7 @@ explicit opt-in integration check rather than a default-test claim.
 | ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
 | GitHub OIDC deployment identity | Applied and AWS verified: exact repository/environment trust, three reviewed inline policies, protected remote state, and zero Terraform drift |
 | GitHub OIDC deployment workflow | Remotely verified on GitHub Actions: protected staging environment assumed the expected AWS account and deployment role, then generated the zero-task staging plan with short-lived credentials |
-| AWS deployment | Remote-state bootstrap deployed and staging backend initialized; application apply and live endpoint verification pending |
+| AWS deployment | Remote-state bootstrap deployed and staging backend initialized; Claude and managed Milvus provider inputs verified, Tavily configuration plus application apply and live endpoint verification pending |
 | Open-source contribution | Planned |
 
 There are no published evaluation metrics or deployed application environments
@@ -821,6 +824,7 @@ claimed by this README yet.
 Live tests require only the services used by the selected test:
 
 - `RUN_LIVE_TESTS=true`
+- an Anthropic API key and supported model ID for the Claude test
 - a Tavily API key for the Tavily test
 - Ollama with `qwen3:8b` for LLM tests
 - Ollama with `qwen3-embedding:0.6b` for embedding tests
@@ -829,6 +833,14 @@ Live tests require only the services used by the selected test:
 - Redis listening at the configured `REDIS_URL` for cache tests
 
 Run individual integrations:
+
+```bash
+ANTHROPIC_API_KEY=... \
+ANTHROPIC_MODEL=claude-sonnet-5 \
+RUN_LIVE_TESTS=true \
+pytest -q -m integration \
+  tests/integration/test_anthropic_live.py
+```
 
 ```bash
 RUN_LIVE_TESTS=true \
