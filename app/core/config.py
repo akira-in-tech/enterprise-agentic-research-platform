@@ -5,6 +5,20 @@ from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def parse_cors_allowed_origins(value: str) -> list[str]:
+    """Parse a comma-separated CORS allowlist, dropping blanks and duplicates."""
+
+    origins: list[str] = []
+
+    for origin in value.split(","):
+        normalized = origin.strip()
+
+        if normalized and normalized not in origins:
+            origins.append(normalized)
+
+    return origins
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -16,6 +30,7 @@ class Settings(BaseSettings):
 
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    cors_allowed_origins: str = ""
 
     document_storage_root: str = "uploads"
     document_storage_provider: Literal["local", "s3"] = "local"

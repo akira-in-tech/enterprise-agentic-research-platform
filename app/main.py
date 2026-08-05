@@ -4,12 +4,13 @@ from contextlib import AsyncExitStack, asynccontextmanager
 from functools import partial
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.local_scout import LocalScoutAgent
 from app.api.documents import router as documents_router
 from app.api.operations import router as operations_router
 from app.api.research import router as research_router
-from app.core.config import settings
+from app.core.config import parse_cors_allowed_origins, settings
 from app.core.correlation import CorrelationIdMiddleware
 from app.core.logging import configure_logging
 from app.db.session import (
@@ -182,6 +183,22 @@ app = FastAPI(
 )
 
 app.add_middleware(CorrelationIdMiddleware)
+
+cors_allowed_origins = parse_cors_allowed_origins(settings.cors_allowed_origins)
+if cors_allowed_origins:
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=cors_allowed_origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+        expose_headers=[
+            "X-Correlation-ID",
+            "X-RateLimit-Limit",
+            "X-RateLimit-Remaining",
+            "X-RateLimit-Reset",
+        ],
+    )
 
 app.include_router(
     research_router,
