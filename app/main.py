@@ -10,6 +10,7 @@ from app.api.documents import router as documents_router
 from app.api.operations import router as operations_router
 from app.api.research import router as research_router
 from app.core.config import settings
+from app.core.correlation import CorrelationIdMiddleware
 from app.core.logging import configure_logging
 from app.db.session import (
     create_database_engine,
@@ -178,6 +179,8 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+app.add_middleware(CorrelationIdMiddleware)
 
 app.include_router(
     research_router,
