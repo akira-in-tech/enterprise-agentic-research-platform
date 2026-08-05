@@ -45,7 +45,7 @@ jobs:
   frontend:
     name: Frontend quality
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     defaults:
       run:
@@ -76,6 +76,12 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+
+      - name: Run end-to-end tests
+        run: npm run test:e2e
 
   integration:
     name: Integration quality
