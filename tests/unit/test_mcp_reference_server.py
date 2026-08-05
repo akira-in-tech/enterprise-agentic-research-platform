@@ -115,7 +115,16 @@ async def test_official_mcp_server_and_platform_client_interoperate() -> None:
             )
             await client.close()
 
-    assert [tool.name for tool in tools] == ["search_research_standards"]
+    assert {tool.name for tool in tools} == {
+        "search_research_standards",
+        "search_web",
+        "search_private_documents",
+        "retrieve_source",
+        "ingest_document",
+        "save_research_report",
+        "get_research_history",
+        "request_human_review",
+    }
     assert result.is_error is False
     assert result.content[0].text is not None
     assert "Evidence traceability" in result.content[0].text

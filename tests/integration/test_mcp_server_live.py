@@ -58,7 +58,16 @@ async def test_real_mcp_server_streamable_http_round_trip() -> None:
         finally:
             await client.close()
 
-        assert [tool.name for tool in tools] == ["search_research_standards"]
+        assert {tool.name for tool in tools} == {
+            "search_research_standards",
+            "search_web",
+            "search_private_documents",
+            "retrieve_source",
+            "ingest_document",
+            "save_research_report",
+            "get_research_history",
+            "request_human_review",
+        }
         assert result.is_error is False
         assert any(block.type == "text" and block.text for block in result.content)
     finally:

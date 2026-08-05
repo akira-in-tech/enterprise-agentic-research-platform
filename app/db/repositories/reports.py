@@ -109,6 +109,29 @@ class ResearchReportRepository:
         )
         return list(result)
 
+    async def get_source_by_id(
+        self,
+        *,
+        tenant_id: UUID,
+        source_id: str,
+        research_run_id: UUID | None = None,
+    ) -> ResearchSource | None:
+        """Return the most recent tenant-scoped source with this source ID."""
+
+        conditions = [
+            ResearchSource.tenant_id == tenant_id,
+            ResearchSource.source_id == source_id,
+        ]
+
+        if research_run_id is not None:
+            conditions.append(ResearchSource.research_run_id == research_run_id)
+
+        result = await self._session.scalar(
+            select(ResearchSource).where(*conditions).order_by(ResearchSource.id.desc()).limit(1)
+        )
+
+        return result
+
     @staticmethod
     def _require_score(
         source: EvidenceSource,
