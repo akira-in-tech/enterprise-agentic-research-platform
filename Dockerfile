@@ -18,6 +18,6 @@ RUN python -m pip install --no-cache-dir .
 
 USER app
 
-EXPOSE 8000
+EXPOSE 8000 8001
 
 CMD ["python", "-m", "app.entrypoint"]

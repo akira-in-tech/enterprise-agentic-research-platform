@@ -15,6 +15,7 @@ Internet
 → public ALB
 → public-subnet ECS Fargate task with public egress
    ├── frontend Nginx container
+   ├── internal official-SDK MCP sidecar
    └── FastAPI container
        ├── isolated-subnet RDS PostgreSQL
        ├── isolated-subnet ElastiCache

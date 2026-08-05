@@ -16,6 +16,7 @@ from app.services.llm.factory import (
     create_llm_client,
     normalize_llm_provider,
 )
+from app.services.mcp import MCPReferenceScout
 from app.workflow.graph import (
     ResearchGraph,
     build_research_graph_for_client,
@@ -156,6 +157,7 @@ def create_default_workflow(
     provider: CanonicalLLMProvider,
     *,
     local_scout: LocalScoutAgent | None = None,
+    mcp_scout: MCPReferenceScout | None = None,
 ) -> ResearchWorkflow:
     """Build one managed production workflow."""
 
@@ -167,6 +169,7 @@ def create_default_workflow(
         build_research_graph_for_client(
             llm_client,
             local_scout=local_scout,
+            mcp_scout=mcp_scout,
         ),
         llm_client.close,
     )

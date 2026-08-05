@@ -33,7 +33,8 @@ Implemented and verified: Vue Private Knowledge upload, lifecycle, recovery, and
 Implemented and locally verified: Amazon Bedrock Titan V2 embeddings and private S3 source-object storage
 Terraform validated and mock tested: encrypted, versioned, public-blocked S3 plus least-privilege ECS task access
 Deployment status: state bucket and CI identity only; staging application resources are not applied
-Next: replace the MCP client-only boundary with a real server integration
+Implemented and live verified: official SDK Streamable HTTP MCP server, client, and Web Scout federation
+Next: add PostgreSQL document checkpoints, audit events, and durable worker ownership
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -243,7 +244,8 @@ explicit opt-in integration check rather than a default-test claim.
 | Tenant-scoped Redis research progress snapshots and TTL | Tested with unit and live integration tests |
 | Research execution lifecycle progress publishing | Tested with unit and live integration tests |
 | Tenant-scoped research progress REST endpoint | Tested |
-| MCP Streamable HTTP tools client | Contract tested with deterministic HTTP transport |
+| MCP Streamable HTTP tools client | Contract tested with deterministic transport and live verified against the repository's official-SDK server over TCP |
+| MCP reference server and research federation | Official Python SDK server, tool discovery/call, fail-open Web Scout federation, Compose service, and AWS sidecar configuration tested |
 | Web, private, and MCP evidence normalization | Tested |
 | Explainable evidence scoring and citation validation | Tested |
 | Analyst report generation and reflection quality gate | Tested |
@@ -257,7 +259,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Vue 3 + TypeScript + Vite frontend | Typechecked, 12 tests passed, production built, and desktop/mobile browser QA verified |
 | Canonical eight-agent workflow and console role mapping | Backend tested; frontend typechecked, component tested, and built |
 | Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
-| Docker Compose project stack | Built and smoke tested across seven healthy services |
+| Docker Compose project stack | Built and smoke tested across eight healthy services, including the official-SDK MCP server |
 | GitHub Actions | Remote verified across backend, frontend, and container quality gates |
 | Terraform state bootstrap | Applied and AWS verified: protected S3 bucket plus five security controls; staging backend initialized |
 | Cost-controlled AWS staging infrastructure | Terraform validated and mock tested, including private S3 documents and Bedrock task permissions; the prior remote plan predates this slice and must be regenerated before apply |
@@ -323,7 +325,7 @@ flowchart TB
         tavily["Tavily<br/>web search live verified"]
         embeddings["Embedding provider<br/>Ollama live verified locally<br/>Bedrock adapter unit tested"]
         objects["Source object storage<br/>local filesystem tested<br/>private S3 declared and mock tested"]
-        mcp["MCP servers<br/>contract tested, no live server configured"]
+        mcp["Internal MCP reference server<br/>official SDK + live TCP verified"]
     end
 
     researcher --> cloudfront --> alb --> frontend --> api
@@ -465,14 +467,24 @@ StreamableHTTPMCPClient
 → call tools/call and validate content or structuredContent
 → distinguish JSON-RPC protocol errors from tool execution errors
 → terminate the session and close owned HTTP resources
+
+Official FastMCP server
+→ stateless JSON Streamable HTTP at /mcp
+→ advertise search_research_standards
+→ return traceable organization reference text
+→ Web Scout federates successful results as MCP evidence
+→ fail open when the optional server or tool is unavailable
 ```
 
 The client implements the JSON-response subset of the
 [MCP protocol revision 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25)
 Streamable HTTP transport using the existing `httpx` dependency. Its lifecycle,
 headers, pagination, tool-call results, error handling, and cleanup are contract
-tested with a deterministic HTTP transport. No external MCP server is
-configured or described as live.
+tested with a deterministic HTTP transport. The repository now also runs a real
+stateless server from the official MCP Python SDK. Client/server interoperability
+is tested in-process and through a live loopback TCP subprocess. Compose runs it
+as an internal service and AWS Terraform declares it as an API-image sidecar;
+no third-party organization MCP endpoint is claimed.
 
 ### Evidence Quality Pipeline
 
@@ -805,7 +817,7 @@ Container packaging
 ```
 
 The container job waits for backend, frontend, and Terraform quality. The
-seven-service Compose smoke test remains an explicit local integration check
+eight-service Compose smoke test remains an explicit local integration check
 because starting Milvus, etcd, MinIO, PostgreSQL, and Redis on every pull
 request would add substantial latency. This separation keeps pull-request
 feedback bounded without claiming that image builds replace the live Compose
@@ -849,7 +861,7 @@ Run the repeatable isolated smoke check on temporary host ports:
 ```
 
 The script validates Compose configuration, builds both application images,
-waits for all seven services to become healthy, calls the API through Nginx,
+waits for all eight services to become healthy, calls the API through Nginx,
 checks the Alembic head and Redis, validates Nginx, and stops the containers.
 Named development volumes remain available across runs. To stop a manually
 started stack without deleting those volumes:
@@ -1098,7 +1110,7 @@ running, completed, failed, empty, Redis-unavailable, SSE-disconnected,
 report-unavailable, and citation-revision-required states
 keyboard, focus, screen-reader, reduced-motion, light, dark, and mobile behavior
 multi-stage Python and Node/Nginx application images
-health-gated PostgreSQL, Redis, Milvus, etcd, MinIO, API, and frontend services
+health-gated PostgreSQL, Redis, Milvus, etcd, MinIO, MCP, API, and frontend services
 automatic Alembic upgrade before API startup
 same-origin Nginx API and unbuffered SSE proxy
 loopback-only frontend and API ports with internal-only state services
@@ -1143,8 +1155,9 @@ that baseline to about $66.32 before traffic, logs, image storage, provider
 APIs, and taxes. This is why the staging environment remains demo-on-demand
 and why the $25 AWS Budget is treated as an alert rather than a spending cap.
 
-MCP is currently a contract-tested client boundary rather than a configured
-external integration. PostgreSQL remains the durable source of truth, while
+MCP now has a repository-owned official-SDK server and a real Streamable HTTP
+integration, while third-party organization MCP endpoints remain optional.
+PostgreSQL remains the durable source of truth, while
 Redis stores temporary cache and coordination state. The current background
 runner is process-local; external queue ownership, lease renewal, and durable
 LangGraph checkpoints remain explicit production-hardening work.

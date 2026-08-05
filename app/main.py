@@ -26,6 +26,7 @@ from app.services.embeddings.factory import create_embedding_client
 from app.services.knowledge import KnowledgeDocumentService, PostgresKnowledgeDocumentStore
 from app.services.knowledge.indexing import KnowledgeIndexer
 from app.services.knowledge.retrieval import PrivateKnowledgeRetriever
+from app.services.mcp import MCPReferenceScout
 from app.services.research.execution import (
     ResearchExecutionService,
     create_default_workflow,
@@ -112,12 +113,25 @@ async def lifespan(
         application.state.research_rate_limiter = RedisResearchRateLimiter(
             redis_connection,
         )
-        execution_service = ResearchExecutionService(
-            research_store,
-            partial(
+        if settings.mcp_endpoint.strip():
+            mcp_scout = MCPReferenceScout(
+                settings.mcp_endpoint,
+                server_name=settings.mcp_server_name,
+            )
+            workflow_factory = partial(
                 create_default_workflow,
                 local_scout=local_scout,
-            ),
+                mcp_scout=mcp_scout,
+            )
+        else:
+            workflow_factory = partial(
+                create_default_workflow,
+                local_scout=local_scout,
+            )
+
+        execution_service = ResearchExecutionService(
+            research_store,
+            workflow_factory,
             result_cache=result_cache,
             progress_store=progress_store,
         )

@@ -4,6 +4,7 @@ import pytest
 from fastapi import FastAPI
 
 from app import main as main_module
+from app.core.config import settings
 
 
 class RecordingEngine:
@@ -80,6 +81,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     knowledge_document_service = object()
     private_retriever = object()
     local_scout = object()
+    mcp_scout = object()
     expected_workflow = object()
 
     create_engine = Mock(
@@ -143,6 +145,9 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_local_scout = Mock(
         return_value=local_scout,
+    )
+    create_mcp_scout = Mock(
+        return_value=mcp_scout,
     )
     create_workflow = Mock(
         return_value=expected_workflow,
@@ -254,6 +259,21 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     monkeypatch.setattr(
         main_module,
+        "MCPReferenceScout",
+        create_mcp_scout,
+    )
+    monkeypatch.setattr(
+        settings,
+        "mcp_endpoint",
+        "http://mcp.test/mcp",
+    )
+    monkeypatch.setattr(
+        settings,
+        "mcp_server_name",
+        "test-reference",
+    )
+    monkeypatch.setattr(
+        main_module,
         "create_default_workflow",
         create_workflow,
     )
@@ -343,6 +363,10 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_local_scout.assert_called_once_with(
         private_retriever,
     )
+    create_mcp_scout.assert_called_once_with(
+        "http://mcp.test/mcp",
+        server_name="test-reference",
+    )
     execution_call = create_execution_service.call_args
     assert execution_call.args[0] is research_store
     workflow_factory = execution_call.args[1]
@@ -350,6 +374,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_workflow.assert_called_once_with(
         "ollama",
         local_scout=local_scout,
+        mcp_scout=mcp_scout,
     )
     assert execution_call.kwargs == {
         "result_cache": result_cache,

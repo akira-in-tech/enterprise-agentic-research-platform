@@ -20,7 +20,7 @@ curl --fail --silent --show-error \
 
 docker compose -f compose.yml exec -T api \
   python -m alembic current \
-  | grep '9bd72c6f8a10 (head)'
+  | grep 'e2187a94b6c1 (head)'
 
 docker compose -f compose.yml exec -T redis \
   redis-cli ping \

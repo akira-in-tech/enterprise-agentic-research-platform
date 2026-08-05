@@ -42,6 +42,7 @@ async def test_default_workflow_injects_local_scout_and_closes_request_llm(
     build_graph.assert_called_once_with(
         llm_client,
         local_scout=local_scout,
+        mcp_scout=None,
     )
     assert llm_client.closed is False
 

@@ -160,6 +160,11 @@ run "cost_controlled_foundation" {
   }
 
   assert {
+    condition     = one([for item in local.api_container_environment : item.value if item.name == "MCP_ENDPOINT"]) == "http://127.0.0.1:8001/mcp"
+    error_message = "AWS staging must connect the API to its internal MCP sidecar."
+  }
+
+  assert {
     condition     = contains(local.private_knowledge_bedrock_actions, "bedrock:InvokeModel")
     error_message = "The application task role must be able to invoke the configured embedding model."
   }

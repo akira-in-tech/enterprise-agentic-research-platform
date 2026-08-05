@@ -137,6 +137,8 @@ locals {
     { name = "BEDROCK_EMBEDDING_DIMENSIONS", value = "1024" },
     { name = "DOCUMENT_STORAGE_PROVIDER", value = "s3" },
     { name = "DOCUMENT_S3_BUCKET", value = aws_s3_bucket.private_documents.bucket },
+    { name = "MCP_ENDPOINT", value = "http://127.0.0.1:8001/mcp" },
+    { name = "MCP_SERVER_NAME", value = "evident-reference" },
     { name = "POSTGRES_HOST", value = aws_db_instance.postgres.address },
     { name = "POSTGRES_DB", value = var.database_name },
     { name = "POSTGRES_USER", value = var.database_username },
@@ -200,12 +202,53 @@ resource "aws_ecs_task_definition" "application" {
           protocol      = "tcp"
         },
       ]
+      dependsOn = [
+        {
+          containerName = "mcp"
+          condition     = "HEALTHY"
+        },
+      ]
       logConfiguration = {
         logDriver = "awslogs"
         options = {
           awslogs-group         = aws_cloudwatch_log_group.application.name
           awslogs-region        = var.aws_region
           awslogs-stream-prefix = "api"
+        }
+      }
+    },
+    {
+      name      = "mcp"
+      image     = "${aws_ecr_repository.api.repository_url}:${var.api_image_tag}"
+      essential = true
+      command   = ["python", "-m", "app.mcp_server"]
+      environment = [
+        { name = "APP_ENV", value = var.environment },
+        { name = "LOG_LEVEL", value = "INFO" },
+        { name = "MCP_SERVER_NAME", value = "evident-reference" },
+        { name = "MCP_SERVER_HOST", value = "0.0.0.0" },
+        { name = "MCP_SERVER_PORT", value = "8001" },
+      ]
+      portMappings = [
+        {
+          containerPort = 8001
+          hostPort      = 8001
+          protocol      = "tcp"
+        },
+      ]
+      healthCheck = {
+        command     = ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8001/health', timeout=2)\""]
+        interval    = 10
+        timeout     = 3
+        retries     = 5
+        startPeriod = 5
+      }
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.application.name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "mcp"
         }
       }
     },

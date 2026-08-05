@@ -35,6 +35,7 @@ from app.services.evidence import (
 )
 from app.services.llm.base import LLMClient
 from app.services.llm.factory import create_llm_client
+from app.services.mcp import MCPReferenceScout
 from app.services.search.executor import (
     ResearchTaskResult,
     SearchExecutor,
@@ -62,6 +63,7 @@ LocalTaskScout = Callable[
     [Sequence[ResearchTask], UUID],
     Awaitable[LocalScoutResult],
 ]
+MCPQueryScout = Callable[[str], Awaitable[list[EvidenceSource]]]
 
 
 class EvidenceJudgeOperation(Protocol):
@@ -549,8 +551,19 @@ def _merge_private_sources(
     return list(merged.values())
 
 
+def _merge_evidence_sources(
+    existing: Sequence[EvidenceSource],
+    new: Sequence[EvidenceSource],
+) -> list[EvidenceSource]:
+    merged: dict[str, EvidenceSource] = {}
+    for source in [*existing, *new]:
+        merged[source.source_id] = source
+    return list(merged.values())
+
+
 def build_eight_agent_web_scout_node(
     scout_web: WebTaskScout,
+    scout_mcp: MCPQueryScout | None = None,
 ) -> Callable[[ResearchState], Awaitable[dict[str, object]]]:
     """Create the canonical Web Scout node."""
 
@@ -566,6 +579,23 @@ def build_eight_agent_web_scout_node(
             result.sources,
         )
         succeeded_count = sum(outcome.succeeded for outcome in result.outcomes)
+        mcp_sources = state.get("mcp_sources", [])
+        mcp_errors = state.get("mcp_scout_errors", [])
+
+        if scout_mcp is None:
+            mcp_status = "disabled"
+        elif not tasks:
+            mcp_status = "skipped"
+        else:
+            try:
+                mcp_sources = _merge_evidence_sources(
+                    mcp_sources,
+                    await scout_mcp(state["query"]),
+                )
+                mcp_status = "completed" if mcp_sources else "empty"
+            except Exception as error:
+                mcp_errors = [*mcp_errors, str(error)]
+                mcp_status = "failed"
 
         if not tasks:
             status = "skipped"
@@ -582,6 +612,9 @@ def build_eight_agent_web_scout_node(
             "web_search_results": outcomes,
             "web_sources": sources,
             "web_scout_status": status,
+            "mcp_sources": mcp_sources,
+            "mcp_scout_errors": mcp_errors,
+            "mcp_scout_status": mcp_status,
         }
 
     return web_scout_node
@@ -638,6 +671,10 @@ def build_eight_agent_evidence_judge_node(
         additional_sources = [
             source for source in state.get("evidence_sources", []) if source.origin == "mcp"
         ]
+        additional_sources = _merge_evidence_sources(
+            additional_sources,
+            state.get("mcp_sources", []),
+        )
         result = await judge_evidence(
             query=state["query"],
             web_sources=state.get("web_sources", []),
@@ -804,6 +841,7 @@ def build_eight_agent_research_graph(
     write_report: WriterOperation,
     review_report: ReportReviewer,
     *,
+    scout_mcp: MCPQueryScout | None = None,
     max_iterations: int = 2,
     max_writer_attempts: int = 2,
 ) -> ResearchGraph:
@@ -837,7 +875,7 @@ def build_eight_agent_research_graph(
     graph_builder.add_node("planner", planner_node)
     graph_builder.add_node(
         "web_scout",
-        build_eight_agent_web_scout_node(scout_web),  # type: ignore[arg-type]
+        build_eight_agent_web_scout_node(scout_web, scout_mcp),  # type: ignore[arg-type]
     )
     graph_builder.add_node(
         "local_scout",
@@ -903,6 +941,7 @@ def build_research_graph_for_client(
     llm_client: LLMClient,
     *,
     local_scout: LocalScoutAgent | None = None,
+    mcp_scout: MCPReferenceScout | None = None,
 ) -> ResearchGraph:
     """Build the production graph around one supplied LLM client."""
 
@@ -975,6 +1014,7 @@ def build_research_graph_for_client(
             reflection.reflect,
             writer.write_report,
             review_report,
+            scout_mcp=mcp_scout.scout if mcp_scout is not None else None,
         )
 
     return build_research_graph(

@@ -42,6 +42,11 @@ class Settings(BaseSettings):
     bedrock_embedding_model: str = "amazon.titan-embed-text-v2:0"
     bedrock_embedding_dimensions: Literal[256, 512, 1024] = 1024
 
+    mcp_endpoint: str = ""
+    mcp_server_name: str = "evident-reference"
+    mcp_server_host: str = "127.0.0.1"
+    mcp_server_port: int = Field(default=8001, ge=1, le=65_535)
+
     milvus_uri: str = "http://localhost:19530"
     milvus_token: SecretStr = SecretStr("")
     milvus_collection: str = "private_document_chunks"

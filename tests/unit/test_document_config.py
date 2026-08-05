@@ -15,6 +15,10 @@ def test_document_upload_configuration_has_safe_defaults() -> None:
     assert config.aws_region == "us-west-2"
     assert config.bedrock_embedding_model == "amazon.titan-embed-text-v2:0"
     assert config.bedrock_embedding_dimensions == 1024
+    assert config.mcp_endpoint == ""
+    assert config.mcp_server_name == "evident-reference"
+    assert config.mcp_server_host == "127.0.0.1"
+    assert config.mcp_server_port == 8001
 
 
 @pytest.mark.parametrize("max_upload_bytes", [0, 100_000_001])
