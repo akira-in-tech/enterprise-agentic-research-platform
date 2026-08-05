@@ -13,7 +13,10 @@
   "dependencies": {
     "@fontsource-variable/inter": "latest",
     "@phosphor-icons/vue": "latest",
-    "vue": "latest"
+    "@tanstack/vue-query": "^5.101.4",
+    "pinia": "^4.0.2",
+    "vue": "latest",
+    "vue-router": "^5.2.0"
   },
   "devDependencies": {
     "@types/node": "latest",

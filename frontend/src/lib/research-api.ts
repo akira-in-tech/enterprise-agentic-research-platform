@@ -4,6 +4,7 @@ import type {
   KnowledgeDocument,
   ResearchProgressRecord,
   ResearchReport,
+  ResearchRun,
   UserFacingProvider,
   WorkspaceContext,
 } from "../types/research";
@@ -75,6 +76,21 @@ export async function createResearchJob(
   }
 
   return (await response.json()) as CreateResearchJobResponse;
+}
+
+export async function getResearchRun(
+  researchRunId: string,
+  workspace: WorkspaceContext,
+): Promise<ResearchRun> {
+  const response = await fetch(`${API_BASE_URL}/research-runs/${researchRunId}`, {
+    headers: tenantHeaders(workspace),
+  });
+
+  if (!response.ok) {
+    throw new ResearchApiError(await errorMessage(response), response.status);
+  }
+
+  return (await response.json()) as ResearchRun;
 }
 
 export async function cancelResearchJob(

@@ -8,7 +8,8 @@ import {
   PhUploadSimple,
   PhWarningCircle,
 } from "@phosphor-icons/vue";
-import { computed, onMounted, ref } from "vue";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/vue-query";
+import { computed, ref, watch } from "vue";
 
 import {
   deleteKnowledgeDocument,
@@ -27,10 +28,6 @@ const emit = defineEmits<{
   announce: [message: string];
 }>();
 
-const documents = ref<KnowledgeDocument[]>([]);
-const loading = ref(false);
-const uploading = ref(false);
-const deletingId = ref<string | null>(null);
 const pendingDeleteId = ref<string | null>(null);
 const selectedFile = ref<File | null>(null);
 const errorMessage = ref("");
@@ -39,9 +36,58 @@ const fileInput = ref<HTMLInputElement | null>(null);
 const workspaceConfigured = computed(() => props.workspace.tenantId.trim().length > 0);
 const acceptedTypes = ".txt,.md,.markdown,.pdf";
 
-onMounted(() => {
-  if (workspaceConfigured.value) void refreshDocuments();
+const queryClient = useQueryClient();
+const documentsQueryKey = computed(() => ["documents", props.workspace.tenantId]);
+
+const {
+  data: documents,
+  isFetching: loading,
+  error: listError,
+  refetch: refreshDocuments,
+} = useQuery({
+  queryKey: documentsQueryKey,
+  queryFn: () => listKnowledgeDocuments(props.workspace),
+  enabled: workspaceConfigured,
+  retry: false,
+  initialData: [],
 });
+
+watch(listError, (error) => {
+  if (error) {
+    errorMessage.value = describeError(
+      error,
+      "Private knowledge could not be loaded. Your existing documents remain safe.",
+    );
+  }
+});
+
+const uploadMutation = useMutation({
+  mutationFn: (file: File) => uploadKnowledgeDocument(file, props.workspace),
+  onSuccess: (created) => {
+    queryClient.setQueryData<KnowledgeDocument[]>(documentsQueryKey.value, (current) => [
+      created,
+      ...(current ?? []).filter((item) => item.id !== created.id),
+    ]);
+    selectedFile.value = null;
+    if (fileInput.value) fileInput.value.value = "";
+    emit("announce", `${created.filename} is indexed and ready for research.`);
+  },
+});
+const uploading = computed(() => uploadMutation.isPending.value);
+
+const deleteMutation = useMutation({
+  mutationFn: (document: KnowledgeDocument) => deleteKnowledgeDocument(document.id, props.workspace),
+  onSuccess: (_result, document) => {
+    queryClient.setQueryData<KnowledgeDocument[]>(documentsQueryKey.value, (current) =>
+      (current ?? []).filter((item) => item.id !== document.id),
+    );
+    pendingDeleteId.value = null;
+    emit("announce", `${document.filename} and its indexed evidence were deleted.`);
+  },
+});
+const deletingId = computed(() =>
+  deleteMutation.isPending.value ? (deleteMutation.variables.value?.id ?? null) : null,
+);
 
 function readableBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -74,41 +120,26 @@ function selectFile(event: Event): void {
   errorMessage.value = "";
 }
 
-async function refreshDocuments(): Promise<void> {
-  if (!workspaceConfigured.value || loading.value) return;
-
-  loading.value = true;
+async function retryList(): Promise<void> {
   errorMessage.value = "";
-  try {
-    documents.value = await listKnowledgeDocuments(props.workspace);
-  } catch (error) {
-    errorMessage.value =
-      error instanceof ResearchApiError
-        ? error.message
-        : "Private knowledge could not be loaded. Your existing documents remain safe.";
-  } finally {
-    loading.value = false;
-  }
+  await refreshDocuments();
+}
+
+function describeError(error: unknown, fallback: string): string {
+  return error instanceof ResearchApiError ? error.message : fallback;
 }
 
 async function uploadSelected(): Promise<void> {
   if (!selectedFile.value || uploading.value || !workspaceConfigured.value) return;
 
-  uploading.value = true;
   errorMessage.value = "";
   try {
-    const created = await uploadKnowledgeDocument(selectedFile.value, props.workspace);
-    documents.value = [created, ...documents.value.filter((item) => item.id !== created.id)];
-    selectedFile.value = null;
-    if (fileInput.value) fileInput.value.value = "";
-    emit("announce", `${created.filename} is indexed and ready for research.`);
+    await uploadMutation.mutateAsync(selectedFile.value);
   } catch (error) {
-    errorMessage.value =
-      error instanceof ResearchApiError
-        ? error.message
-        : "The document could not be uploaded. No successful indexing is being claimed.";
-  } finally {
-    uploading.value = false;
+    errorMessage.value = describeError(
+      error,
+      "The document could not be uploaded. No successful indexing is being claimed.",
+    );
   }
 }
 
@@ -118,20 +149,14 @@ async function confirmDelete(document: KnowledgeDocument): Promise<void> {
     return;
   }
 
-  deletingId.value = document.id;
   errorMessage.value = "";
   try {
-    await deleteKnowledgeDocument(document.id, props.workspace);
-    documents.value = documents.value.filter((item) => item.id !== document.id);
-    pendingDeleteId.value = null;
-    emit("announce", `${document.filename} and its indexed evidence were deleted.`);
+    await deleteMutation.mutateAsync(document);
   } catch (error) {
-    errorMessage.value =
-      error instanceof ResearchApiError
-        ? error.message
-        : "The document could not be fully deleted. Its lifecycle remains visible for recovery.";
-  } finally {
-    deletingId.value = null;
+    errorMessage.value = describeError(
+      error,
+      "The document could not be fully deleted. Its lifecycle remains visible for recovery.",
+    );
   }
 }
 </script>
@@ -191,7 +216,7 @@ async function confirmDelete(document: KnowledgeDocument): Promise<void> {
           <strong>Private Knowledge needs attention</strong>
           <p>{{ errorMessage }}</p>
         </div>
-        <button class="secondary-button" type="button" @click="refreshDocuments">
+        <button class="secondary-button" type="button" @click="retryList">
           <PhArrowClockwise :size="15" /> Retry
         </button>
       </section>
@@ -202,12 +227,12 @@ async function confirmDelete(document: KnowledgeDocument): Promise<void> {
             <p class="eyebrow">Evidence library</p>
             <h2 id="library-title">Indexed documents</h2>
           </div>
-          <button class="secondary-button" type="button" :disabled="loading" @click="refreshDocuments">
+          <button class="secondary-button" type="button" :disabled="loading" @click="retryList">
             <PhArrowClockwise :size="15" /> {{ loading ? "Refreshing…" : "Refresh" }}
           </button>
         </div>
 
-        <div v-if="!loading && documents.length === 0" class="knowledge-empty">
+        <div v-if="!loading && documents?.length === 0" class="knowledge-empty">
           <PhFileText :size="30" aria-hidden="true" />
           <h3>No private sources yet</h3>
           <p>Upload the first document to give Local Scout evidence it can cite.</p>

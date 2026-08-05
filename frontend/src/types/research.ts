@@ -53,6 +53,21 @@ export interface KnowledgeDocument {
   indexed_at: string | null;
 }
 
+export type ResearchRoute = "direct" | "deep_research";
+
+export interface ResearchRun {
+  research_run_id: string;
+  llm_provider: "anthropic" | "ollama";
+  status: ProgressStatus;
+  query: string;
+  route: ResearchRoute | null;
+  route_reason: string | null;
+  error_message: string | null;
+  created_at: string;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
 export interface CreateResearchJobResponse {
   research_run_id: string;
   status: "queued";

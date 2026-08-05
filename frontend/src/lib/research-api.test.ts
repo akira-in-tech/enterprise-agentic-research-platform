@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cancelResearchJob,
   deleteKnowledgeDocument,
+  getResearchRun,
   listKnowledgeDocuments,
   parseSseFrames,
   uploadKnowledgeDocument,
@@ -59,6 +60,61 @@ describe("research cancellation API", () => {
         "X-User-ID": workspace.userId,
         "Content-Type": "application/json",
       },
+    });
+  });
+});
+
+describe("research run lookup API", () => {
+  it("fetches one run's lifecycle state with tenant-scoped headers", async () => {
+    const workspace = {
+      tenantId: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
+      userId: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
+    };
+    const researchRunId = "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589";
+    const run = {
+      research_run_id: researchRunId,
+      llm_provider: "anthropic",
+      status: "completed",
+      query: "Compare HTTP/2 and HTTP/3.",
+      route: "deep_research",
+      route_reason: "Comparison requires current sources.",
+      error_message: null,
+      created_at: "2026-08-05T12:00:00Z",
+      started_at: "2026-08-05T12:00:01Z",
+      completed_at: "2026-08-05T12:01:00Z",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(run), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getResearchRun(researchRunId, workspace)).resolves.toEqual(run);
+    expect(fetchMock).toHaveBeenCalledWith(`/api/research-runs/${researchRunId}`, {
+      headers: {
+        "X-Tenant-ID": workspace.tenantId,
+        "X-User-ID": workspace.userId,
+      },
+    });
+  });
+
+  it("surfaces a not-found run as a ResearchApiError", async () => {
+    const workspace = { tenantId: "5b376e3d-3983-44f0-b9ad-17917bb2e901", userId: "" };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(JSON.stringify({ detail: "Research run was not found." }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        }),
+      ),
+    );
+
+    await expect(getResearchRun("missing-id", workspace)).rejects.toMatchObject({
+      message: "Research run was not found.",
+      status: 404,
     });
   });
 });
