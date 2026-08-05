@@ -4,6 +4,7 @@ import { onBeforeUnmount, onMounted, ref } from "vue";
 
 import AgentWorkflow from "./components/AgentWorkflow.vue";
 import AppHeader from "./components/AppHeader.vue";
+import KnowledgeLibrary from "./components/KnowledgeLibrary.vue";
 import OperationalNotice from "./components/OperationalNotice.vue";
 import ProviderComparison from "./components/ProviderComparison.vue";
 import RecentResearchList from "./components/RecentResearchList.vue";
@@ -48,6 +49,7 @@ const announcement = ref("");
 const darkMode = ref(false);
 const apiStatus = ref<"checking" | "online" | "offline">("checking");
 const operationalIssue = ref<OperationalIssue | null>(null);
+const activePage = ref<"research" | "knowledge">("research");
 const workspace = ref<WorkspaceContext>({
   tenantId: import.meta.env.VITE_TENANT_ID ?? "",
   userId: import.meta.env.VITE_USER_ID ?? "",
@@ -327,8 +329,19 @@ function startNewResearch(): void {
   progress.value = null;
   report.value = null;
   operationalIssue.value = null;
+  activePage.value = "research";
   window.scrollTo({ top: 0, behavior: "smooth" });
   requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>("#research-question")?.focus());
+}
+
+function showKnowledge(): void {
+  progressAbortController?.abort();
+  selectedRun.value = null;
+  progress.value = null;
+  report.value = null;
+  operationalIssue.value = null;
+  activePage.value = "knowledge";
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function retrySelected(): void {
@@ -369,15 +382,24 @@ function saveWorkspace(next: WorkspaceContext): void {
       :dark-mode="darkMode"
       :api-status="apiStatus"
       :workspace-configured="workspaceIsConfigured()"
+      :active-page="activePage"
       workspace-name="Acme Analytics"
       @new-research="startNewResearch"
       @show-recent="startNewResearch"
+      @show-knowledge="showKnowledge"
       @toggle-theme="toggleTheme"
       @open-workspace="workspaceOpen = true"
     />
 
+    <KnowledgeLibrary
+      v-if="activePage === 'knowledge'"
+      :workspace="workspace"
+      @open-workspace="workspaceOpen = true"
+      @announce="announcement = $event"
+    />
+
     <ResearchDetail
-      v-if="selectedRun"
+      v-else-if="selectedRun"
       :run="selectedRun"
       :progress="progress"
       :report="report"

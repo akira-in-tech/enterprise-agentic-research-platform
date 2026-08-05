@@ -31,6 +31,23 @@ export interface WorkspaceContext {
   userId: string;
 }
 
+export type KnowledgeDocumentStatus = "pending" | "indexing" | "ready" | "failed" | "deleting";
+
+export interface KnowledgeDocument {
+  id: string;
+  tenant_id: string;
+  uploaded_by_user_id: string | null;
+  filename: string;
+  media_type: "text/plain" | "text/markdown" | "application/pdf";
+  byte_size: number;
+  content_sha256: string;
+  status: KnowledgeDocumentStatus;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+  indexed_at: string | null;
+}
+
 export interface CreateResearchJobResponse {
   research_run_id: string;
   status: "queued";

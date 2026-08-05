@@ -1954,3 +1954,389 @@ button:disabled {
     transition-duration: 0.01ms !important;
   }
 }
+
+.knowledge-page {
+  flex: 1;
+  width: min(1120px, calc(100% - 56px));
+  margin: 0 auto;
+  padding: 54px 0 72px;
+}
+
+.knowledge-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 48px;
+  margin-bottom: 34px;
+}
+
+.knowledge-heading h1 {
+  margin: 8px 0 10px;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(42px, 5vw, 64px);
+  font-weight: 400;
+  line-height: 1.02;
+  letter-spacing: -0.05em;
+}
+
+.knowledge-heading > div > p:last-child {
+  max-width: 680px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 16px;
+  line-height: 1.65;
+}
+
+.knowledge-trust-note {
+  max-width: 315px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 14px 16px;
+  color: var(--ink-soft);
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: var(--radius-md);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.knowledge-trust-note svg {
+  flex: 0 0 auto;
+  color: var(--accent);
+}
+
+.upload-card,
+.document-library,
+.knowledge-error,
+.knowledge-empty {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+}
+
+.upload-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 22px 24px;
+}
+
+.upload-copy,
+.upload-controls,
+.document-library-heading,
+.document-row,
+.document-actions,
+.knowledge-error {
+  display: flex;
+  align-items: center;
+}
+
+.upload-copy {
+  gap: 14px;
+}
+
+.upload-icon,
+.document-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 12px;
+}
+
+.upload-icon {
+  width: 46px;
+  height: 46px;
+}
+
+.upload-card h2,
+.document-library h2,
+.knowledge-empty h2,
+.knowledge-empty h3 {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+}
+
+.upload-card p,
+.knowledge-empty p {
+  margin: 4px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.upload-controls {
+  gap: 10px;
+}
+
+.file-picker {
+  min-width: 220px;
+  max-width: 320px;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  padding: 0 13px;
+  overflow: hidden;
+  color: var(--ink-soft);
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.file-picker:hover {
+  border-color: var(--line-strong);
+}
+
+.file-picker input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.file-picker span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.upload-controls .primary-button,
+.knowledge-connect .primary-button {
+  gap: 8px;
+  justify-content: center;
+}
+
+.knowledge-error {
+  gap: 14px;
+  margin-top: 16px;
+  padding: 16px 18px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 25%, var(--line));
+}
+
+.knowledge-error > div {
+  flex: 1;
+}
+
+.knowledge-error p {
+  margin: 3px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+}
+
+.document-library {
+  margin-top: 22px;
+  overflow: hidden;
+}
+
+.document-library-heading {
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--line);
+}
+
+.document-library-heading .eyebrow {
+  margin-bottom: 4px;
+  font-size: 10px;
+}
+
+.document-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.document-row {
+  min-height: 78px;
+  gap: 14px;
+  padding: 14px 18px;
+  border-top: 1px solid var(--line);
+}
+
+.document-row:first-child {
+  border-top: 0;
+}
+
+.document-row:hover {
+  background: var(--surface-hover);
+}
+
+.document-icon {
+  width: 40px;
+  height: 40px;
+}
+
+.document-primary {
+  min-width: 0;
+  flex: 1;
+}
+
+.document-primary strong,
+.document-primary span,
+.document-primary p {
+  display: block;
+}
+
+.document-primary strong {
+  overflow: hidden;
+  font-size: 14px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.document-primary span {
+  margin-top: 4px;
+  color: var(--ink-faint);
+  font-size: 12px;
+}
+
+.document-primary p {
+  margin: 5px 0 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+.document-status {
+  min-width: 118px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 9px;
+  color: var(--ink-soft);
+  background: var(--surface-muted);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.document-status-ready {
+  color: var(--success);
+  background: var(--success-soft);
+}
+
+.document-status-failed {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.document-status-indexing,
+.document-status-pending {
+  color: var(--info);
+  background: var(--info-soft);
+}
+
+.document-actions {
+  min-width: 150px;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.document-delete,
+.document-cancel {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 9px;
+  color: var(--ink-soft);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.document-delete:hover,
+.document-cancel:hover {
+  color: var(--ink);
+  background: var(--surface-muted);
+}
+
+.document-delete.confirm-delete {
+  color: var(--danger);
+  background: var(--danger-soft);
+}
+
+.knowledge-empty {
+  display: grid;
+  place-items: center;
+  padding: 54px 24px;
+  color: var(--ink-soft);
+  text-align: center;
+}
+
+.knowledge-empty svg {
+  margin-bottom: 12px;
+  color: var(--accent);
+}
+
+.knowledge-connect {
+  max-width: 620px;
+  margin: 72px auto;
+}
+
+.knowledge-connect .primary-button {
+  margin-top: 18px;
+}
+
+@media (max-width: 860px) {
+  .knowledge-heading,
+  .upload-card {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .knowledge-trust-note {
+    max-width: none;
+  }
+
+  .upload-controls {
+    width: 100%;
+  }
+
+  .file-picker {
+    max-width: none;
+    flex: 1;
+  }
+}
+
+@media (max-width: 620px) {
+  .knowledge-page {
+    width: min(100% - 32px, 620px);
+    padding-top: 30px;
+  }
+
+  .knowledge-heading h1 {
+    font-size: clamp(40px, 12vw, 54px);
+  }
+
+  .upload-controls,
+  .document-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .upload-controls .primary-button,
+  .file-picker {
+    width: 100%;
+  }
+
+  .document-status {
+    width: fit-content;
+  }
+
+  .document-actions {
+    min-width: 0;
+    justify-content: flex-start;
+  }
+}

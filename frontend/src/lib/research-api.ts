@@ -1,5 +1,6 @@
 import type {
   CreateResearchJobResponse,
+  KnowledgeDocument,
   ResearchProgressRecord,
   ResearchReport,
   UserFacingProvider,
@@ -29,9 +30,8 @@ export class ResearchApiError extends Error {
   }
 }
 
-function requestHeaders(workspace: WorkspaceContext): HeadersInit {
+function tenantHeaders(workspace: WorkspaceContext): Record<string, string> {
   const headers: Record<string, string> = {
-    "Content-Type": "application/json",
     "X-Tenant-ID": workspace.tenantId,
   };
 
@@ -40,6 +40,13 @@ function requestHeaders(workspace: WorkspaceContext): HeadersInit {
   }
 
   return headers;
+}
+
+function requestHeaders(workspace: WorkspaceContext): HeadersInit {
+  return {
+    ...tenantHeaders(workspace),
+    "Content-Type": "application/json",
+  };
 }
 
 async function errorMessage(response: Response): Promise<string> {
@@ -147,4 +154,51 @@ export async function getResearchReport(
   }
 
   return (await response.json()) as ResearchReport;
+}
+
+export async function listKnowledgeDocuments(
+  workspace: WorkspaceContext,
+): Promise<KnowledgeDocument[]> {
+  const response = await fetch(`${API_BASE_URL}/documents`, {
+    headers: tenantHeaders(workspace),
+  });
+
+  if (!response.ok) {
+    throw new ResearchApiError(await errorMessage(response), response.status);
+  }
+
+  return (await response.json()) as KnowledgeDocument[];
+}
+
+export async function uploadKnowledgeDocument(
+  file: File,
+  workspace: WorkspaceContext,
+): Promise<KnowledgeDocument> {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch(`${API_BASE_URL}/documents`, {
+    method: "POST",
+    headers: tenantHeaders(workspace),
+    body,
+  });
+
+  if (!response.ok) {
+    throw new ResearchApiError(await errorMessage(response), response.status);
+  }
+
+  return (await response.json()) as KnowledgeDocument;
+}
+
+export async function deleteKnowledgeDocument(
+  documentId: string,
+  workspace: WorkspaceContext,
+): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
+    method: "DELETE",
+    headers: tenantHeaders(workspace),
+  });
+
+  if (!response.ok) {
+    throw new ResearchApiError(await errorMessage(response), response.status);
+  }
 }

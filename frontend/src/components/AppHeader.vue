@@ -14,11 +14,13 @@ defineProps<{
   apiStatus: "checking" | "online" | "offline";
   workspaceConfigured: boolean;
   workspaceName?: string;
+  activePage: "research" | "knowledge";
 }>();
 
 const emit = defineEmits<{
   newResearch: [];
   showRecent: [];
+  showKnowledge: [];
   toggleTheme: [];
   openWorkspace: [];
 }>();
@@ -32,9 +34,21 @@ const emit = defineEmits<{
         <span>Evident</span>
       </a>
       <nav class="product-nav" aria-label="Product navigation">
-        <button class="product-nav-button active" type="button" @click="emit('newResearch')">Research</button>
-        <button class="product-nav-button" type="button" @click="emit('showRecent')">
-          <PhBookOpen :size="15" /> Library
+        <button
+          class="product-nav-button"
+          :class="{ active: activePage === 'research' }"
+          type="button"
+          @click="emit('newResearch')"
+        >
+          Research
+        </button>
+        <button
+          class="product-nav-button"
+          :class="{ active: activePage === 'knowledge' }"
+          type="button"
+          @click="emit('showKnowledge')"
+        >
+          <PhBookOpen :size="15" /> Private Knowledge
         </button>
       </nav>
     </div>

@@ -29,8 +29,9 @@ Configured and live verified: managed Zilliz Cloud Milvus round trip in AWS us-w
 Configured and live verified: Tavily Basic Search and canonical web-source normalization
 Gap remediation in progress: complete Private Knowledge upload product flow
 Implemented and live verified: tenant-scoped document upload, list, detail, delete, source storage, indexing, retrieval, and lifecycle persistence
+Implemented and verified: Vue Private Knowledge upload, lifecycle, recovery, and deletion console
 Deployment status: state bucket and CI identity only; staging application resources are not applied
-Next: add the Vue Private Knowledge console and AWS external embedding/object-storage providers
+Next: add AWS external embedding and durable object-storage providers
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -204,6 +205,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Private source object storage | Local filesystem provider tested with atomic writes, private file permissions, safe keys, and idempotent deletion |
 | Tenant-scoped document REST API | Upload, list, detail, and delete paths tested with multipart limits and explicit duplicate, indexing, storage, and not-found states |
 | End-to-end private-document lifecycle | Live PostgreSQL upload, deterministic indexing, semantic retrieval, source deletion, vector deletion, and metadata cleanup verified |
+| Vue Private Knowledge console | Typechecked, component tested, and production built with upload, empty, loading, failed, ready, deleting, retry, and two-step deletion states |
 | Provider-neutral embedding interface | Tested |
 | Qwen embeddings through Ollama | Tested with mocks and live smoke test |
 | Provider-neutral vector-store interface | Tested |
@@ -418,8 +420,8 @@ The long-running embedding and vector calls execute outside PostgreSQL
 transactions. PostgreSQL records each short lifecycle transition, while the
 source object and vector records remain provider-owned artifacts. Duplicate
 normalized content is rejected per tenant. The current application provider
-stores source files in a private local runtime volume; an AWS object-storage
-provider and the Vue upload console remain the next product slice.
+stores source files in a private local runtime volume; AWS object-storage and
+external embedding providers remain the next cloud-compatible product slice.
 
 ### Provider Boundaries
 
