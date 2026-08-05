@@ -1,12 +1,22 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import UUID
 
+from pydantic_core import to_jsonable_python
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.repositories import ResearchReportRepository, ResearchRunRepository
+from app.db.models import ResearchCheckpoint, ResearchWorkerLease
+from app.db.repositories import (
+    ResearchDurabilityRepository,
+    ResearchReportRepository,
+    ResearchRunRepository,
+)
 from app.services.llm.factory import CanonicalLLMProvider
+from app.services.research.durability import (
+    ResearchCheckpointRecord,
+    ResearchWorkerLeaseRecord,
+)
 from app.workflow.state import ResearchState
 
 
@@ -24,6 +34,10 @@ RepositoryFactory = Callable[
     ResearchRunRepository,
 ]
 ReportRepositoryFactory = Callable[[AsyncSession], ResearchReportRepository]
+DurabilityRepositoryFactory = Callable[
+    [AsyncSession],
+    ResearchDurabilityRepository,
+]
 
 
 class PostgresResearchRunStore:
@@ -125,3 +139,155 @@ class PostgresResearchRunStore:
                 research_run_id=research_run_id,
                 error_message=error_message,
             )
+
+
+class PostgresResearchDurabilityStore:
+    """Run each durability operation in one short database transaction."""
+
+    def __init__(
+        self,
+        session_factory: TransactionalSessionFactory,
+        repository_factory: DurabilityRepositoryFactory = ResearchDurabilityRepository,
+    ) -> None:
+        self._session_factory = session_factory
+        self._repository_factory = repository_factory
+
+    async def claim_lease(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        worker_id: str,
+        ttl_seconds: int,
+    ) -> ResearchWorkerLeaseRecord | None:
+        async with self._session_factory.begin() as session:
+            lease = await self._repository_factory(session).claim_lease(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                worker_id=worker_id,
+                ttl_seconds=ttl_seconds,
+            )
+            return self._lease_record(lease)
+
+    async def renew_lease(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        worker_id: str,
+        lease_token: UUID,
+        ttl_seconds: int,
+    ) -> ResearchWorkerLeaseRecord | None:
+        async with self._session_factory.begin() as session:
+            lease = await self._repository_factory(session).renew_lease(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                worker_id=worker_id,
+                lease_token=lease_token,
+                ttl_seconds=ttl_seconds,
+            )
+            return self._lease_record(lease)
+
+    async def release_lease(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        worker_id: str,
+        lease_token: UUID,
+    ) -> bool:
+        async with self._session_factory.begin() as session:
+            return await self._repository_factory(session).release_lease(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                worker_id=worker_id,
+                lease_token=lease_token,
+            )
+
+    async def append_checkpoint(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        sequence: int,
+        node_name: str,
+        state: Mapping[str, object],
+    ) -> ResearchCheckpointRecord:
+        normalized_state = cast(
+            dict[str, object],
+            to_jsonable_python(dict(state), fallback=str),
+        )
+        async with self._session_factory.begin() as session:
+            checkpoint = await self._repository_factory(session).append_checkpoint(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                sequence=sequence,
+                node_name=node_name,
+                state=normalized_state,
+            )
+            return self._checkpoint_record(checkpoint)
+
+    async def get_latest_checkpoint(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> ResearchCheckpointRecord | None:
+        async with self._session_factory.begin() as session:
+            checkpoint = await self._repository_factory(session).get_latest_checkpoint(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+            )
+            if checkpoint is None:
+                return None
+            return self._checkpoint_record(checkpoint)
+
+    async def append_audit_event(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        event_type: str,
+        actor_type: str,
+        actor_id: str | None = None,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        normalized_details = cast(
+            dict[str, object],
+            to_jsonable_python(dict(details or {}), fallback=str),
+        )
+        async with self._session_factory.begin() as session:
+            await self._repository_factory(session).append_audit_event(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                event_type=event_type,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                details=normalized_details,
+            )
+
+    @staticmethod
+    def _lease_record(
+        lease: ResearchWorkerLease | None,
+    ) -> ResearchWorkerLeaseRecord | None:
+        if lease is None:
+            return None
+        return ResearchWorkerLeaseRecord(
+            tenant_id=lease.tenant_id,
+            research_run_id=lease.research_run_id,
+            worker_id=lease.worker_id,
+            lease_token=lease.lease_token,
+            attempt=lease.attempt,
+            acquired_at=lease.acquired_at,
+            heartbeat_at=lease.heartbeat_at,
+            expires_at=lease.expires_at,
+        )
+
+    @staticmethod
+    def _checkpoint_record(checkpoint: ResearchCheckpoint) -> ResearchCheckpointRecord:
+        return ResearchCheckpointRecord(
+            sequence=checkpoint.sequence,
+            node_name=checkpoint.node_name,
+            state=dict(checkpoint.state),
+            created_at=checkpoint.created_at,
+        )

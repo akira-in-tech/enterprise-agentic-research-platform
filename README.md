@@ -36,7 +36,8 @@ Deployment status: state bucket and CI identity only; staging application resour
 Implemented and live verified: official SDK Streamable HTTP MCP server, client, and Web Scout federation
 Implemented and live migration verified: PostgreSQL checkpoint, audit-event, and worker-lease schema foundation
 Implemented and live verified: atomic worker claim/reclaim/renew/release plus checkpoint and audit repositories
-Next: replace process-local background ownership with the durable lease and resume execution
+Implemented and live verified: background execution claims, renews, releases, audits, and checkpoints through PostgreSQL worker ownership
+Next: recover accepted work after process restart and resume from per-node LangGraph checkpoints
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -258,6 +259,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Durable queued background research jobs | Tested with unit and live integration tests |
 | Research checkpoint, audit, and worker-lease schema | SQLAlchemy and Alembic tested; live PostgreSQL upgrade/check/downgrade/restore verified |
 | Durable research repository operations | Atomic expired-only lease takeover, owner-token renewal/release, latest checkpoint, and chronological audit trail unit and live PostgreSQL tested |
+| Runtime worker ownership | PostgreSQL lease claim, heartbeat renewal, token-checked release, audit events, and queued/completed boundary checkpoints live integration tested |
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
 | Vue 3 + TypeScript + Vite frontend | Typechecked, 12 tests passed, production built, and desktop/mobile browser QA verified |
@@ -283,8 +285,8 @@ production deployments.
 The portfolio MVP application is implemented and tested through Phase 13. That
 does not mean every production concern is finished: the Phase 14 AWS
 application stack has not been applied, AWS private RAG providers are locally
-implemented but not live invoked, and durable queue ownership, authentication, lock renewal,
-and workflow checkpoints remain production-hardening work.
+implemented but not live invoked, and restart recovery, authentication, and
+per-node LangGraph checkpoint resume remain production-hardening work.
 
 ### System Architecture
 
@@ -531,13 +533,19 @@ POST /research-runs/jobs
 → validate tenant, user, provider, and rate limit
 → commit the queued PostgreSQL row
 → return HTTP 202 with progress, events, and report URLs
+→ atomically claim the run with an expiring PostgreSQL worker lease
+→ write the queued checkpoint and worker audit event
 → run the remaining lifecycle in an owned asyncio task
+→ renew ownership on a bounded heartbeat
+→ write the terminal checkpoint and audit event
+→ release only with the matching worker identity and lease token
 → mark cancelled shutdown work failed instead of leaving it running
 ```
 
-The current task owner is application-local. PostgreSQL preserves the accepted
-run and completed artifacts, but a multi-process or restart-safe production
-deployment still needs an external durable work queue and worker lease model.
+PostgreSQL now coordinates ownership across processes and preserves the
+accepted run, terminal artifacts, audit history, and boundary checkpoints. The
+task scheduler is still application-local: restart recovery and true per-node
+LangGraph resume are the remaining durability boundary, not the lease itself.
 
 ### Redis-Backed Result Caching
 
@@ -1163,5 +1171,6 @@ MCP now has a repository-owned official-SDK server and a real Streamable HTTP
 integration, while third-party organization MCP endpoints remain optional.
 PostgreSQL remains the durable source of truth, while
 Redis stores temporary cache and coordination state. The current background
-runner is process-local; external queue ownership, lease renewal, and durable
-LangGraph checkpoints remain explicit production-hardening work.
+runner now uses PostgreSQL ownership and heartbeat renewal, but task discovery
+after restart and per-node LangGraph checkpoint resume remain explicit
+production-hardening work.

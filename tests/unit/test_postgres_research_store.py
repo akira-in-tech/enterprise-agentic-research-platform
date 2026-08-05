@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -7,9 +8,14 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ResearchRun
-from app.db.repositories import ResearchReportRepository, ResearchRunRepository
+from app.db.models import ResearchCheckpoint, ResearchRun, ResearchWorkerLease
+from app.db.repositories import (
+    ResearchDurabilityRepository,
+    ResearchReportRepository,
+    ResearchRunRepository,
+)
 from app.services.research.postgres import (
+    PostgresResearchDurabilityStore,
     PostgresResearchRunStore,
 )
 from app.workflow.state import ResearchState
@@ -226,4 +232,145 @@ async def test_store_completes_run_and_report_in_same_transaction() -> None:
         tenant_id=tenant_id,
         research_run_id=research_run_id,
         state=state,
+    )
+
+
+@pytest.mark.anyio
+async def test_durability_store_claims_and_maps_worker_lease() -> None:
+    session_mock = AsyncMock(spec=AsyncSession)
+    session = cast(AsyncSession, session_mock)
+    session_factory = RecordingSessionFactory(session)
+    repository_mock = AsyncMock(spec=ResearchDurabilityRepository)
+    repository = cast(ResearchDurabilityRepository, repository_mock)
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    lease_token = uuid4()
+    acquired_at = datetime.now(UTC)
+    repository_mock.claim_lease.return_value = ResearchWorkerLease(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        worker_id="worker-1",
+        lease_token=lease_token,
+        attempt=2,
+        acquired_at=acquired_at,
+        heartbeat_at=acquired_at,
+        expires_at=acquired_at + timedelta(seconds=30),
+    )
+    store = PostgresResearchDurabilityStore(
+        session_factory,
+        lambda _: repository,
+    )
+
+    result = await store.claim_lease(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        worker_id="worker-1",
+        ttl_seconds=30,
+    )
+
+    assert result is not None
+    assert result.lease_token == lease_token
+    assert result.attempt == 2
+    assert session_factory.begin_calls == 1
+    repository_mock.claim_lease.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        worker_id="worker-1",
+        ttl_seconds=30,
+    )
+
+
+@pytest.mark.anyio
+async def test_durability_store_serializes_checkpoint_in_transaction() -> None:
+    session_mock = AsyncMock(spec=AsyncSession)
+    session = cast(AsyncSession, session_mock)
+    session_factory = RecordingSessionFactory(session)
+    repository_mock = AsyncMock(spec=ResearchDurabilityRepository)
+    repository = cast(ResearchDurabilityRepository, repository_mock)
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    checkpoint_id = uuid4()
+    created_at = datetime.now(UTC)
+    repository_mock.append_checkpoint.return_value = ResearchCheckpoint(
+        id=checkpoint_id,
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        sequence=3,
+        node_name="writer",
+        state={"tenant_id": str(tenant_id), "status": "completed"},
+        created_at=created_at,
+    )
+    store = PostgresResearchDurabilityStore(
+        session_factory,
+        lambda _: repository,
+    )
+
+    result = await store.append_checkpoint(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        sequence=3,
+        node_name="writer",
+        state={"tenant_id": tenant_id, "status": "completed"},
+    )
+
+    assert result.sequence == 3
+    assert result.state["tenant_id"] == str(tenant_id)
+    repository_mock.append_checkpoint.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        sequence=3,
+        node_name="writer",
+        state={"tenant_id": str(tenant_id), "status": "completed"},
+    )
+
+
+@pytest.mark.anyio
+async def test_durability_store_renews_releases_and_audits() -> None:
+    session_mock = AsyncMock(spec=AsyncSession)
+    session = cast(AsyncSession, session_mock)
+    session_factory = RecordingSessionFactory(session)
+    repository_mock = AsyncMock(spec=ResearchDurabilityRepository)
+    repository = cast(ResearchDurabilityRepository, repository_mock)
+    repository_mock.renew_lease.return_value = None
+    repository_mock.release_lease.return_value = True
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    lease_token = uuid4()
+    store = PostgresResearchDurabilityStore(
+        session_factory,
+        lambda _: repository,
+    )
+
+    renewed = await store.renew_lease(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        worker_id="worker-1",
+        lease_token=lease_token,
+        ttl_seconds=30,
+    )
+    released = await store.release_lease(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        worker_id="worker-1",
+        lease_token=lease_token,
+    )
+    await store.append_audit_event(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        event_type="worker.claimed",
+        actor_type="worker",
+        actor_id="worker-1",
+        details={"lease_token": lease_token},
+    )
+
+    assert renewed is None
+    assert released is True
+    assert session_factory.begin_calls == 3
+    repository_mock.append_audit_event.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        event_type="worker.claimed",
+        actor_type="worker",
+        actor_id="worker-1",
+        details={"lease_token": str(lease_token)},
     )

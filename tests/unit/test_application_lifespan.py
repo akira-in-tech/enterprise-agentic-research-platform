@@ -64,6 +64,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     redis_connection = RecordingRedisConnection()
     database_session_factory = object()
     research_store = object()
+    durability_store = object()
     result_cache = object()
     idempotency_store = object()
     execution_service = object()
@@ -92,6 +93,9 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_store = Mock(
         return_value=research_store,
+    )
+    create_durability_store = Mock(
+        return_value=durability_store,
     )
     redis_connection_type = Mock()
     redis_connection_type.from_url.return_value = redis_connection
@@ -176,6 +180,11 @@ async def test_lifespan_wires_and_closes_application_resources(
         main_module,
         "PostgresResearchRunStore",
         create_store,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "PostgresResearchDurabilityStore",
+        create_durability_store,
     )
     monkeypatch.setattr(
         main_module,
@@ -324,6 +333,9 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_store.assert_called_once_with(
         database_session_factory,
     )
+    create_durability_store.assert_called_once_with(
+        database_session_factory,
+    )
     redis_connection_type.from_url.assert_called_once_with()
     create_cache.assert_called_once_with(
         redis_connection,
@@ -336,6 +348,9 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_job_manager.assert_called_once_with(
         execution_service,
+        durability_store,
+        lease_ttl_seconds=settings.research_worker_lease_ttl_seconds,
+        heartbeat_seconds=settings.research_worker_heartbeat_seconds,
     )
     create_embedding_client.assert_called_once_with()
     create_vector_store.assert_called_once_with(

@@ -36,6 +36,7 @@ from app.services.research.idempotency import (
 )
 from app.services.research.jobs import ResearchJobManager
 from app.services.research.postgres import (
+    PostgresResearchDurabilityStore,
     PostgresResearchRunStore,
 )
 from app.services.research.reports import PostgresResearchReportStore
@@ -137,6 +138,9 @@ async def lifespan(
         )
         research_job_manager = ResearchJobManager(
             execution_service,
+            PostgresResearchDurabilityStore(session_factory),
+            lease_ttl_seconds=settings.research_worker_lease_ttl_seconds,
+            heartbeat_seconds=settings.research_worker_heartbeat_seconds,
         )
         resource_stack.push_async_callback(
             research_job_manager.close,
