@@ -13,6 +13,7 @@ from app.db.repositories import (
     ResearchDurabilityRepository,
     ResearchReportRepository,
     ResearchRunRepository,
+    ResearchRunTransitionError,
 )
 from app.services.research.postgres import (
     PostgresResearchDurabilityStore,
@@ -184,6 +185,42 @@ async def test_store_marks_run_failed_in_transaction() -> None:
         research_run_id=research_run_id,
         error_message="Tavily search provider timed out.",
     )
+
+
+@pytest.mark.anyio
+async def test_store_marks_active_run_cancelled_in_transaction() -> None:
+    session_factory, repository_mock, repository = create_test_dependencies()
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    store = PostgresResearchRunStore(session_factory, lambda _: repository)
+
+    cancelled = await store.mark_cancelled(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )
+
+    assert cancelled is True
+    assert session_factory.begin_calls == 1
+    repository_mock.mark_cancelled.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )
+
+
+@pytest.mark.anyio
+async def test_store_rejects_cancelling_terminal_or_missing_run() -> None:
+    session_factory, repository_mock, repository = create_test_dependencies()
+    repository_mock.mark_cancelled.side_effect = ResearchRunTransitionError(
+        "Research run is missing or cannot transition to cancelled."
+    )
+    store = PostgresResearchRunStore(session_factory, lambda _: repository)
+
+    cancelled = await store.mark_cancelled(
+        tenant_id=uuid4(),
+        research_run_id=uuid4(),
+    )
+
+    assert cancelled is False
 
 
 @pytest.mark.anyio

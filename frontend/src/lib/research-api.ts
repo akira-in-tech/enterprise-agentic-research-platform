@@ -1,4 +1,5 @@
 import type {
+  CancelResearchRunResponse,
   CreateResearchJobResponse,
   KnowledgeDocument,
   ResearchProgressRecord,
@@ -74,6 +75,22 @@ export async function createResearchJob(
   }
 
   return (await response.json()) as CreateResearchJobResponse;
+}
+
+export async function cancelResearchJob(
+  researchRunId: string,
+  workspace: WorkspaceContext,
+): Promise<CancelResearchRunResponse> {
+  const response = await fetch(`${API_BASE_URL}/research-runs/${researchRunId}/cancel`, {
+    method: "POST",
+    headers: requestHeaders(workspace),
+  });
+
+  if (!response.ok) {
+    throw new ResearchApiError(await errorMessage(response), response.status);
+  }
+
+  return (await response.json()) as CancelResearchRunResponse;
 }
 
 export function parseSseFrames(buffer: string): {

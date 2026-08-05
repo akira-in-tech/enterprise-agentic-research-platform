@@ -9,6 +9,7 @@ ResearchProgressStatus = Literal[
     "running",
     "completed",
     "failed",
+    "cancelled",
 ]
 
 

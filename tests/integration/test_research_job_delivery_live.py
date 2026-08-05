@@ -138,7 +138,11 @@ async def test_job_manager_delivers_progress_and_durable_report() -> None:
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
             )
-            if progress is not None and progress.status in {"completed", "failed"}:
+            if progress is not None and progress.status in {
+                "completed",
+                "failed",
+                "cancelled",
+            }:
                 break
             await asyncio.sleep(0.02)
         else:

@@ -152,6 +152,7 @@ async def test_renew_and_release_require_current_owner_token() -> None:
     renew_statement = cast(ClauseElement, session.scalar.await_args_list[0].args[0])
     release_statement = cast(ClauseElement, session.scalar.await_args_list[1].args[0])
     assert "lease_token" in str(renew_statement)
+    assert "research_runs.status" in str(renew_statement)
     assert "lease_token" in str(release_statement)
 
 

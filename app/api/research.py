@@ -24,6 +24,7 @@ from app.api.dependencies import (
 from app.schemas.progress import ResearchProgressRecord
 from app.schemas.report import ResearchReportResponse, ResearchReportSourceResponse
 from app.schemas.research import (
+    CancelResearchRunResponse,
     CreateResearchJobResponse,
     CreateResearchRunRequest,
     CreateResearchRunResponse,
@@ -92,7 +93,7 @@ async def _research_progress_events(
             yield f"event: progress\ndata: {payload}\n\n"
             previous_payload = payload
 
-        if record.status in {"completed", "failed"}:
+        if record.status in {"completed", "failed", "cancelled"}:
             return
 
         await asyncio.sleep(poll_interval_seconds)
@@ -215,6 +216,35 @@ async def list_research_run_sources(
             detail="Research sources were not found.",
         )
     return sources
+
+
+@router.post(
+    "/{research_run_id}/cancel",
+    response_model=CancelResearchRunResponse,
+)
+async def cancel_research_run(
+    research_run_id: UUID,
+    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    job_manager: Annotated[
+        ResearchJobManager,
+        Depends(get_research_job_manager),
+    ],
+) -> CancelResearchRunResponse:
+    """Cancel one queued or running research job within its tenant boundary."""
+
+    cancelled = await job_manager.cancel(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )
+    if not cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Research run is not active or was not found.",
+        )
+    return CancelResearchRunResponse(
+        research_run_id=research_run_id,
+        status="cancelled",
+    )
 
 
 def _rate_limit_headers(

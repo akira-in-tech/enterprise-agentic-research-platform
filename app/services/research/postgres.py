@@ -11,6 +11,7 @@ from app.db.repositories import (
     ResearchDurabilityRepository,
     ResearchReportRepository,
     ResearchRunRepository,
+    ResearchRunTransitionError,
 )
 from app.services.llm.factory import CanonicalLLMProvider
 from app.services.research.durability import (
@@ -140,6 +141,24 @@ class PostgresResearchRunStore:
                 research_run_id=research_run_id,
                 error_message=error_message,
             )
+
+    async def mark_cancelled(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        """Commit the transition from an active state to cancelled."""
+
+        async with self._session_factory.begin() as session:
+            try:
+                await self._repository_factory(session).mark_cancelled(
+                    tenant_id=tenant_id,
+                    research_run_id=research_run_id,
+                )
+            except ResearchRunTransitionError:
+                return False
+            return True
 
 
 class PostgresResearchDurabilityStore:

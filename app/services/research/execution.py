@@ -132,6 +132,14 @@ class ResearchRunStore(Protocol):
     ) -> None:
         """Commit the transition from an active state to failed."""
 
+    async def mark_cancelled(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        """Commit the transition from an active state to cancelled."""
+
 
 class ResearchResultCache(Protocol):
     """Represent optional research-result cache operations."""
@@ -263,6 +271,28 @@ class ResearchExecutionService:
 
         return await self.execute_queued(queued)
 
+    async def cancel(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        """Durably cancel one queued or running research run."""
+
+        cancelled = await self._store.mark_cancelled(
+            tenant_id=tenant_id,
+            research_run_id=research_run_id,
+        )
+        if not cancelled:
+            return False
+        await self._publish_progress(
+            tenant_id=tenant_id,
+            research_run_id=research_run_id,
+            status="cancelled",
+            message="Research workflow was cancelled.",
+        )
+        return True
+
     async def queue(
         self,
         *,
@@ -379,19 +409,9 @@ class ResearchExecutionService:
             )
 
         except asyncio.CancelledError:
-            error_message = "Research execution was cancelled during application shutdown."
-            await self._store.mark_failed(
-                tenant_id=tenant_id,
-                research_run_id=research_run_id,
-                error_message=error_message,
-            )
-            await self._publish_progress(
-                tenant_id=tenant_id,
-                research_run_id=research_run_id,
-                status="failed",
-                message="Research workflow was cancelled.",
-                error_message=error_message,
-            )
+            # User cancellation is persisted before the task is interrupted.
+            # Shutdown and lease-loss interruption deliberately leave an active
+            # row recoverable by another worker.
             raise
         except Exception as error:
             error_message = self._format_error(error)

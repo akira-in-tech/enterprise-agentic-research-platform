@@ -138,9 +138,16 @@ class FakeResearchProgressStore:
 
 
 class FakeResearchJobManager:
-    def __init__(self, research_run_id: UUID | None = None) -> None:
+    def __init__(
+        self,
+        research_run_id: UUID | None = None,
+        *,
+        cancel_result: bool = True,
+    ) -> None:
         self.research_run_id = research_run_id or uuid4()
+        self.cancel_result = cancel_result
         self.calls: list[dict[str, object]] = []
+        self.cancel_calls: list[tuple[UUID, UUID]] = []
 
     async def submit(
         self,
@@ -159,6 +166,15 @@ class FakeResearchJobManager:
             }
         )
         return self.research_run_id
+
+    async def cancel(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        self.cancel_calls.append((tenant_id, research_run_id))
+        return self.cancel_result
 
 
 class FakeResearchReportStore:
@@ -721,3 +737,43 @@ def test_create_research_run_fails_closed_when_rate_limiter_is_unavailable(
     assert response.status_code == 503
     assert response.json()["detail"] == "Research rate limiting is unavailable."
     assert fake_service.calls == []
+
+
+def test_cancel_research_job_is_tenant_scoped() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    manager = FakeResearchJobManager(research_run_id)
+    app.dependency_overrides[get_research_job_manager] = lambda: manager
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/research-runs/{research_run_id}/cancel",
+                headers={"X-Tenant-ID": str(tenant_id)},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "research_run_id": str(research_run_id),
+        "status": "cancelled",
+    }
+    assert manager.cancel_calls == [(tenant_id, research_run_id)]
+
+
+def test_cancel_research_job_rejects_terminal_or_missing_run() -> None:
+    manager = FakeResearchJobManager(cancel_result=False)
+    app.dependency_overrides[get_research_job_manager] = lambda: manager
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/research-runs/{uuid4()}/cancel",
+                headers={"X-Tenant-ID": str(uuid4())},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Research run is not active or was not found."

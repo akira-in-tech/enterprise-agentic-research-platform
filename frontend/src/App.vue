@@ -15,6 +15,7 @@ import { createDesignPreviewReport, createDesignPreviewRuns } from "./lib/design
 import { loadResearchHistory, saveResearchHistory } from "./lib/history";
 import { defaultProvider, enabledProviders } from "./lib/provider-config";
 import {
+  cancelResearchJob,
   createResearchJob,
   getApiHealth,
   getResearchReport,
@@ -281,6 +282,35 @@ async function loadReport(run: RecentResearchRun): Promise<void> {
   }
 }
 
+async function cancelSelected(): Promise<void> {
+  const run = selectedRun.value;
+  if (!run || (run.status !== "queued" && run.status !== "running")) return;
+
+  try {
+    await cancelResearchJob(run.id, workspace.value);
+    progressAbortController?.abort();
+    const updatedAt = new Date().toISOString();
+    const message = "Research workflow was cancelled.";
+    progress.value = {
+      research_run_id: run.id,
+      status: "cancelled",
+      message,
+      updated_at: updatedAt,
+      workflow_status: null,
+      error_message: null,
+    };
+    replaceRun({
+      ...run,
+      status: "cancelled",
+      message,
+      updatedAt,
+    });
+    announcement.value = "Research cancelled.";
+  } catch (error) {
+    announcement.value = error instanceof Error ? error.message : "Research could not be cancelled.";
+  }
+}
+
 function selectRun(run: RecentResearchRun): void {
   selectedRun.value = run;
   progress.value = null;
@@ -406,6 +436,7 @@ function saveWorkspace(next: WorkspaceContext): void {
       :loading-report="loadingReport"
       :operational-issue="operationalIssue"
       @back="startNewResearch"
+      @cancel="cancelSelected"
       @retry="retrySelected"
       @retry-issue="retryOperationalIssue"
       @dismiss-issue="operationalIssue = null"

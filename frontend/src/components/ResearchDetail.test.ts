@@ -87,4 +87,24 @@ describe("ResearchDetail", () => {
     expect(wrapper.text()).toContain("Citation revision required");
     expect(wrapper.text()).toContain("Revision required");
   });
+
+  it("offers cancellation only while a durable job is active", async () => {
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run: {
+          ...run,
+          status: "running",
+          message: "Research workflow is running.",
+        },
+        progress: null,
+        report: null,
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    await wrapper.get("button.secondary-button").trigger("click");
+
+    expect(wrapper.emitted("cancel")).toHaveLength(1);
+  });
 });

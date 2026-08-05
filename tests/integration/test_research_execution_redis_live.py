@@ -66,6 +66,16 @@ class RecordingResearchRunStore:
         assert research_run_id in self.research_run_ids
         self.events.append("failed")
 
+    async def mark_cancelled(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        assert research_run_id in self.research_run_ids
+        self.events.append("cancelled")
+        return True
+
 
 class RecordingWorkflow:
     """Return one deterministic result and count real executions."""
@@ -166,6 +176,7 @@ async def test_research_execution_redis_miss_then_hit() -> None:
         assert workflow.inputs == [
             {
                 "query": query,
+                "tenant_id": tenant_id,
             }
         ]
         assert workflow.close_calls == 1

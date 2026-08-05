@@ -33,6 +33,7 @@ function relativeTime(value: string): string {
 function statusLabel(run: RecentResearchRun): string {
   if (run.status === "completed") return "Report ready";
   if (run.status === "failed") return "Needs attention";
+  if (run.status === "cancelled") return "Cancelled";
   return "In progress";
 }
 </script>

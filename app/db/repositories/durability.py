@@ -196,6 +196,13 @@ class ResearchDurabilityRepository:
                 ResearchWorkerLease.worker_id == worker_id.strip(),
                 ResearchWorkerLease.lease_token == lease_token,
                 ResearchWorkerLease.expires_at > heartbeat_at,
+                select(ResearchRun.id)
+                .where(
+                    ResearchRun.id == research_run_id,
+                    ResearchRun.tenant_id == tenant_id,
+                    ResearchRun.status.in_(("queued", "running")),
+                )
+                .exists(),
             )
             .values(
                 heartbeat_at=heartbeat_at,

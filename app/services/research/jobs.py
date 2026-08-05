@@ -38,6 +38,14 @@ class BackgroundResearchExecutor(Protocol):
     ) -> ResearchExecutionResult:
         """Execute a previously persisted run."""
 
+    async def cancel(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        """Durably cancel one queued or running run."""
+
 
 class ResearchJobManager:
     """Execute durable jobs only while this worker owns their database lease."""
@@ -59,6 +67,14 @@ class ResearchJobManager:
         self._lease_ttl_seconds = lease_ttl_seconds
         self._heartbeat_seconds = heartbeat_seconds
         self._tasks: set[asyncio.Task[ResearchExecutionResult | None]] = set()
+        self._tasks_by_run: dict[
+            tuple[UUID, UUID],
+            asyncio.Task[ResearchExecutionResult | None],
+        ] = {}
+        self._task_keys: dict[
+            asyncio.Task[ResearchExecutionResult | None],
+            tuple[UUID, UUID],
+        ] = {}
         self._closed = False
         self._started = False
 
@@ -115,8 +131,32 @@ class ResearchJobManager:
             self._execute_owned(queued),
             name=f"research-run-{queued.research_run_id}",
         )
+        key = (queued.tenant_id, queued.research_run_id)
         self._tasks.add(task)
+        self._tasks_by_run[key] = task
+        self._task_keys[task] = key
         task.add_done_callback(self._task_completed)
+
+    async def cancel(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        """Stop local work and persist cancellation within the tenant boundary."""
+
+        persisted = await self._executor.cancel(
+            tenant_id=tenant_id,
+            research_run_id=research_run_id,
+        )
+        if not persisted:
+            return False
+
+        task = self._tasks_by_run.get((tenant_id, research_run_id))
+        if task is not None and not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        return True
 
     async def close(self) -> None:
         """Cancel and await outstanding tasks during application shutdown."""
@@ -134,12 +174,17 @@ class ResearchJobManager:
             )
 
         self._tasks.clear()
+        self._tasks_by_run.clear()
+        self._task_keys.clear()
 
     def _task_completed(
         self,
         task: asyncio.Task[ResearchExecutionResult | None],
     ) -> None:
         self._tasks.discard(task)
+        key = self._task_keys.pop(task, None)
+        if key is not None and self._tasks_by_run.get(key) is task:
+            self._tasks_by_run.pop(key, None)
 
         if task.cancelled():
             return
@@ -194,8 +239,10 @@ class ResearchJobManager:
                 "status": "running" if queued.resume else "queued",
             },
         )
+        owner_task = asyncio.current_task()
+        assert owner_task is not None
         heartbeat = asyncio.create_task(
-            self._heartbeat(queued, lease),
+            self._heartbeat(queued, lease, owner_task),
             name=f"research-heartbeat-{queued.research_run_id}",
         )
 
@@ -241,6 +288,7 @@ class ResearchJobManager:
         self,
         queued: QueuedResearchExecution,
         lease: ResearchWorkerLeaseRecord,
+        owner_task: asyncio.Task[object],
     ) -> None:
         assert self._durability_store is not None
         while True:
@@ -257,6 +305,7 @@ class ResearchJobManager:
                     "Research worker lost its lease.",
                     extra={"research_run_id": str(queued.research_run_id)},
                 )
+                owner_task.cancel()
                 return
 
     @staticmethod

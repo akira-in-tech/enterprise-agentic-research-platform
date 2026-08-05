@@ -55,3 +55,10 @@ class CreateResearchJobResponse(BaseModel):
     progress_url: str
     events_url: str
     report_url: str
+
+
+class CancelResearchRunResponse(BaseModel):
+    """Confirm one durable research cancellation."""
+
+    research_run_id: UUID
+    status: Literal["cancelled"]

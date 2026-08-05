@@ -1,6 +1,11 @@
 export type UserFacingProvider = "qwen" | "claude";
 
-export type ProgressStatus = "queued" | "running" | "completed" | "failed";
+export type ProgressStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
+
+export interface CancelResearchRunResponse {
+  research_run_id: string;
+  status: "cancelled";
+}
 
 export type ResearchAgentId =
   | "intent_router"

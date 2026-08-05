@@ -22,6 +22,7 @@ class RecordingBackgroundExecutor:
         self.block = block
         self.queue_calls: list[dict[str, object]] = []
         self.execute_calls: list[QueuedResearchExecution] = []
+        self.cancel_calls: list[tuple[UUID, UUID]] = []
         self.started = asyncio.Event()
         self.release = asyncio.Event()
 
@@ -71,10 +72,20 @@ class RecordingBackgroundExecutor:
             },
         )
 
+    async def cancel(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        self.cancel_calls.append((tenant_id, research_run_id))
+        return True
+
 
 class RecordingDurabilityStore:
-    def __init__(self, *, claim: bool = True) -> None:
+    def __init__(self, *, claim: bool = True, renew: bool = True) -> None:
         self.claim = claim
+        self.renew = renew
         self.lease_token = uuid4()
         self.claim_calls: list[dict[str, object]] = []
         self.renew_calls = 0
@@ -138,6 +149,8 @@ class RecordingDurabilityStore:
     ) -> ResearchWorkerLeaseRecord | None:
         del lease_token, ttl_seconds
         self.renew_calls += 1
+        if not self.renew:
+            return None
         return self._lease(
             tenant_id=tenant_id,
             research_run_id=research_run_id,
@@ -269,6 +282,30 @@ async def test_job_manager_cancels_outstanding_tasks_on_close() -> None:
     await manager.close()
 
     assert len(executor.execute_calls) == 1
+    assert executor.cancel_calls == []
+
+
+@pytest.mark.anyio
+async def test_job_manager_cancels_owned_job_and_persists_terminal_state() -> None:
+    executor = RecordingBackgroundExecutor(block=True)
+    manager = ResearchJobManager(executor)
+    tenant_id = uuid4()
+
+    research_run_id = await manager.submit(
+        tenant_id=tenant_id,
+        query="Explain epoll.",
+        llm_provider="qwen",
+    )
+    await executor.started.wait()
+
+    cancelled = await manager.cancel(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )
+
+    assert cancelled is True
+    assert executor.cancel_calls == [(tenant_id, research_run_id)]
+    await manager.close()
 
 
 @pytest.mark.anyio
@@ -347,6 +384,31 @@ async def test_job_manager_renews_lease_while_execution_is_running() -> None:
     await manager.close()
 
     assert durability.renew_calls >= 1
+
+
+@pytest.mark.anyio
+async def test_job_manager_stops_execution_after_lease_can_no_longer_renew() -> None:
+    executor = RecordingBackgroundExecutor(block=True)
+    durability = RecordingDurabilityStore(renew=False)
+    manager = ResearchJobManager(
+        executor,
+        durability,
+        worker_id="worker-test",
+        lease_ttl_seconds=1,
+        heartbeat_seconds=0.01,
+    )
+
+    await manager.submit(
+        tenant_id=uuid4(),
+        query="Explain epoll.",
+        llm_provider="qwen",
+    )
+    await executor.started.wait()
+    await durability.released.wait()
+
+    assert durability.renew_calls == 1
+    assert durability.audit_events[-1] == "worker.interrupted"
+    await manager.close()
 
 
 @pytest.mark.anyio

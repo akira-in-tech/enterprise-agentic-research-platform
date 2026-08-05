@@ -1092,7 +1092,8 @@ button:disabled {
   color: var(--success);
 }
 
-.status-failed .table-status {
+.status-failed .table-status,
+.status-cancelled .table-status {
   color: var(--danger);
 }
 
@@ -1110,7 +1111,8 @@ button:disabled {
   background: var(--success);
 }
 
-.status-failed .table-status-icon {
+.status-failed .table-status-icon,
+.status-cancelled .table-status-icon {
   background: var(--danger-soft);
 }
 
@@ -1429,7 +1431,8 @@ button:disabled {
   border-radius: 12px;
 }
 
-.progress-icon.status-failed {
+.progress-icon.status-failed,
+.progress-icon.status-cancelled {
   color: var(--danger);
   background: var(--danger-soft);
 }

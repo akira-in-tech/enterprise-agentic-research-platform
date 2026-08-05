@@ -58,6 +58,13 @@ def test_research_run_has_valid_lifecycle_constraints() -> None:
 
     assert research_run_table.c.requested_by_user_id.nullable is True
     assert research_run_table.c.status.server_default is not None
+    status_constraint = next(
+        constraint
+        for constraint in research_run_table.constraints
+        if constraint.name == "ck_research_runs_status_valid"
+    )
+    assert isinstance(status_constraint, CheckConstraint)
+    assert "cancelled" in str(status_constraint.sqltext)
 
 
 def test_research_run_enforces_tenant_scoped_user_reference() -> None:

@@ -329,6 +329,24 @@ def test_research_run_repository_marks_run_failed() -> None:
     session_mock.commit.assert_not_awaited()
 
 
+def test_research_run_repository_marks_active_run_cancelled() -> None:
+    session, session_mock = create_session_mock()
+    repository = ResearchRunRepository(session)
+    research_run = create_research_run(status="cancelled")
+    session_mock.scalar.return_value = research_run
+
+    result = asyncio.run(
+        repository.mark_cancelled(
+            tenant_id=research_run.tenant_id,
+            research_run_id=research_run.id,
+        )
+    )
+
+    assert result is research_run
+    session_mock.scalar.assert_awaited_once()
+    session_mock.commit.assert_not_awaited()
+
+
 def test_research_run_repository_rejects_invalid_transition() -> None:
     session, session_mock = create_session_mock()
     repository = ResearchRunRepository(session)

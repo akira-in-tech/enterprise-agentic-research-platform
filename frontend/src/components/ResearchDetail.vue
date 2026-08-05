@@ -34,6 +34,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   back: [];
+  cancel: [];
   retry: [];
   retryIssue: [];
   dismissIssue: [];
@@ -104,17 +105,37 @@ function sourceScore(source: ResearchReportSource): string {
     <template v-if="displayStatus !== 'completed'">
       <section class="progress-card" aria-live="polite">
         <span class="progress-icon" :class="`status-${displayStatus}`">
-          <PhWarningCircle v-if="displayStatus === 'failed'" :size="24" weight="fill" />
+          <PhWarningCircle
+            v-if="displayStatus === 'failed' || displayStatus === 'cancelled'"
+            :size="24"
+            weight="fill"
+          />
           <PhCircleNotch v-else class="spin" :size="24" />
         </span>
         <div>
-          <p class="status-kicker">{{ displayStatus === "failed" ? "Research stopped" : "Research in progress" }}</p>
+          <p class="status-kicker">
+            {{
+              displayStatus === "failed"
+                ? "Research stopped"
+                : displayStatus === "cancelled"
+                  ? "Research cancelled"
+                  : "Research in progress"
+            }}
+          </p>
           <h2>{{ displayMessage }}</h2>
           <p v-if="progress?.workflow_status" class="workflow-state">Current state: {{ progress.workflow_status }}</p>
           <p v-if="progress?.error_message" class="error-detail">{{ progress.error_message }}</p>
         </div>
         <button v-if="displayStatus === 'failed'" class="secondary-button" type="button" @click="emit('retry')">
           Try again
+        </button>
+        <button
+          v-else-if="displayStatus === 'queued' || displayStatus === 'running'"
+          class="secondary-button"
+          type="button"
+          @click="emit('cancel')"
+        >
+          Cancel research
         </button>
       </section>
       <AgentWorkflow :active-agent="activeAgent" compact />

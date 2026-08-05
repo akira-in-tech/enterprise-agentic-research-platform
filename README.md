@@ -39,7 +39,8 @@ Implemented and live verified: atomic worker claim/reclaim/renew/release plus ch
 Implemented and live verified: background execution claims, renews, releases, audits, and checkpoints through PostgreSQL worker ownership
 Implemented and live verified: startup discovery of abandoned queued/running work and per-node LangGraph PostgreSQL checkpoint resume
 Implemented and contract tested: standalone research sources, provider capabilities, and dependency readiness endpoints
-Next: add durable research cancellation
+Implemented and contract tested: tenant-scoped durable cancellation across PostgreSQL, worker tasks, SSE, REST, and Vue
+Next: add domain-adaptive planning and writing profiles
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -264,9 +265,10 @@ explicit opt-in integration check rather than a default-test claim.
 | Durable research repository operations | Atomic expired-only lease takeover, owner-token renewal/release, latest checkpoint, and chronological audit trail unit and live PostgreSQL tested |
 | Runtime worker ownership | PostgreSQL lease claim, heartbeat renewal, token-checked release, audit events, and queued/completed boundary checkpoints live integration tested |
 | Restart recovery and node-level resume | Official AsyncPostgresSaver, startup discovery, tenant/run thread IDs, pending-write-safe node checkpoints, and no-repeat resume live PostgreSQL tested |
+| Durable research cancellation | Queued/running-only PostgreSQL transition, local worker interruption, terminal Redis/SSE progress, tenant-scoped REST endpoint, and Vue action tested; migration SQL generated offline, not newly live applied |
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
-| Vue 3 + TypeScript + Vite frontend | Typechecked, 12 tests passed, production built, and desktop/mobile browser QA verified |
+| Vue 3 + TypeScript + Vite frontend | Typechecked, 26 tests passed, production built, and desktop/mobile browser QA verified |
 | Canonical eight-agent workflow and console role mapping | Backend tested; frontend typechecked, component tested, and built |
 | Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
 | Docker Compose project stack | Built and smoke tested across eight healthy services, including the official-SDK MCP server |
@@ -543,7 +545,10 @@ POST /research-runs/jobs
 → renew ownership on a bounded heartbeat
 → write the terminal checkpoint and audit event
 → release only with the matching worker identity and lease token
-→ mark cancelled shutdown work failed instead of leaving it running
+→ POST /research-runs/{run_id}/cancel interrupts locally owned work
+→ atomically mark only queued/running rows cancelled within the tenant boundary
+→ make remote worker heartbeat renewal fail after cancellation and stop that task
+→ publish cancelled as a terminal Redis snapshot and SSE event
 ```
 
 PostgreSQL now coordinates ownership across processes and preserves the
@@ -555,6 +560,12 @@ tenant/run thread ID, so recovery continues after the last successful node
 without repeating it. Its four library-owned tables are migrated by the
 checkpointer and intentionally excluded from Alembic application-schema drift
 checks; application lifecycle/audit/checkpoint tables remain Alembic-owned.
+Cancellation is a first-class terminal state rather than a generic failure. The
+API returns a conflict for missing or already-terminal runs, and the console
+offers cancellation only while a job is queued or running. This avoids
+reporting a completed result as cancelled during a late client request. Normal
+application shutdown only interrupts local tasks and leaves their active rows
+recoverable; it does not impersonate an explicit user cancellation.
 
 ### Redis-Backed Result Caching
 
