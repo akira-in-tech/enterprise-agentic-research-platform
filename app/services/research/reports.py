@@ -61,3 +61,25 @@ class PostgresResearchReportStore:
                 created_at=report.created_at,
                 sources=[ResearchReportSourceResponse.model_validate(source) for source in sources],
             )
+
+    async def list_sources(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> list[ResearchReportSourceResponse] | None:
+        """Return evidence sources only when the tenant-owned report exists."""
+
+        async with self._session_factory.begin() as session:
+            repository = self._repository_factory(session)
+            report = await repository.get_for_run(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+            )
+            if report is None:
+                return None
+            sources = await repository.list_sources_for_run(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+            )
+            return [ResearchReportSourceResponse.model_validate(source) for source in sources]

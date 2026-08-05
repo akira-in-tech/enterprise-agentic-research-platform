@@ -38,7 +38,8 @@ Implemented and live migration verified: PostgreSQL checkpoint, audit-event, and
 Implemented and live verified: atomic worker claim/reclaim/renew/release plus checkpoint and audit repositories
 Implemented and live verified: background execution claims, renews, releases, audits, and checkpoints through PostgreSQL worker ownership
 Implemented and live verified: startup discovery of abandoned queued/running work and per-node LangGraph PostgreSQL checkpoint resume
-Next: complete the remaining REST operational surface
+Implemented and contract tested: standalone research sources, provider capabilities, and dependency readiness endpoints
+Next: add durable research cancellation
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -257,6 +258,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Citation and reflection API/cache visibility | Tested |
 | Durable report and evidence-source persistence | Tested with reversible live migration and integration test |
 | Tenant-scoped research report retrieval API | Tested |
+| Operational REST surface | Document lifecycle, standalone scored sources, provider capabilities, liveness, and fail-closed PostgreSQL/Redis readiness contract tested |
 | Durable queued background research jobs | Tested with unit and live integration tests |
 | Research checkpoint, audit, and worker-lease schema | SQLAlchemy and Alembic tested; live PostgreSQL upgrade/check/downgrade/restore verified |
 | Durable research repository operations | Atomic expired-only lease takeover, owner-token renewal/release, latest checkpoint, and chronological audit trail unit and live PostgreSQL tested |
@@ -726,6 +728,20 @@ For asynchronous delivery, submit the same JSON body to
 `POST /research-runs/jobs`. A successful request returns `202` only after the
 queued PostgreSQL row is committed, together with URLs for polling progress,
 consuming SSE events, and reading the completed durable report.
+
+Additional operational contracts are:
+
+```text
+GET /research-runs/{run_id}/sources  → tenant-scoped scored evidence
+GET /providers                       → Claude/Qwen capability metadata
+GET /health                          → process liveness only
+GET /ready                           → required PostgreSQL and Redis readiness
+```
+
+`/ready` returns `503` without leaking dependency errors when either required
+service fails. Its API contract is unit tested; PostgreSQL and Redis have been
+live tested independently, while the newly combined readiness live test was
+not rerun in this slice.
 
 Start the API:
 

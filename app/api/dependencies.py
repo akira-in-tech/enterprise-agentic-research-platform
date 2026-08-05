@@ -4,6 +4,7 @@ from fastapi import Request
 
 from app.services.cache import RedisResearchProgressStore, RedisResearchRateLimiter
 from app.services.knowledge import KnowledgeDocumentService
+from app.services.readiness import ApplicationReadinessService
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
 )
@@ -96,3 +97,13 @@ def get_knowledge_document_service(
         raise RuntimeError("Knowledge document service is not initialized.") from error
 
     return cast(KnowledgeDocumentService, service)
+
+
+def get_readiness_service(request: Request) -> ApplicationReadinessService:
+    """Return the application-scoped dependency readiness checker."""
+
+    try:
+        service = request.app.state.readiness_service
+    except AttributeError as error:
+        raise RuntimeError("Readiness service is not initialized.") from error
+    return cast(ApplicationReadinessService, service)

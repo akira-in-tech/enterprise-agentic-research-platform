@@ -7,6 +7,7 @@ from fastapi import FastAPI
 
 from app.agents.local_scout import LocalScoutAgent
 from app.api.documents import router as documents_router
+from app.api.operations import router as operations_router
 from app.api.research import router as research_router
 from app.core.config import settings
 from app.core.logging import configure_logging
@@ -27,6 +28,7 @@ from app.services.knowledge import KnowledgeDocumentService, PostgresKnowledgeDo
 from app.services.knowledge.indexing import KnowledgeIndexer
 from app.services.knowledge.retrieval import PrivateKnowledgeRetriever
 from app.services.mcp import MCPReferenceScout
+from app.services.readiness import ApplicationReadinessService
 from app.services.research.checkpointing import open_langgraph_checkpointer
 from app.services.research.execution import (
     ResearchExecutionService,
@@ -64,6 +66,10 @@ async def lifespan(
         redis_connection = RedisConnection.from_url()
         resource_stack.push_async_callback(
             redis_connection.close,
+        )
+        application.state.readiness_service = ApplicationReadinessService(
+            engine,
+            redis_connection,
         )
 
         embedding_client = create_embedding_client()
@@ -179,6 +185,7 @@ app.include_router(
 app.include_router(
     documents_router,
 )
+app.include_router(operations_router)
 
 
 @app.get("/health")

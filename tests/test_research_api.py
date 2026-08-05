@@ -175,6 +175,17 @@ class FakeResearchReportStore:
         self.calls.append((tenant_id, research_run_id))
         return self.report
 
+    async def list_sources(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> list[object] | None:
+        self.calls.append((tenant_id, research_run_id))
+        if self.report is None:
+            return None
+        return list(self.report.sources)
+
 
 def test_get_research_progress_is_tenant_scoped() -> None:
     tenant_id = uuid4()
@@ -315,6 +326,38 @@ def test_get_research_report_returns_not_found() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Research report was not found."}
+
+
+def test_list_research_sources_is_tenant_scoped() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    report = ResearchReportResponse(
+        report_id=uuid4(),
+        research_run_id=research_run_id,
+        content="Durable report.",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        created_at=datetime.now(UTC),
+        sources=[],
+    )
+    report_store = FakeResearchReportStore(report)
+    app.dependency_overrides[get_research_report_store] = lambda: report_store
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{research_run_id}/sources",
+                headers={"X-Tenant-ID": str(tenant_id)},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json() == []
+    assert report_store.calls == [(tenant_id, research_run_id)]
 
 
 @pytest.fixture(autouse=True)

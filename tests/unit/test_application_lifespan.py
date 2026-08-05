@@ -92,6 +92,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     mcp_scout = object()
     expected_workflow = object()
     checkpointer = object()
+    readiness_service = object()
 
     @asynccontextmanager
     async def open_checkpointer(_: object) -> AsyncIterator[object]:
@@ -168,6 +169,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_workflow = Mock(
         return_value=expected_workflow,
     )
+    create_readiness_service = Mock(return_value=readiness_service)
     monkeypatch.setattr(
         main_module,
         "RedisResearchIdempotencyStore",
@@ -303,6 +305,11 @@ async def test_lifespan_wires_and_closes_application_resources(
         "open_langgraph_checkpointer",
         open_checkpointer,
     )
+    monkeypatch.setattr(
+        main_module,
+        "ApplicationReadinessService",
+        create_readiness_service,
+    )
 
     application = FastAPI()
 
@@ -314,6 +321,7 @@ async def test_lifespan_wires_and_closes_application_resources(
         assert application.state.research_progress_store is progress_store
         assert application.state.research_report_store is report_store
         assert application.state.research_job_manager is job_manager
+        assert application.state.readiness_service is readiness_service
         assert application.state.knowledge_document_service is knowledge_document_service
         assert engine.disposed is False
         assert redis_connection.closed is False
@@ -348,6 +356,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_sessions.assert_called_once_with(
         engine,
     )
+    create_readiness_service.assert_called_once_with(engine, redis_connection)
     create_store.assert_called_once_with(
         database_session_factory,
     )

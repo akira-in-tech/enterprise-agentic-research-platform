@@ -22,7 +22,7 @@ from app.api.dependencies import (
     get_research_report_store,
 )
 from app.schemas.progress import ResearchProgressRecord
-from app.schemas.report import ResearchReportResponse
+from app.schemas.report import ResearchReportResponse, ResearchReportSourceResponse
 from app.schemas.research import (
     CreateResearchJobResponse,
     CreateResearchRunRequest,
@@ -189,6 +189,32 @@ async def get_research_run_report(
         )
 
     return report
+
+
+@router.get(
+    "/{research_run_id}/sources",
+    response_model=list[ResearchReportSourceResponse],
+)
+async def list_research_run_sources(
+    research_run_id: UUID,
+    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    report_store: Annotated[
+        PostgresResearchReportStore,
+        Depends(get_research_report_store),
+    ],
+) -> list[ResearchReportSourceResponse]:
+    """Return scored evidence only within the report's tenant boundary."""
+
+    sources = await report_store.list_sources(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )
+    if sources is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research sources were not found.",
+        )
+    return sources
 
 
 def _rate_limit_headers(
