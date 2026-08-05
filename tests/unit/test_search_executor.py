@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from app.core.circuit_breaker import CircuitBreaker
 from app.schemas.planner import (
     ReportSection,
     ResearchPlan,
@@ -167,6 +168,33 @@ def test_executor_isolates_task_timeout() -> None:
     assert outcomes[1].results == []
     assert outcomes[1].error == ("TimeoutError: search exceeded 0.02 seconds.")
     assert outcomes[2].succeeded is True
+
+
+def test_executor_circuit_breaker_stops_calling_after_threshold() -> None:
+    client = FakeSearchClient(
+        failing_queries={
+            "HTTP/2 reliability features",
+            "HTTP/3 reliability features",
+            "HTTP/2 versus HTTP/3 trade-offs",
+        },
+    )
+    breaker = CircuitBreaker(failure_threshold=2, reset_timeout_seconds=60)
+    executor = SearchExecutor(
+        client,
+        max_concurrency=1,
+        circuit_breaker=breaker,
+    )
+
+    outcomes = asyncio.run(executor.execute(create_test_plan()))
+
+    assert outcomes[0].error == "RuntimeError: Simulated search failure."
+    assert outcomes[1].error == "RuntimeError: Simulated search failure."
+    assert outcomes[2].succeeded is False
+    assert outcomes[2].error is not None
+    assert "CircuitBreakerOpenError" in outcomes[2].error
+    # The third task never reached the search client: the breaker opened
+    # after the second consecutive failure and rejected the call locally.
+    assert len(client.calls) == 2
 
 
 def test_executor_rejects_invalid_concurrency() -> None:

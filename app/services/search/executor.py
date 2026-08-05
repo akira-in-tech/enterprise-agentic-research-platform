@@ -3,6 +3,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+from app.core.circuit_breaker import CircuitBreaker
 from app.schemas.planner import ResearchPlan, ResearchTask
 from app.services.search.base import SearchClient, SearchResult
 
@@ -34,6 +35,7 @@ class SearchExecutor:
         max_concurrency: int = 3,
         max_results_per_task: int = 5,
         task_timeout_seconds: float = 15.0,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be at least 1.")
@@ -48,6 +50,7 @@ class SearchExecutor:
         self._max_concurrency = max_concurrency
         self._max_results_per_task = max_results_per_task
         self._task_timeout_seconds = task_timeout_seconds
+        self._circuit_breaker = circuit_breaker
 
     async def execute(
         self,
@@ -85,12 +88,18 @@ class SearchExecutor:
                 task.search_query,
             )
 
+            async def run_search() -> list[SearchResult]:
+                return await self._search_client.search(
+                    task.search_query,
+                    max_results=self._max_results_per_task,
+                )
+
             try:
                 async with asyncio.timeout(self._task_timeout_seconds):
-                    results = await self._search_client.search(
-                        task.search_query,
-                        max_results=self._max_results_per_task,
-                    )
+                    if self._circuit_breaker is not None:
+                        results = await self._circuit_breaker.call(run_search)
+                    else:
+                        results = await run_search()
             except TimeoutError:
                 logger.warning(
                     "Search task timed out | title=%s | timeout_seconds=%s",
