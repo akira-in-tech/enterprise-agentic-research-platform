@@ -14,11 +14,14 @@ class RecordingAtomicLockClient:
         *,
         acquire_result: bool = True,
         release_result: bool = True,
+        extend_result: bool = True,
     ) -> None:
         self.acquire_result = acquire_result
         self.release_result = release_result
+        self.extend_result = extend_result
         self.set_calls: list[tuple[str, str, int]] = []
         self.delete_calls: list[tuple[str, str]] = []
+        self.extend_calls: list[tuple[str, str, int]] = []
 
     async def set_if_absent(
         self,
@@ -51,6 +54,23 @@ class RecordingAtomicLockClient:
         )
 
         return self.release_result
+
+    async def extend_if_value(
+        self,
+        *,
+        key: str,
+        expected_value: str,
+        ttl_seconds: int,
+    ) -> bool:
+        self.extend_calls.append(
+            (
+                key,
+                expected_value,
+                ttl_seconds,
+            )
+        )
+
+        return self.extend_result
 
 
 @pytest.mark.anyio
@@ -152,6 +172,59 @@ async def test_release_preserves_lock_when_lease_is_stale() -> None:
     assert lease is not None
     assert (
         await manager.release(
+            lease,
+        )
+        is False
+    )
+
+
+@pytest.mark.anyio
+async def test_renew_extends_the_lease_with_the_configured_ttl() -> None:
+    client = RecordingAtomicLockClient()
+    manager = RedisResearchIdempotencyLockManager(
+        client,
+        ttl_seconds=120,
+    )
+
+    lease = await manager.acquire(
+        tenant_id=uuid4(),
+        client_key="request-123",
+    )
+
+    assert lease is not None
+
+    renewed = await manager.renew(
+        lease,
+    )
+
+    assert renewed is True
+    assert client.extend_calls == [
+        (
+            lease.redis_key,
+            lease.owner_token,
+            120,
+        )
+    ]
+
+
+@pytest.mark.anyio
+async def test_renew_reports_a_lost_lease() -> None:
+    client = RecordingAtomicLockClient(
+        extend_result=False,
+    )
+    manager = RedisResearchIdempotencyLockManager(
+        client,
+        ttl_seconds=120,
+    )
+
+    lease = await manager.acquire(
+        tenant_id=uuid4(),
+        client_key="request-123",
+    )
+
+    assert lease is not None
+    assert (
+        await manager.renew(
             lease,
         )
         is False

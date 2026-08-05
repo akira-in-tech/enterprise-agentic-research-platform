@@ -81,6 +81,28 @@ async def test_redis_live_atomic_lock_round_trip() -> None:
             == owner_token
         )
 
+        wrong_owner_extend = await connection.extend_if_value(
+            key=lock_key,
+            expected_value=competing_token,
+            ttl_seconds=120,
+        )
+
+        assert wrong_owner_extend is False
+
+        correct_owner_extend = await connection.extend_if_value(
+            key=lock_key,
+            expected_value=owner_token,
+            ttl_seconds=120,
+        )
+
+        assert correct_owner_extend is True
+        assert (
+            await connection.ttl_seconds(
+                key=lock_key,
+            )
+            > 60
+        )
+
         correct_owner_release = await connection.delete_if_value(
             key=lock_key,
             expected_value=owner_token,
@@ -154,6 +176,16 @@ async def test_redis_live_idempotency_lock_manager() -> None:
         )
 
         assert competing_lease is None
+
+        renewed = await manager.renew(
+            lease,
+        )
+
+        assert renewed is True
+        renewed_ttl = await connection.ttl_seconds(
+            key=redis_key,
+        )
+        assert 0 < renewed_ttl <= 60
 
         released = await manager.release(
             lease,

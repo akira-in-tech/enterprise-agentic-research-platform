@@ -124,6 +124,11 @@ class Settings(BaseSettings):
         ge=1,
         le=3600,
     )
+    redis_research_idempotency_lock_renew_interval_seconds: float = Field(
+        default=100.0,
+        gt=0,
+        le=1200,
+    )
     redis_research_rate_limit_requests: int = Field(
         default=20,
         ge=1,
