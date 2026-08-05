@@ -19,6 +19,27 @@ if config.config_file_name is not None:
     )
 
 target_metadata = metadata
+LANGGRAPH_CHECKPOINT_TABLES = frozenset(
+    {
+        "checkpoint_blobs",
+        "checkpoint_migrations",
+        "checkpoint_writes",
+        "checkpoints",
+    }
+)
+
+
+def include_application_object(
+    object_: object,
+    name: str | None,
+    type_: str,
+    reflected: bool,
+    compare_to: object | None,
+) -> bool:
+    """Exclude tables whose schema is owned by the official checkpointer."""
+
+    del object_, reflected, compare_to
+    return not (type_ == "table" and name in LANGGRAPH_CHECKPOINT_TABLES)
 
 
 def get_database_url() -> str:
@@ -43,6 +64,7 @@ def run_migrations_offline() -> None:
             "paramstyle": "named",
         },
         compare_type=True,
+        include_object=include_application_object,
     )
 
     with context.begin_transaction():
@@ -58,6 +80,7 @@ def do_run_migrations(
         connection=connection,
         target_metadata=target_metadata,
         compare_type=True,
+        include_object=include_application_object,
     )
 
     with context.begin_transaction():

@@ -27,6 +27,7 @@ from app.services.knowledge import KnowledgeDocumentService, PostgresKnowledgeDo
 from app.services.knowledge.indexing import KnowledgeIndexer
 from app.services.knowledge.retrieval import PrivateKnowledgeRetriever
 from app.services.mcp import MCPReferenceScout
+from app.services.research.checkpointing import open_langgraph_checkpointer
 from app.services.research.execution import (
     ResearchExecutionService,
     create_default_workflow,
@@ -83,6 +84,9 @@ async def lifespan(
         session_factory = create_session_factory(
             engine,
         )
+        checkpointer = await resource_stack.enter_async_context(
+            open_langgraph_checkpointer(settings.database_url)
+        )
         document_storage = create_document_storage()
         resource_stack.push_async_callback(document_storage.close)
         application.state.knowledge_document_service = KnowledgeDocumentService(
@@ -123,11 +127,13 @@ async def lifespan(
                 create_default_workflow,
                 local_scout=local_scout,
                 mcp_scout=mcp_scout,
+                checkpointer=checkpointer,
             )
         else:
             workflow_factory = partial(
                 create_default_workflow,
                 local_scout=local_scout,
+                checkpointer=checkpointer,
             )
 
         execution_service = ResearchExecutionService(
@@ -145,6 +151,7 @@ async def lifespan(
         resource_stack.push_async_callback(
             research_job_manager.close,
         )
+        await research_job_manager.start()
         application.state.research_job_manager = research_job_manager
 
         application.state.research_execution_service = IdempotentResearchExecutionService(

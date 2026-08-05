@@ -29,6 +29,18 @@ class ResearchCheckpointRecord:
     created_at: datetime
 
 
+@dataclass(frozen=True, slots=True)
+class RecoverableResearchRunRecord:
+    """Carry one accepted active run into restart recovery."""
+
+    research_run_id: UUID
+    tenant_id: UUID
+    requested_by_user_id: UUID | None
+    query: str
+    llm_provider: str
+    status: str
+
+
 class ResearchDurabilityStore(Protocol):
     """Coordinate worker ownership, checkpoints, and audit history."""
 
@@ -93,3 +105,10 @@ class ResearchDurabilityStore(Protocol):
         details: Mapping[str, object] | None = None,
     ) -> None:
         """Append an operational audit event."""
+
+    async def list_recoverable_runs(
+        self,
+        *,
+        limit: int = 100,
+    ) -> list[RecoverableResearchRunRecord]:
+        """List active runs without a current unexpired worker lease."""

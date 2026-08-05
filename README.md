@@ -37,7 +37,8 @@ Implemented and live verified: official SDK Streamable HTTP MCP server, client, 
 Implemented and live migration verified: PostgreSQL checkpoint, audit-event, and worker-lease schema foundation
 Implemented and live verified: atomic worker claim/reclaim/renew/release plus checkpoint and audit repositories
 Implemented and live verified: background execution claims, renews, releases, audits, and checkpoints through PostgreSQL worker ownership
-Next: recover accepted work after process restart and resume from per-node LangGraph checkpoints
+Implemented and live verified: startup discovery of abandoned queued/running work and per-node LangGraph PostgreSQL checkpoint resume
+Next: complete the remaining REST operational surface
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -260,6 +261,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Research checkpoint, audit, and worker-lease schema | SQLAlchemy and Alembic tested; live PostgreSQL upgrade/check/downgrade/restore verified |
 | Durable research repository operations | Atomic expired-only lease takeover, owner-token renewal/release, latest checkpoint, and chronological audit trail unit and live PostgreSQL tested |
 | Runtime worker ownership | PostgreSQL lease claim, heartbeat renewal, token-checked release, audit events, and queued/completed boundary checkpoints live integration tested |
+| Restart recovery and node-level resume | Official AsyncPostgresSaver, startup discovery, tenant/run thread IDs, pending-write-safe node checkpoints, and no-repeat resume live PostgreSQL tested |
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
 | Vue 3 + TypeScript + Vite frontend | Typechecked, 12 tests passed, production built, and desktop/mobile browser QA verified |
@@ -286,7 +288,7 @@ The portfolio MVP application is implemented and tested through Phase 13. That
 does not mean every production concern is finished: the Phase 14 AWS
 application stack has not been applied, AWS private RAG providers are locally
 implemented but not live invoked, and restart recovery, authentication, and
-per-node LangGraph checkpoint resume remain production-hardening work.
+application deployment remain production-hardening work.
 
 ### System Architecture
 
@@ -544,8 +546,13 @@ POST /research-runs/jobs
 
 PostgreSQL now coordinates ownership across processes and preserves the
 accepted run, terminal artifacts, audit history, and boundary checkpoints. The
-task scheduler is still application-local: restart recovery and true per-node
-LangGraph resume are the remaining durability boundary, not the lease itself.
+application scans queued/running rows without an active lease on startup and
+atomically claims them. The official asynchronous LangGraph PostgreSQL
+checkpointer saves every graph superstep and pending parallel writes under a
+tenant/run thread ID, so recovery continues after the last successful node
+without repeating it. Its four library-owned tables are migrated by the
+checkpointer and intentionally excluded from Alembic application-schema drift
+checks; application lifecycle/audit/checkpoint tables remain Alembic-owned.
 
 ### Redis-Backed Result Caching
 
@@ -636,7 +643,9 @@ PostgreSQL
 → research runs
 → reports
 → sources
-→ agent-step records and checkpoints (planned)
+→ worker leases and append-only audit events
+→ application boundary checkpoints
+→ official LangGraph node checkpoints and pending writes
 
 Redis
 → temporary cache
@@ -654,8 +663,9 @@ PostgreSQL persistence is implemented for tenants, users, research runs,
 reports, and scored evidence sources. A completed deep-research transition and
 its report artifacts share one transaction, preventing a completed run from
 being committed without its report. Tenant-scoped report retrieval, reversible
-migration, and live cleanup have been verified. Agent-step records and durable
-workflow checkpoints remain planned.
+migration, and live cleanup have been verified. Worker ownership, audit events,
+application checkpoints, and official LangGraph node-level resume are also
+implemented and live PostgreSQL verified.
 
 Redis result caching is implemented with tenant/provider/query-scoped keys,
 bounded TTLs, application-scoped connection management, fail-open behavior,
@@ -1171,6 +1181,7 @@ MCP now has a repository-owned official-SDK server and a real Streamable HTTP
 integration, while third-party organization MCP endpoints remain optional.
 PostgreSQL remains the durable source of truth, while
 Redis stores temporary cache and coordination state. The current background
-runner now uses PostgreSQL ownership and heartbeat renewal, but task discovery
-after restart and per-node LangGraph checkpoint resume remain explicit
-production-hardening work.
+runner uses PostgreSQL ownership, heartbeat renewal, startup discovery, and
+official node-level checkpoint resume. A separate queue service could improve
+dispatch throughput, but it is no longer required for correctness after an API
+process restart.

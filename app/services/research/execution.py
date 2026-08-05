@@ -6,6 +6,8 @@ from datetime import UTC, datetime
 from typing import Protocol, cast
 from uuid import UUID
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
+
 from app.agents.local_scout import LocalScoutAgent
 from app.schemas.cache import CachedResearchResult
 from app.schemas.progress import ResearchProgressRecord, ResearchProgressStatus
@@ -52,14 +54,32 @@ class LangGraphResearchWorkflow:
     ) -> None:
         self._graph = graph
         self._close_callback = close_callback
+        self._thread_id: str | None = None
+        self._resume = False
+
+    def configure_durable_execution(
+        self,
+        *,
+        thread_id: str,
+        resume: bool,
+    ) -> None:
+        """Select the durable LangGraph thread and invocation mode."""
+
+        self._thread_id = thread_id
+        self._resume = resume
 
     async def ainvoke(
         self,
         state: ResearchState,
     ) -> ResearchState:
-        result = await self._graph.ainvoke(
-            state,
-        )
+        if self._thread_id is None:
+            result = await self._graph.ainvoke(state)
+        else:
+            graph_input = None if self._resume else state
+            result = await self._graph.ainvoke(
+                graph_input,
+                config={"configurable": {"thread_id": self._thread_id}},
+            )
 
         return cast(
             ResearchState,
@@ -158,6 +178,7 @@ def create_default_workflow(
     *,
     local_scout: LocalScoutAgent | None = None,
     mcp_scout: MCPReferenceScout | None = None,
+    checkpointer: BaseCheckpointSaver[str] | None = None,
 ) -> ResearchWorkflow:
     """Build one managed production workflow."""
 
@@ -170,6 +191,7 @@ def create_default_workflow(
             llm_client,
             local_scout=local_scout,
             mcp_scout=mcp_scout,
+            checkpointer=checkpointer,
         ),
         llm_client.close,
     )
@@ -201,6 +223,7 @@ class QueuedResearchExecution:
     requested_by_user_id: UUID | None
     query: str
     llm_provider: CanonicalLLMProvider
+    resume: bool = False
 
 
 class ResearchExecutionService:
@@ -294,10 +317,11 @@ class ResearchExecutionService:
         canonical_provider = queued.llm_provider
 
         try:
-            await self._store.mark_running(
-                tenant_id=tenant_id,
-                research_run_id=research_run_id,
-            )
+            if not queued.resume:
+                await self._store.mark_running(
+                    tenant_id=tenant_id,
+                    research_run_id=research_run_id,
+                )
             await self._publish_progress(
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
@@ -322,6 +346,11 @@ class ResearchExecutionService:
                 workflow = self._workflow_factory(
                     canonical_provider,
                 )
+                if isinstance(workflow, LangGraphResearchWorkflow):
+                    workflow.configure_durable_execution(
+                        thread_id=f"{tenant_id}:{research_run_id}",
+                        resume=queued.resume,
+                    )
                 initial_state: ResearchState = {
                     "query": normalized_query,
                     "tenant_id": tenant_id,

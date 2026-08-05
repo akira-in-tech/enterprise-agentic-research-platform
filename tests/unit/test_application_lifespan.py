@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from unittest.mock import Mock
 
 import pytest
@@ -26,6 +28,11 @@ class RecordingRedisConnection:
 class RecordingJobManager:
     def __init__(self) -> None:
         self.closed = False
+        self.started = False
+
+    async def start(self) -> int:
+        self.started = True
+        return 0
 
     async def close(self) -> None:
         self.closed = True
@@ -84,6 +91,11 @@ async def test_lifespan_wires_and_closes_application_resources(
     local_scout = object()
     mcp_scout = object()
     expected_workflow = object()
+    checkpointer = object()
+
+    @asynccontextmanager
+    async def open_checkpointer(_: object) -> AsyncIterator[object]:
+        yield checkpointer
 
     create_engine = Mock(
         return_value=engine,
@@ -286,6 +298,11 @@ async def test_lifespan_wires_and_closes_application_resources(
         "create_default_workflow",
         create_workflow,
     )
+    monkeypatch.setattr(
+        main_module,
+        "open_langgraph_checkpointer",
+        open_checkpointer,
+    )
 
     application = FastAPI()
 
@@ -301,6 +318,7 @@ async def test_lifespan_wires_and_closes_application_resources(
         assert engine.disposed is False
         assert redis_connection.closed is False
         assert job_manager.closed is False
+        assert job_manager.started is True
         assert embedding_client.closed is False
         assert vector_store.closed is False
         assert document_storage.closed is False
@@ -390,6 +408,7 @@ async def test_lifespan_wires_and_closes_application_resources(
         "ollama",
         local_scout=local_scout,
         mcp_scout=mcp_scout,
+        checkpointer=checkpointer,
     )
     assert execution_call.kwargs == {
         "result_cache": result_cache,

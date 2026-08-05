@@ -43,6 +43,7 @@ async def test_default_workflow_injects_local_scout_and_closes_request_llm(
         llm_client,
         local_scout=local_scout,
         mcp_scout=None,
+        checkpointer=None,
     )
     assert llm_client.closed is False
 

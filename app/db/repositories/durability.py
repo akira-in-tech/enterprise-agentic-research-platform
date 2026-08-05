@@ -3,11 +3,16 @@ from datetime import UTC, datetime, timedelta
 from typing import cast
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ResearchAuditEvent, ResearchCheckpoint, ResearchWorkerLease
+from app.db.models import (
+    ResearchAuditEvent,
+    ResearchCheckpoint,
+    ResearchRun,
+    ResearchWorkerLease,
+)
 
 
 class ResearchDurabilityRepository:
@@ -221,3 +226,35 @@ class ResearchDurabilityRepository:
             .returning(ResearchWorkerLease.research_run_id)
         )
         return await self._session.scalar(statement) is not None
+
+    async def list_recoverable_runs(
+        self,
+        *,
+        limit: int = 100,
+        now: datetime | None = None,
+    ) -> list[ResearchRun]:
+        """List queued/running runs whose lease is absent or expired."""
+
+        if not 1 <= limit <= 500:
+            raise ValueError("recoverable run limit must be between 1 and 500.")
+        current_time = now or datetime.now(UTC)
+        statement = (
+            select(ResearchRun)
+            .outerjoin(
+                ResearchWorkerLease,
+                (
+                    (ResearchWorkerLease.tenant_id == ResearchRun.tenant_id)
+                    & (ResearchWorkerLease.research_run_id == ResearchRun.id)
+                ),
+            )
+            .where(
+                ResearchRun.status.in_(("queued", "running")),
+                or_(
+                    ResearchWorkerLease.research_run_id.is_(None),
+                    ResearchWorkerLease.expires_at <= current_time,
+                ),
+            )
+            .order_by(ResearchRun.created_at.asc(), ResearchRun.id.asc())
+            .limit(limit)
+        )
+        return list(await self._session.scalars(statement))

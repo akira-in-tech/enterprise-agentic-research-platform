@@ -5,6 +5,7 @@ import socket
 from typing import Protocol
 from uuid import UUID, uuid4
 
+from app.services.llm.factory import normalize_llm_provider
 from app.services.research.durability import (
     ResearchDurabilityStore,
     ResearchWorkerLeaseRecord,
@@ -59,6 +60,32 @@ class ResearchJobManager:
         self._heartbeat_seconds = heartbeat_seconds
         self._tasks: set[asyncio.Task[ResearchExecutionResult | None]] = set()
         self._closed = False
+        self._started = False
+
+    async def start(self) -> int:
+        """Recover accepted runs that no live worker currently owns."""
+
+        if self._closed:
+            raise RuntimeError("Research job manager is closed.")
+        if self._started:
+            return 0
+        self._started = True
+        if self._durability_store is None:
+            return 0
+
+        recoverable = await self._durability_store.list_recoverable_runs()
+        for run in recoverable:
+            self._schedule(
+                QueuedResearchExecution(
+                    research_run_id=run.research_run_id,
+                    tenant_id=run.tenant_id,
+                    requested_by_user_id=run.requested_by_user_id,
+                    query=run.query,
+                    llm_provider=normalize_llm_provider(run.llm_provider),
+                    resume=run.status == "running",
+                )
+            )
+        return len(recoverable)
 
     async def submit(
         self,
@@ -79,14 +106,17 @@ class ResearchJobManager:
             llm_provider=llm_provider,
             requested_by_user_id=requested_by_user_id,
         )
+        self._schedule(queued)
+
+        return queued.research_run_id
+
+    def _schedule(self, queued: QueuedResearchExecution) -> None:
         task = asyncio.create_task(
             self._execute_owned(queued),
             name=f"research-run-{queued.research_run_id}",
         )
         self._tasks.add(task)
         task.add_done_callback(self._task_completed)
-
-        return queued.research_run_id
 
     async def close(self) -> None:
         """Cancel and await outstanding tasks during application shutdown."""
@@ -154,14 +184,14 @@ class ResearchJobManager:
         await store.append_checkpoint(
             tenant_id=queued.tenant_id,
             research_run_id=queued.research_run_id,
-            sequence=0,
-            node_name="queued",
+            sequence=(lease.attempt - 1) * 2,
+            node_name="resumed" if queued.resume else "queued",
             state={
                 "query": queued.query,
                 "tenant_id": queued.tenant_id,
                 "requested_by_user_id": queued.requested_by_user_id,
                 "llm_provider": queued.llm_provider,
-                "status": "queued",
+                "status": "running" if queued.resume else "queued",
             },
         )
         heartbeat = asyncio.create_task(
@@ -174,7 +204,7 @@ class ResearchJobManager:
             await store.append_checkpoint(
                 tenant_id=queued.tenant_id,
                 research_run_id=queued.research_run_id,
-                sequence=1,
+                sequence=(lease.attempt - 1) * 2 + 1,
                 node_name="completed",
                 state=result.state,
             )

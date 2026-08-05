@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 
 from app.services.research.durability import (
+    RecoverableResearchRunRecord,
     ResearchCheckpointRecord,
     ResearchWorkerLeaseRecord,
 )
@@ -81,6 +82,7 @@ class RecordingDurabilityStore:
         self.released = asyncio.Event()
         self.checkpoints: list[tuple[int, str, Mapping[str, object]]] = []
         self.audit_events: list[str] = []
+        self.recoverable_runs: list[RecoverableResearchRunRecord] = []
 
     def _lease(
         self,
@@ -200,6 +202,14 @@ class RecordingDurabilityStore:
     ) -> None:
         del tenant_id, research_run_id, actor_type, actor_id, details
         self.audit_events.append(event_type)
+
+    async def list_recoverable_runs(
+        self,
+        *,
+        limit: int = 100,
+    ) -> list[RecoverableResearchRunRecord]:
+        del limit
+        return list(self.recoverable_runs)
 
 
 @pytest.mark.anyio
@@ -337,3 +347,33 @@ async def test_job_manager_renews_lease_while_execution_is_running() -> None:
     await manager.close()
 
     assert durability.renew_calls >= 1
+
+
+@pytest.mark.anyio
+async def test_job_manager_recovers_running_job_as_resume() -> None:
+    executor = RecordingBackgroundExecutor()
+    durability = RecordingDurabilityStore()
+    run = RecoverableResearchRunRecord(
+        research_run_id=uuid4(),
+        tenant_id=uuid4(),
+        requested_by_user_id=None,
+        query="Resume durable research.",
+        llm_provider="ollama",
+        status="running",
+    )
+    durability.recoverable_runs = [run]
+    manager = ResearchJobManager(
+        executor,
+        durability,
+        worker_id="recovery-worker",
+    )
+
+    recovered = await manager.start()
+    await executor.started.wait()
+    await durability.released.wait()
+    await manager.close()
+
+    assert recovered == 1
+    assert executor.execute_calls[0].research_run_id == run.research_run_id
+    assert executor.execute_calls[0].resume is True
+    assert durability.checkpoints[0][1] == "resumed"

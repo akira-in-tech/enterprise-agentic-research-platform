@@ -14,6 +14,7 @@ from app.db.repositories import (
 )
 from app.services.llm.factory import CanonicalLLMProvider
 from app.services.research.durability import (
+    RecoverableResearchRunRecord,
     ResearchCheckpointRecord,
     ResearchWorkerLeaseRecord,
 )
@@ -265,6 +266,27 @@ class PostgresResearchDurabilityStore:
                 actor_id=actor_id,
                 details=normalized_details,
             )
+
+    async def list_recoverable_runs(
+        self,
+        *,
+        limit: int = 100,
+    ) -> list[RecoverableResearchRunRecord]:
+        async with self._session_factory.begin() as session:
+            runs = await self._repository_factory(session).list_recoverable_runs(
+                limit=limit,
+            )
+            return [
+                RecoverableResearchRunRecord(
+                    research_run_id=run.id,
+                    tenant_id=run.tenant_id,
+                    requested_by_user_id=run.requested_by_user_id,
+                    query=run.query,
+                    llm_provider=run.llm_provider,
+                    status=run.status,
+                )
+                for run in runs
+            ]
 
     @staticmethod
     def _lease_record(

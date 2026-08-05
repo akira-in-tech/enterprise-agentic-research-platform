@@ -2,6 +2,7 @@ from collections.abc import Awaitable, Callable, Sequence
 from typing import Literal, Protocol
 from uuid import UUID
 
+from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
@@ -384,6 +385,7 @@ def build_research_graph(
     generate_report: ReportGenerator | None = None,
     review_report: ReportReviewer | None = None,
     max_reflection_attempts: int = 2,
+    checkpointer: BaseCheckpointSaver[str] | None = None,
 ) -> ResearchGraph:
     """Build and compile the answering and research workflow."""
 
@@ -503,7 +505,7 @@ def build_research_graph(
     else:
         graph_builder.add_edge("web_search", END)
 
-    return graph_builder.compile()
+    return graph_builder.compile(checkpointer=checkpointer)
 
 
 def _research_tasks_for_state(
@@ -844,6 +846,7 @@ def build_eight_agent_research_graph(
     scout_mcp: MCPQueryScout | None = None,
     max_iterations: int = 2,
     max_writer_attempts: int = 2,
+    checkpointer: BaseCheckpointSaver[str] | None = None,
 ) -> ResearchGraph:
     """Build the canonical eight-agent research workflow."""
 
@@ -934,7 +937,7 @@ def build_eight_agent_research_graph(
     graph_builder.add_edge("research_dispatch", "local_scout")
     graph_builder.add_edge("writer", END)
 
-    return graph_builder.compile()
+    return graph_builder.compile(checkpointer=checkpointer)
 
 
 def build_research_graph_for_client(
@@ -942,6 +945,7 @@ def build_research_graph_for_client(
     *,
     local_scout: LocalScoutAgent | None = None,
     mcp_scout: MCPReferenceScout | None = None,
+    checkpointer: BaseCheckpointSaver[str] | None = None,
 ) -> ResearchGraph:
     """Build the production graph around one supplied LLM client."""
 
@@ -1015,6 +1019,7 @@ def build_research_graph_for_client(
             writer.write_report,
             review_report,
             scout_mcp=mcp_scout.scout if mcp_scout is not None else None,
+            checkpointer=checkpointer,
         )
 
     return build_research_graph(
@@ -1026,6 +1031,7 @@ def build_research_graph_for_client(
         analyze_evidence=analyze_evidence,
         generate_report=generate_report,
         review_report=review_report,
+        checkpointer=checkpointer,
     )
 
 

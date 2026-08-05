@@ -56,6 +56,10 @@ async def test_research_durability_live_claim_checkpoint_and_audit() -> None:
                 )
                 assert first_lease is not None
                 assert first_lease.attempt == 1
+                active_recoverable = await ResearchDurabilityRepository(
+                    session
+                ).list_recoverable_runs(now=now + timedelta(seconds=1))
+                assert all(item.id != run_id for item in active_recoverable)
 
         async with session_factory() as session:
             async with session.begin():
@@ -113,6 +117,12 @@ async def test_research_durability_live_claim_checkpoint_and_audit() -> None:
                     actor_id="worker-b",
                     details={"attempt": 2},
                 )
+
+        async with session_factory() as session:
+            recoverable = await ResearchDurabilityRepository(session).list_recoverable_runs(
+                now=reclaimed_at + timedelta(seconds=31)
+            )
+            assert run_id in {item.id for item in recoverable}
 
         async with session_factory() as session:
             repository = ResearchDurabilityRepository(session)
