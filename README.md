@@ -35,7 +35,8 @@ Terraform validated and mock tested: encrypted, versioned, public-blocked S3 plu
 Deployment status: state bucket and CI identity only; staging application resources are not applied
 Implemented and live verified: official SDK Streamable HTTP MCP server, client, and Web Scout federation
 Implemented and live migration verified: PostgreSQL checkpoint, audit-event, and worker-lease schema foundation
-Next: add atomic worker claim/renew/release, checkpoint persistence, and resume execution
+Implemented and live verified: atomic worker claim/reclaim/renew/release plus checkpoint and audit repositories
+Next: replace process-local background ownership with the durable lease and resume execution
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -256,6 +257,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Tenant-scoped research report retrieval API | Tested |
 | Durable queued background research jobs | Tested with unit and live integration tests |
 | Research checkpoint, audit, and worker-lease schema | SQLAlchemy and Alembic tested; live PostgreSQL upgrade/check/downgrade/restore verified |
+| Durable research repository operations | Atomic expired-only lease takeover, owner-token renewal/release, latest checkpoint, and chronological audit trail unit and live PostgreSQL tested |
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
 | Vue 3 + TypeScript + Vite frontend | Typechecked, 12 tests passed, production built, and desktop/mobile browser QA verified |
