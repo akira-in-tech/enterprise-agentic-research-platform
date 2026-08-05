@@ -120,3 +120,40 @@ def test_research_source_is_unique_within_report() -> None:
         "uq_research_sources_report_source",
     } <= constraint_names
     assert {index.name for index in source_table.indexes} == {"ix_research_sources_tenant_run"}
+
+
+def test_knowledge_document_enforces_tenant_and_lifecycle_constraints() -> None:
+    document_table = metadata.tables["knowledge_documents"]
+    constraint_names = {str(constraint.name) for constraint in document_table.constraints}
+
+    assert {
+        "pk_knowledge_documents",
+        "fk_knowledge_documents_tenant_id_tenants",
+        "fk_knowledge_documents_tenant_user",
+        "uq_knowledge_documents_tenant_id_id",
+        "uq_knowledge_documents_tenant_content_sha256",
+        "ck_knowledge_documents_filename_not_blank",
+        "ck_knowledge_documents_media_type_valid",
+        "ck_knowledge_documents_byte_size_positive",
+        "ck_knowledge_documents_content_sha256_valid",
+        "ck_knowledge_documents_storage_key_not_blank",
+        "ck_knowledge_documents_status_valid",
+        "ck_knowledge_documents_error_state_valid",
+        "ck_knowledge_documents_indexed_state_valid",
+    } <= constraint_names
+    assert {index.name for index in document_table.indexes} == {
+        "ix_knowledge_documents_tenant_created_at",
+        "ix_knowledge_documents_tenant_status",
+    }
+
+    foreign_keys = {
+        str(constraint.name): constraint for constraint in document_table.foreign_key_constraints
+    }
+    assert foreign_keys["fk_knowledge_documents_tenant_id_tenants"].ondelete == "CASCADE"
+    assert {
+        element.target_fullname
+        for element in foreign_keys["fk_knowledge_documents_tenant_user"].elements
+    } == {
+        "users.tenant_id",
+        "users.id",
+    }

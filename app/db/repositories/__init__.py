@@ -1,3 +1,7 @@
+from app.db.repositories.documents import (
+    KnowledgeDocumentRepository,
+    KnowledgeDocumentTransitionError,
+)
 from app.db.repositories.reports import ResearchReportRepository
 from app.db.repositories.research_runs import (
     ResearchRunRepository,
@@ -9,6 +13,8 @@ from app.db.repositories.tenants import (
 )
 
 __all__ = [
+    "KnowledgeDocumentRepository",
+    "KnowledgeDocumentTransitionError",
     "ResearchReportRepository",
     "ResearchRunRepository",
     "ResearchRunTransitionError",

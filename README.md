@@ -27,8 +27,9 @@ Generated and remotely verified: configured-provider zero-task staging plan, 48 
 Configured and live verified: Claude Sonnet 5 structured output through the Anthropic API
 Configured and live verified: managed Zilliz Cloud Milvus round trip in AWS us-west-2
 Configured and live verified: Tavily Basic Search and canonical web-source normalization
+Gap remediation in progress: durable tenant-scoped private-document metadata and indexing lifecycle
 Deployment status: state bucket and CI identity only; staging application resources are not applied
-Next: review the configured-provider plan, approve a demo window, then apply and destroy on demand
+Next: complete the private-document upload/indexing API and console flow before the application apply
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -198,6 +199,7 @@ explicit opt-in integration check rather than a default-test claim.
 | TXT and Markdown private-document parsing | Tested |
 | PDF text extraction | Tested |
 | Deterministic document chunking | Tested |
+| Durable tenant-scoped private-document metadata and indexing lifecycle | Tested with repository coverage and a reversible live PostgreSQL migration |
 | Provider-neutral embedding interface | Tested |
 | Qwen embeddings through Ollama | Tested with mocks and live smoke test |
 | Provider-neutral vector-store interface | Tested |
