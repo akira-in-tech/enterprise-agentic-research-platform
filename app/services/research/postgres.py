@@ -94,6 +94,20 @@ class PostgresResearchRunStore:
                 research_run_id=research_run_id,
             )
 
+    async def list_recent(
+        self,
+        *,
+        tenant_id: UUID,
+        limit: int = 20,
+    ) -> list[ResearchRun]:
+        """Return one tenant's most recent research runs, newest first."""
+
+        async with self._session_factory.begin() as session:
+            return await self._repository_factory(session).list_recent_for_tenant(
+                tenant_id=tenant_id,
+                limit=limit,
+            )
+
     async def mark_running(
         self,
         *,

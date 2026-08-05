@@ -180,9 +180,16 @@ class FakeResearchJobManager:
 
 
 class FakeResearchRunStore:
-    def __init__(self, run: ResearchRun | None = None) -> None:
+    def __init__(
+        self,
+        run: ResearchRun | None = None,
+        *,
+        runs: list[ResearchRun] | None = None,
+    ) -> None:
         self.run = run
+        self.runs = runs or []
         self.calls: list[tuple[UUID, UUID]] = []
+        self.list_calls: list[tuple[UUID, int]] = []
 
     async def get(
         self,
@@ -192,6 +199,15 @@ class FakeResearchRunStore:
     ) -> ResearchRun | None:
         self.calls.append((tenant_id, research_run_id))
         return self.run
+
+    async def list_recent(
+        self,
+        *,
+        tenant_id: UUID,
+        limit: int = 20,
+    ) -> list[ResearchRun]:
+        self.list_calls.append((tenant_id, limit))
+        return self.runs
 
 
 class FakeResearchReportStore:
@@ -845,3 +861,61 @@ def test_get_research_run_returns_404_when_missing() -> None:
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Research run was not found."
+
+
+def test_list_research_runs_returns_tenant_scoped_history() -> None:
+    tenant_id = uuid4()
+    runs = [
+        ResearchRun(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            query="Compare HTTP/2 and HTTP/3.",
+            llm_provider="anthropic",
+            status="completed",
+            route="deep_research",
+            created_at=datetime(2026, 1, 2, tzinfo=UTC),
+        ),
+        ResearchRun(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            query="What is a mutex?",
+            llm_provider="ollama",
+            status="completed",
+            route="direct",
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        ),
+    ]
+    store = FakeResearchRunStore(runs=runs)
+    app.dependency_overrides[get_research_run_store] = lambda: store
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/research-runs",
+                headers={"X-Tenant-ID": str(tenant_id)},
+                params={"limit": 5},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert [item["query"] for item in body] == ["Compare HTTP/2 and HTTP/3.", "What is a mutex?"]
+    assert store.list_calls == [(tenant_id, 5)]
+
+
+def test_list_research_runs_rejects_out_of_range_limit() -> None:
+    store = FakeResearchRunStore(runs=[])
+    app.dependency_overrides[get_research_run_store] = lambda: store
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                "/research-runs",
+                headers={"X-Tenant-ID": str(uuid4())},
+                params={"limit": 0},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422

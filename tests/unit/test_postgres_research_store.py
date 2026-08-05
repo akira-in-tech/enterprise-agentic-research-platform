@@ -163,6 +163,32 @@ async def test_store_returns_none_for_missing_run() -> None:
 
 
 @pytest.mark.anyio
+async def test_store_lists_recent_runs_for_tenant() -> None:
+    session_factory, repository_mock, repository = create_test_dependencies()
+    tenant_id = uuid4()
+    runs = [
+        ResearchRun(
+            id=uuid4(),
+            tenant_id=tenant_id,
+            query="Compare HTTP/2 and HTTP/3.",
+            llm_provider="anthropic",
+            status="completed",
+        ),
+    ]
+    repository_mock.list_recent_for_tenant.return_value = runs
+    store = PostgresResearchRunStore(session_factory, lambda _: repository)
+
+    result = await store.list_recent(tenant_id=tenant_id, limit=5)
+
+    assert result == runs
+    assert session_factory.begin_calls == 1
+    repository_mock.list_recent_for_tenant.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        limit=5,
+    )
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     "transition",
     [

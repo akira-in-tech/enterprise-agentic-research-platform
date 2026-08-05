@@ -9,6 +9,7 @@ from fastapi import (
     Depends,
     Header,
     HTTPException,
+    Query,
     Response,
     status,
 )
@@ -22,6 +23,7 @@ from app.api.dependencies import (
     get_research_report_store,
     get_research_run_store,
 )
+from app.db.models import ResearchRun
 from app.schemas.intent import ResearchRoute
 from app.schemas.progress import ResearchProgressRecord
 from app.schemas.report import ResearchReportResponse, ResearchReportSourceResponse
@@ -60,6 +62,43 @@ router = APIRouter(
 )
 
 
+def _to_run_response(run: ResearchRun) -> ResearchRunResponse:
+    return ResearchRunResponse(
+        research_run_id=run.id,
+        llm_provider=cast(PersistedLLMProvider, run.llm_provider),
+        status=cast(ResearchRunStatus, run.status),
+        query=run.query,
+        route=cast("ResearchRoute | None", run.route),
+        route_reason=run.route_reason,
+        error_message=run.error_message,
+        created_at=run.created_at,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+    )
+
+
+@router.get(
+    "",
+    response_model=list[ResearchRunResponse],
+)
+async def list_research_runs(
+    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    run_store: Annotated[
+        PostgresResearchRunStore,
+        Depends(get_research_run_store),
+    ],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[ResearchRunResponse]:
+    """Return one tenant's most recent research runs, newest first."""
+
+    runs = await run_store.list_recent(
+        tenant_id=tenant_id,
+        limit=limit,
+    )
+
+    return [_to_run_response(run) for run in runs]
+
+
 @router.get(
     "/{research_run_id}",
     response_model=ResearchRunResponse,
@@ -85,18 +124,7 @@ async def get_research_run(
             detail="Research run was not found.",
         )
 
-    return ResearchRunResponse(
-        research_run_id=run.id,
-        llm_provider=cast(PersistedLLMProvider, run.llm_provider),
-        status=cast(ResearchRunStatus, run.status),
-        query=run.query,
-        route=cast("ResearchRoute | None", run.route),
-        route_reason=run.route_reason,
-        error_message=run.error_message,
-        created_at=run.created_at,
-        started_at=run.started_at,
-        completed_at=run.completed_at,
-    )
+    return _to_run_response(run)
 
 
 async def _research_progress_events(
