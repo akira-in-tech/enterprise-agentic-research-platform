@@ -6,7 +6,7 @@ from uuid import UUID
 from pydantic_core import to_jsonable_python
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ResearchCheckpoint, ResearchWorkerLease
+from app.db.models import ResearchCheckpoint, ResearchRun, ResearchWorkerLease
 from app.db.repositories import (
     ResearchDurabilityRepository,
     ResearchReportRepository,
@@ -79,6 +79,20 @@ class PostgresResearchRunStore:
             )
 
             return research_run.id
+
+    async def get(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> ResearchRun | None:
+        """Return one tenant-scoped research run's current state."""
+
+        async with self._session_factory.begin() as session:
+            return await self._repository_factory(session).get_for_tenant(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+            )
 
     async def mark_running(
         self,

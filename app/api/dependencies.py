@@ -9,6 +9,7 @@ from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
 )
 from app.services.research.jobs import ResearchJobManager
+from app.services.research.postgres import PostgresResearchRunStore
 from app.services.research.reports import PostgresResearchReportStore
 
 
@@ -71,6 +72,19 @@ def get_research_report_store(
         raise RuntimeError("Research report store is not initialized.") from error
 
     return cast(PostgresResearchReportStore, report_store)
+
+
+def get_research_run_store(
+    request: Request,
+) -> PostgresResearchRunStore:
+    """Return the application-scoped durable research-run reader."""
+
+    try:
+        run_store = request.app.state.research_run_store
+    except AttributeError as error:
+        raise RuntimeError("Research run store is not initialized.") from error
+
+    return cast(PostgresResearchRunStore, run_store)
 
 
 def get_research_job_manager(

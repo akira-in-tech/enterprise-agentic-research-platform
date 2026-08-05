@@ -11,7 +11,9 @@ from app.api.dependencies import (
     get_research_progress_store,
     get_research_rate_limiter,
     get_research_report_store,
+    get_research_run_store,
 )
+from app.db.models import ResearchRun
 from app.main import app
 from app.schemas.evidence import CitationAudit, ReflectionDecision
 from app.schemas.progress import ResearchProgressRecord
@@ -175,6 +177,21 @@ class FakeResearchJobManager:
     ) -> bool:
         self.cancel_calls.append((tenant_id, research_run_id))
         return self.cancel_result
+
+
+class FakeResearchRunStore:
+    def __init__(self, run: ResearchRun | None = None) -> None:
+        self.run = run
+        self.calls: list[tuple[UUID, UUID]] = []
+
+    async def get(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> ResearchRun | None:
+        self.calls.append((tenant_id, research_run_id))
+        return self.run
 
 
 class FakeResearchReportStore:
@@ -777,3 +794,54 @@ def test_cancel_research_job_rejects_terminal_or_missing_run() -> None:
 
     assert response.status_code == 409
     assert response.json()["detail"] == "Research run is not active or was not found."
+
+
+def test_get_research_run_returns_tenant_scoped_lifecycle_state() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    run = ResearchRun(
+        id=research_run_id,
+        tenant_id=tenant_id,
+        query="Compare HTTP/2 and HTTP/3.",
+        llm_provider="anthropic",
+        status="completed",
+        route="deep_research",
+        route_reason="Comparison requires current sources.",
+        created_at=datetime(2026, 1, 1, tzinfo=UTC),
+    )
+    store = FakeResearchRunStore(run)
+    app.dependency_overrides[get_research_run_store] = lambda: store
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{research_run_id}",
+                headers={"X-Tenant-ID": str(tenant_id)},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["research_run_id"] == str(research_run_id)
+    assert body["status"] == "completed"
+    assert body["route"] == "deep_research"
+    assert body["query"] == "Compare HTTP/2 and HTTP/3."
+    assert store.calls == [(tenant_id, research_run_id)]
+
+
+def test_get_research_run_returns_404_when_missing() -> None:
+    store = FakeResearchRunStore(None)
+    app.dependency_overrides[get_research_run_store] = lambda: store
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{uuid4()}",
+                headers={"X-Tenant-ID": str(uuid4())},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Research run was not found."

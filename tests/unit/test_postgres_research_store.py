@@ -121,6 +121,48 @@ async def test_store_creates_queued_run_in_transaction() -> None:
 
 
 @pytest.mark.anyio
+async def test_store_returns_tenant_scoped_run() -> None:
+    session_factory, repository_mock, repository = create_test_dependencies()
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    research_run = ResearchRun(
+        id=research_run_id,
+        tenant_id=tenant_id,
+        query="Compare HTTP/2 and HTTP/3.",
+        llm_provider="anthropic",
+        status="completed",
+    )
+    repository_mock.get_for_tenant.return_value = research_run
+    store = PostgresResearchRunStore(session_factory, lambda _: repository)
+
+    result = await store.get(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )
+
+    assert result is research_run
+    assert session_factory.begin_calls == 1
+    repository_mock.get_for_tenant.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )
+
+
+@pytest.mark.anyio
+async def test_store_returns_none_for_missing_run() -> None:
+    session_factory, repository_mock, repository = create_test_dependencies()
+    repository_mock.get_for_tenant.return_value = None
+    store = PostgresResearchRunStore(session_factory, lambda _: repository)
+
+    result = await store.get(
+        tenant_id=uuid4(),
+        research_run_id=uuid4(),
+    )
+
+    assert result is None
+
+
+@pytest.mark.anyio
 @pytest.mark.parametrize(
     "transition",
     [

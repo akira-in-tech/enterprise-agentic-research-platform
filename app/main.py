@@ -106,6 +106,7 @@ async def lifespan(
         research_store = PostgresResearchRunStore(
             session_factory,
         )
+        application.state.research_run_store = research_store
         application.state.research_report_store = PostgresResearchReportStore(
             session_factory,
         )

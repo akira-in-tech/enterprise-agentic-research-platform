@@ -1,7 +1,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import (
@@ -20,7 +20,9 @@ from app.api.dependencies import (
     get_research_progress_store,
     get_research_rate_limiter,
     get_research_report_store,
+    get_research_run_store,
 )
+from app.schemas.intent import ResearchRoute
 from app.schemas.progress import ResearchProgressRecord
 from app.schemas.report import ResearchReportResponse, ResearchReportSourceResponse
 from app.schemas.research import (
@@ -28,6 +30,9 @@ from app.schemas.research import (
     CreateResearchJobResponse,
     CreateResearchRunRequest,
     CreateResearchRunResponse,
+    PersistedLLMProvider,
+    ResearchRunResponse,
+    ResearchRunStatus,
 )
 from app.services.cache import (
     MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH,
@@ -44,6 +49,7 @@ from app.services.research.idempotency import (
     ResearchIdempotencyUnavailableError,
 )
 from app.services.research.jobs import ResearchJobManager
+from app.services.research.postgres import PostgresResearchRunStore
 from app.services.research.reports import PostgresResearchReportStore
 
 router = APIRouter(
@@ -52,6 +58,45 @@ router = APIRouter(
         "research",
     ],
 )
+
+
+@router.get(
+    "/{research_run_id}",
+    response_model=ResearchRunResponse,
+)
+async def get_research_run(
+    research_run_id: UUID,
+    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    run_store: Annotated[
+        PostgresResearchRunStore,
+        Depends(get_research_run_store),
+    ],
+) -> ResearchRunResponse:
+    """Return one durable research run's current lifecycle state."""
+
+    run = await run_store.get(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )
+
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research run was not found.",
+        )
+
+    return ResearchRunResponse(
+        research_run_id=run.id,
+        llm_provider=cast(PersistedLLMProvider, run.llm_provider),
+        status=cast(ResearchRunStatus, run.status),
+        query=run.query,
+        route=cast("ResearchRoute | None", run.route),
+        route_reason=run.route_reason,
+        error_message=run.error_message,
+        created_at=run.created_at,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+    )
 
 
 async def _research_progress_events(
