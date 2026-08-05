@@ -52,3 +52,5 @@ class ReflectionDecision(BaseModel):
     reasons: list[str]
     evidence_count: int = Field(ge=0)
     average_evidence_score: float = Field(ge=0.0, le=1.0)
+    human_review_required: bool = False
+    human_review_reason: str | None = Field(default=None, max_length=500)

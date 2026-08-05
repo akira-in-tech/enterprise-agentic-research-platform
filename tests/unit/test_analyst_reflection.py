@@ -122,3 +122,38 @@ def test_reflection_requests_revision_with_explanations() -> None:
 
     assert decision.status == "revise"
     assert len(decision.reasons) == 4
+    assert decision.human_review_required is False
+    assert decision.human_review_reason is None
+
+
+def test_reflection_requires_human_review_for_high_risk_domain_even_when_approved() -> None:
+    scores = [
+        EvidenceScore(
+            source_id=f"WEB-{index:016X}",
+            relevance=0.8,
+            content_quality=0.8,
+            traceability=1,
+            overall=0.82,
+        )
+        for index in range(2)
+    ]
+    audit = CitationAudit(
+        valid=True,
+        cited_source_ids=[score.source_id for score in scores],
+        unknown_source_ids=[],
+        uncited_claims=[],
+        coverage_ratio=1,
+    )
+
+    decision = ReflectionAgent().review(
+        citation_audit=audit,
+        evidence_scores=scores,
+        is_high_risk_domain=True,
+    )
+
+    # Sufficient evidence and valid citations still approve the report...
+    assert decision.status == "approved"
+    assert decision.reasons == []
+    # ...but a high-risk domain always requires human review regardless.
+    assert decision.human_review_required is True
+    assert decision.human_review_reason is not None

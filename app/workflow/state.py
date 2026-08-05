@@ -31,6 +31,7 @@ class ResearchState(TypedDict):
     active_agent: NotRequired[ResearchAgentRole]
     route: NotRequired[ResearchRoute]
     route_reason: NotRequired[str]
+    is_high_risk_domain: NotRequired[bool]
     answer: NotRequired[str]
     plan: NotRequired[ResearchPlan]
     web_search_results: NotRequired[list[ResearchTaskResult]]

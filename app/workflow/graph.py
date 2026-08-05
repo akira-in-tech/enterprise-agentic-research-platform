@@ -128,7 +128,7 @@ ReportGenerator = Callable[
     Awaitable[str],
 ]
 ReportReviewer = Callable[
-    [str, list[EvidenceSource], list[EvidenceScore]],
+    [str, list[EvidenceSource], list[EvidenceScore], bool],
     tuple[CitationAudit, ReflectionDecision],
 ]
 
@@ -148,17 +148,18 @@ def initialize_node(_: ResearchState) -> dict[str, str]:
 
 def build_route_node(
     classifier: IntentClassifier,
-) -> Callable[[ResearchState], Awaitable[dict[str, str]]]:
+) -> Callable[[ResearchState], Awaitable[dict[str, object]]]:
     """Create the asynchronous route node."""
 
     async def route_node(
         state: ResearchState,
-    ) -> dict[str, str]:
+    ) -> dict[str, object]:
         decision = await classifier(state["query"])
 
         return {
             "route": decision.route,
             "route_reason": decision.reason,
+            "is_high_risk_domain": decision.is_high_risk_domain,
             "status": "routed",
         }
 
@@ -342,6 +343,7 @@ def build_reflection_node(
             state["report"],
             state["evidence_sources"],
             state["evidence_scores"],
+            state.get("is_high_risk_domain", False),
         )
 
         return {
@@ -802,6 +804,7 @@ def build_eight_agent_writer_node(
                 report,
                 state["evidence_sources"],
                 state["evidence_scores"],
+                state.get("is_high_risk_domain", False),
             )
 
             if decision.status == "approved":
@@ -995,6 +998,7 @@ def build_research_graph_for_client(
         report: str,
         sources: list[EvidenceSource],
         scores: list[EvidenceScore],
+        is_high_risk_domain: bool,
     ) -> tuple[CitationAudit, ReflectionDecision]:
         audit = citation_validator.validate(
             report=report,
@@ -1004,6 +1008,7 @@ def build_research_graph_for_client(
         return audit, reflection.review(
             citation_audit=audit,
             evidence_scores=scores,
+            is_high_risk_domain=is_high_risk_domain,
         )
 
     if local_scout is not None:

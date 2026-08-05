@@ -64,6 +64,51 @@ def classify_route_by_rule(query: str) -> ResearchRoute:
     return "direct"
 
 
+# High-risk domains where the charter requires the platform to show evidence
+# and uncertainty rather than an unqualified final decision, and to request
+# human review instead of acting as the sole decision-maker. This is a
+# narrower, more specific signal than DEEP_RESEARCH_SIGNAL_KEYWORDS' general
+# "security"/"risk"/"safety" terms.
+HIGH_RISK_DOMAIN_KEYWORDS = (
+    # medical or health
+    "medical",
+    "diagnosis",
+    "diagnose",
+    "treatment",
+    "medication",
+    "dosage",
+    "symptom",
+    "prescri",
+    # legal
+    "legal advice",
+    "lawsuit",
+    "sue ",
+    "liability",
+    "regulatory compliance",
+    "is it legal",
+    # financial
+    "financial advice",
+    "investment advice",
+    "should i invest",
+    "tax advice",
+    # safety- or security-critical
+    "life-safety",
+    "life safety",
+    "safety-critical",
+    "vulnerability",
+    "exploit",
+    "security incident",
+)
+
+
+def detect_high_risk_domain(query: str) -> bool:
+    """Flag requests in medical, legal, financial, or safety-critical domains."""
+
+    normalized_query = query.strip().lower()
+
+    return any(keyword in normalized_query for keyword in HIGH_RISK_DOMAIN_KEYWORDS)
+
+
 class IntentRouter:
     """Route requests using Claude with a deterministic fallback."""
 
@@ -79,14 +124,15 @@ class IntentRouter:
             raise ValueError("Query must not be empty.")
 
         fallback_route = classify_route_by_rule(normalized_query)
+        fallback_high_risk = detect_high_risk_domain(normalized_query)
 
         prompt = (
-            "Classify the following research request into exactly one route. "
-            "The request may come from any domain: engineering, cloud "
-            "infrastructure, market or competitive research, product or "
-            "vendor comparison, academic or technical literature, policy or "
-            "regulatory research, internal company knowledge, or operations "
-            "and security analysis.\n\n"
+            "Classify the following research request into exactly one route "
+            "and flag whether it is high-risk. The request may come from any "
+            "domain: engineering, cloud infrastructure, market or "
+            "competitive research, product or vendor comparison, academic or "
+            "technical literature, policy or regulatory research, internal "
+            "company knowledge, or operations and security analysis.\n\n"
             "Use 'direct' when it can be answered briefly from stable general "
             "knowledge without collecting current sources.\n"
             "Use 'deep_research' when it requires current or time-sensitive "
@@ -94,7 +140,16 @@ class IntentRouter:
             "trade-off analysis, private organizational knowledge, a "
             "high-uncertainty or high-risk domain, external tool calls, or a "
             "structured multi-section report.\n\n"
-            f"Rule-based fallback suggestion: {fallback_route}\n"
+            "Set is_high_risk_domain to true only when the request asks for "
+            "medical, legal, financial, or safety/security-critical guidance "
+            "that a person could directly act on (for example a diagnosis, "
+            "legal advice, investment advice, or a safety-critical "
+            "recommendation). Such requests must never receive an "
+            "unqualified final decision; they still get an answer, but one "
+            "that surfaces evidence, uncertainty, and the need for human "
+            "review.\n\n"
+            f"Rule-based fallback suggestion: route={fallback_route}, "
+            f"is_high_risk_domain={fallback_high_risk}\n"
             f"User request: {normalized_query}"
         )
 
@@ -110,4 +165,5 @@ class IntentRouter:
             return IntentDecision(
                 route=fallback_route,
                 reason="Claude classification failed; rule fallback was used.",
+                is_high_risk_domain=fallback_high_risk,
             )

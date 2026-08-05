@@ -143,6 +143,7 @@ class ReflectionAgent:
         *,
         citation_audit: CitationAudit,
         evidence_scores: Sequence[EvidenceScore],
+        is_high_risk_domain: bool = False,
     ) -> ReflectionDecision:
         """Approve valid reports or explain why another pass is required."""
 
@@ -171,9 +172,26 @@ class ReflectionAgent:
         if not citation_audit.cited_source_ids:
             reasons.append("The report contains no recognized citations.")
 
+        # A high-risk domain always requires human review, independent of
+        # citation/evidence quality: sufficient evidence makes a report
+        # approvable, but it never makes a medical, legal, financial, or
+        # safety-critical conclusion safe to act on without a human check.
+        human_review_reason = (
+            (
+                "This request touches a medical, legal, financial, or "
+                "safety/security-critical domain. Treat this report as "
+                "evidence and context, not an unqualified final decision, "
+                "and route it through human review before acting on it."
+            )
+            if is_high_risk_domain
+            else None
+        )
+
         return ReflectionDecision(
             status="revise" if reasons else "approved",
             reasons=reasons,
             evidence_count=evidence_count,
             average_evidence_score=round(average_score, 4),
+            human_review_required=is_high_risk_domain,
+            human_review_reason=human_review_reason,
         )

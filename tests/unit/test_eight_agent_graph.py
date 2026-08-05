@@ -98,11 +98,13 @@ def approved_review(
     report: str,
     sources: list[EvidenceSource],
     scores: list[EvidenceScore],
+    is_high_risk_domain: bool = False,
 ) -> tuple[CitationAudit, ReflectionDecision]:
     audit = CitationValidator().validate(report=report, sources=sources)
     decision = ReflectionAgent().review(
         citation_audit=audit,
         evidence_scores=scores,
+        is_high_risk_domain=is_high_risk_domain,
     )
 
     return audit, decision

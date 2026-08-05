@@ -89,6 +89,7 @@ def review(
     report: str,
     sources: list[EvidenceSource],
     scores: list[EvidenceScore],
+    is_high_risk_domain: bool = False,
 ) -> tuple[CitationAudit, ReflectionDecision]:
     assert report
     audit = CitationAudit(
@@ -162,6 +163,7 @@ async def test_reflection_revises_once_before_approval() -> None:
         report: str,
         sources: list[EvidenceSource],
         scores: list[EvidenceScore],
+        is_high_risk_domain: bool = False,
     ) -> tuple[CitationAudit, ReflectionDecision]:
         approved = report != "Uncited draft."
         audit = CitationAudit(
@@ -217,6 +219,7 @@ async def test_reflection_stops_after_bounded_revision_attempts() -> None:
         report: str,
         sources: list[EvidenceSource],
         scores: list[EvidenceScore],
+        is_high_risk_domain: bool = False,
     ) -> tuple[CitationAudit, ReflectionDecision]:
         return CitationAudit(
             valid=False,
