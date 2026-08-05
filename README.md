@@ -23,15 +23,17 @@ Deployed and verified: protected Terraform remote-state bootstrap in us-west-2
 Initialized and validated: staging Terraform uses the protected S3 backend
 Deployed and verified: immutable-repository GitHub OIDC identity, 5 add / 0 change / 0 destroy
 Remotely verified: protected GitHub Actions OIDC role assumption with short-lived credentials
-Generated and remotely verified: configured-provider zero-task staging plan, 48 add / 0 change / 0 destroy
+Previously remotely verified: zero-task staging plan before the private-knowledge AWS provider slice
 Configured and live verified: Claude Sonnet 5 structured output through the Anthropic API
 Configured and live verified: managed Zilliz Cloud Milvus round trip in AWS us-west-2
 Configured and live verified: Tavily Basic Search and canonical web-source normalization
-Gap remediation in progress: complete Private Knowledge upload product flow
+Completed and verified: complete Private Knowledge upload product flow
 Implemented and live verified: tenant-scoped document upload, list, detail, delete, source storage, indexing, retrieval, and lifecycle persistence
 Implemented and verified: Vue Private Knowledge upload, lifecycle, recovery, and deletion console
+Implemented and locally verified: Amazon Bedrock Titan V2 embeddings and private S3 source-object storage
+Terraform validated and mock tested: encrypted, versioned, public-blocked S3 plus least-privilege ECS task access
 Deployment status: state bucket and CI identity only; staging application resources are not applied
-Next: add AWS external embedding and durable object-storage providers
+Next: replace the MCP client-only boundary with a real server integration
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -202,12 +204,13 @@ explicit opt-in integration check rather than a default-test claim.
 | PDF text extraction | Tested |
 | Deterministic document chunking | Tested |
 | Durable tenant-scoped private-document metadata and indexing lifecycle | Tested with repository coverage and a reversible live PostgreSQL migration |
-| Private source object storage | Local filesystem provider tested with atomic writes, private file permissions, safe keys, and idempotent deletion |
+| Private source object storage | Local filesystem and private S3 providers tested; AWS bucket is Terraform-declared with encryption, versioning, lifecycle cleanup, and all public access blocked |
 | Tenant-scoped document REST API | Upload, list, detail, and delete paths tested with multipart limits and explicit duplicate, indexing, storage, and not-found states |
 | End-to-end private-document lifecycle | Live PostgreSQL upload, deterministic indexing, semantic retrieval, source deletion, vector deletion, and metadata cleanup verified |
 | Vue Private Knowledge console | Typechecked, component tested, and production built with upload, empty, loading, failed, ready, deleting, retry, and two-step deletion states |
 | Provider-neutral embedding interface | Tested |
 | Qwen embeddings through Ollama | Tested with mocks and live smoke test |
+| Amazon Bedrock Titan V2 embeddings | Provider, request/response validation, retry configuration, lifecycle cleanup, and provider selection unit tested; live AWS invocation pending |
 | Provider-neutral vector-store interface | Tested |
 | In-memory vector store | Tested |
 | Milvus collection initialization | Tested |
@@ -257,11 +260,11 @@ explicit opt-in integration check rather than a default-test claim.
 | Docker Compose project stack | Built and smoke tested across seven healthy services |
 | GitHub Actions | Remote verified across backend, frontend, and container quality gates |
 | Terraform state bootstrap | Applied and AWS verified: protected S3 bucket plus five security controls; staging backend initialized |
-| Cost-controlled AWS staging infrastructure | Terraform validated and mock tested; protected OIDC plan reports 48 add / 0 change / 0 destroy with zero running tasks; not applied |
+| Cost-controlled AWS staging infrastructure | Terraform validated and mock tested, including private S3 documents and Bedrock task permissions; the prior remote plan predates this slice and must be regenerated before apply |
 | ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
 | GitHub OIDC deployment identity | Applied and AWS verified: exact repository/environment trust, three reviewed inline policies, protected remote state, and zero Terraform drift |
 | GitHub OIDC deployment workflow | Remotely verified on GitHub Actions: protected staging environment assumed the expected AWS account and deployment role, then generated the zero-task staging plan with short-lived credentials |
-| AWS deployment | Remote-state bootstrap deployed and staging backend initialized; Claude, Tavily, and managed Milvus inputs live verified; configured-provider plan reports 48 add / 0 change / 0 destroy; application apply and live endpoint verification pending |
+| AWS deployment | Remote-state bootstrap deployed and staging backend initialized; Claude, Tavily, and managed Milvus inputs live verified; application apply, Bedrock live invocation, a fresh plan, and public endpoint verification remain pending |
 | Open-source contribution | Planned |
 
 There are no published evaluation metrics or deployed application environments
@@ -273,8 +276,8 @@ production deployments.
 
 The portfolio MVP application is implemented and tested through Phase 13. That
 does not mean every production concern is finished: the Phase 14 AWS
-application stack has not been applied, AWS private RAG still needs an external
-embedding provider, and durable queue ownership, authentication, lock renewal,
+application stack has not been applied, AWS private RAG providers are locally
+implemented but not live invoked, and durable queue ownership, authentication, lock renewal,
 and workflow checkpoints remain production-hardening work.
 
 ### System Architecture
@@ -318,7 +321,8 @@ flowchart TB
     subgraph providers["External provider boundaries"]
         claude["Claude<br/>structured LLM output live verified"]
         tavily["Tavily<br/>web search live verified"]
-        embeddings["Embedding provider<br/>Ollama verified locally<br/>AWS provider pending"]
+        embeddings["Embedding provider<br/>Ollama live verified locally<br/>Bedrock adapter unit tested"]
+        objects["Source object storage<br/>local filesystem tested<br/>private S3 declared and mock tested"]
         mcp["MCP servers<br/>contract tested, no live server configured"]
     end
 
@@ -330,6 +334,7 @@ flowchart TB
     planner --> local
     web --> tavily
     local --> embeddings --> milvus
+    api --> objects
     web --> judge
     local --> judge
     mcp -. optional evidence .-> judge
@@ -366,8 +371,9 @@ browser
        ├── private encrypted RDS PostgreSQL
        ├── private encrypted ElastiCache for Valkey
        ├── Secrets Manager provider credentials
+       ├── private encrypted and versioned S3 source objects
        ├── external managed Milvus-compatible endpoint
-       └── Claude + Tavily over controlled outbound access
+       └── Claude + Tavily + Bedrock over controlled outbound access
 ```
 
 The staging topology deliberately omits a NAT Gateway. Fargate tasks receive
@@ -379,10 +385,11 @@ configured.
 
 The cloud image enables Claude only because the cost-controlled Fargate task
 does not run Ollama. Local builds continue to expose Qwen and Claude. The API
-still retains its provider-neutral Qwen contract for local deployments. Private
-RAG in AWS additionally requires an external embedding service compatible with
-the current embedding boundary; until that is configured, Local Scout isolates
-the retrieval failure and the web-research path can continue.
+still retains its provider-neutral Qwen contract for local deployments. AWS
+staging selects Titan Text Embeddings V2 through Bedrock and stores uploaded
+source objects in a private S3 bucket. Both adapters and the Terraform contract
+are locally verified, but no live Bedrock invocation or application apply is
+claimed yet.
 
 ### Public Web Retrieval
 
@@ -419,9 +426,9 @@ Private document
 The long-running embedding and vector calls execute outside PostgreSQL
 transactions. PostgreSQL records each short lifecycle transition, while the
 source object and vector records remain provider-owned artifacts. Duplicate
-normalized content is rejected per tenant. The current application provider
-stores source files in a private local runtime volume; AWS object-storage and
-external embedding providers remain the next cloud-compatible product slice.
+normalized content is rejected per tenant. Local development uses a private
+runtime directory and Ollama embeddings; AWS staging selects S3 and Bedrock
+through the same application interfaces.
 
 ### Provider Boundaries
 
@@ -432,7 +439,12 @@ LLMClient
 
 EmbeddingClient
 ├── Deterministic test embeddings
-└── Qwen embeddings through Ollama
+├── Qwen embeddings through Ollama
+└── Amazon Titan Text Embeddings V2 through Bedrock
+
+DocumentStorage
+├── private local filesystem
+└── private Amazon S3 bucket
 
 VectorStore
 ├── InMemoryVectorStore
@@ -863,6 +875,8 @@ infra/terraform/staging
 → single-AZ encrypted RDS PostgreSQL
 → single-node encrypted Valkey cache
 → Secrets Manager credentials and least-privilege ECS execution access
+→ private encrypted, versioned, public-blocked S3 document storage
+→ least-privilege ECS task access to S3 objects and Titan embeddings
 → ARM64 Fargate task, CloudWatch logs, ALB, and CloudFront
 → monthly AWS Budget alerts
 ```
@@ -891,11 +905,13 @@ tags. A post-apply Terraform plan reports zero changes. The staging Terraform
 root has been initialized against this backend; initialization created no state
 object and no application resources.
 
-After the external providers were configured and live verified, the protected
+Before this private-knowledge AWS slice, the protected
 GitHub Actions workflow generated a fresh zero-task plan using
 `claude-sonnet-5` and the managed Zilliz Cloud AWS `us-west-2` endpoint. The
 plan reports 48 resources to add, zero to change, and zero to destroy. The plan
-remained on the ephemeral runner and was not applied.
+remained on the ephemeral runner and was not applied. That historical plan is
+now stale because S3 and Bedrock permissions were added; a fresh authenticated
+plan is required before any apply.
 
 After configuring the staging backend file and supplying the required provider
 variables and secrets, deploy locally with:
@@ -1101,8 +1117,9 @@ contract.
 
 Phase 14 infrastructure and deployment automation are implemented and locally
 validated. The work includes remote-state bootstrap, cost and lifecycle guards,
-private data services, CloudFront-restricted ingress, immutable ARM64 images,
-GitHub OIDC deployment, a Claude-only cloud console, and explicit teardown. It
+private data services, private S3 document storage, a Bedrock embedding adapter,
+CloudFront-restricted ingress, immutable ARM64 images, GitHub OIDC deployment,
+a Claude cloud console, and explicit teardown. It
 is not marked as an application deployment: only the protected remote-state
 bootstrap and CI deployment identity have been applied and verified. No
 staging application apply or live endpoint smoke test has been run. The
@@ -1115,9 +1132,9 @@ versioned and encrypted, and the post-apply Terraform plan reports zero drift.
 The protected GitHub Actions workflow then assumed the expected staging role
 through OIDC and verified the AWS account and assumed-role ARN without storing
 long-lived AWS credentials. The same protected job generated the first real
-staging plan: 48 resources to add, none to change or destroy, and ECS desired
-count held at zero. No plan artifact was uploaded and no application resource
-was applied.
+staging plan before S3 document storage and Bedrock task access were added. A
+new protected plan is required. No plan artifact was uploaded and no application
+resource was applied.
 
 At public `us-west-2` rates checked on 2026-08-02, the planned zero-task stack
 has an estimated fixed baseline of about $48.25 per 730-hour month. One 0.5

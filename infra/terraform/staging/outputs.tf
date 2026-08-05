@@ -56,6 +56,11 @@ output "provider_secret_arn" {
   value       = aws_secretsmanager_secret.providers.arn
 }
 
+output "private_document_bucket_name" {
+  description = "Private S3 bucket used for tenant source-document objects."
+  value       = aws_s3_bucket.private_documents.bucket
+}
+
 output "application_url" {
   description = "CloudFront HTTPS URL for the staging research console and API."
   value       = "https://${aws_cloudfront_distribution.application.domain_name}"

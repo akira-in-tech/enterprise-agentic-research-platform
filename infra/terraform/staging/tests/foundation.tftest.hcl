@@ -124,4 +124,43 @@ run "cost_controlled_foundation" {
     condition     = aws_cloudwatch_log_group.application.retention_in_days == 7
     error_message = "Staging logs must use bounded retention."
   }
+
+  assert {
+    condition = alltrue([
+      aws_s3_bucket_public_access_block.private_documents.block_public_acls,
+      aws_s3_bucket_public_access_block.private_documents.block_public_policy,
+      aws_s3_bucket_public_access_block.private_documents.ignore_public_acls,
+      aws_s3_bucket_public_access_block.private_documents.restrict_public_buckets,
+    ])
+    error_message = "Private document storage must block every form of public S3 access."
+  }
+
+  assert {
+    condition = one(flatten([
+      for rule in aws_s3_bucket_server_side_encryption_configuration.private_documents.rule : [
+        for encryption in rule.apply_server_side_encryption_by_default : encryption.sse_algorithm
+      ]
+    ])) == "AES256"
+    error_message = "Private document storage must use server-side encryption."
+  }
+
+  assert {
+    condition     = aws_s3_bucket_versioning.private_documents.versioning_configuration[0].status == "Enabled"
+    error_message = "Private document storage must retain recoverable object versions."
+  }
+
+  assert {
+    condition     = one([for item in local.api_container_environment : item.value if item.name == "EMBEDDING_PROVIDER"]) == "bedrock"
+    error_message = "AWS staging must use the external Bedrock embedding provider."
+  }
+
+  assert {
+    condition     = one([for item in local.api_container_environment : item.value if item.name == "DOCUMENT_STORAGE_PROVIDER"]) == "s3"
+    error_message = "AWS staging must store private source objects in S3."
+  }
+
+  assert {
+    condition     = contains(local.private_knowledge_bedrock_actions, "bedrock:InvokeModel")
+    error_message = "The application task role must be able to invoke the configured embedding model."
+  }
 }

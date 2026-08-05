@@ -18,6 +18,8 @@ Internet
    └── FastAPI container
        ├── isolated-subnet RDS PostgreSQL
        ├── isolated-subnet ElastiCache
+       ├── private S3 document source objects
+       ├── Amazon Bedrock Titan V2 embeddings
        └── external Anthropic, Tavily, and managed Milvus endpoints
 ```
 
@@ -33,6 +35,8 @@ The first infrastructure increment includes:
 - private single-AZ RDS PostgreSQL with encrypted gp3 storage
 - private single-node Valkey-compatible ElastiCache with TLS and encryption
 - AWS-managed RDS credentials and Secrets Manager provider credentials
+- private, encrypted, versioned S3 document storage with public access blocked
+- least-privilege task permissions for the document bucket and Titan embeddings
 - one ARM64 Fargate task containing the FastAPI and Nginx/Vue containers
 - an ALB restricted to the AWS-managed CloudFront origin network
 - a CloudFront HTTPS endpoint with caching disabled for `/api/*`
@@ -76,14 +80,17 @@ Calculator before applying it.
 ## Verified remote plan and cost boundary
 
 The protected GitHub Actions OIDC job generated a real remote-state-backed plan
-on 2026-08-02 with `application_desired_count = 0`:
+on 2026-08-02 with `application_desired_count = 0`, before the private S3 and
+Bedrock resources were added:
 
 ```text
 Plan: 48 to add, 0 to change, 0 to destroy.
 ```
 
-No Terraform plan artifact is uploaded because plan files can contain sensitive
-values. The job emits only deterministic change counts to its step summary.
+That count is now historical and must not be used to approve an apply. Generate
+a fresh authenticated plan first. No Terraform plan artifact is uploaded because
+plan files can contain sensitive values. The job emits only deterministic
+change counts to its step summary.
 
 The following fixed-cost estimate uses 730 hours per month and public
 `us-west-2` on-demand rates from the AWS Price List. It excludes traffic-driven

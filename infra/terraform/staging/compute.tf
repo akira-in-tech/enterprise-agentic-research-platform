@@ -131,6 +131,12 @@ locals {
     { name = "VECTOR_STORE_PROVIDER", value = "milvus" },
     { name = "MILVUS_URI", value = var.milvus_uri },
     { name = "MILVUS_COLLECTION", value = var.milvus_collection },
+    { name = "EMBEDDING_PROVIDER", value = "bedrock" },
+    { name = "AWS_REGION", value = var.aws_region },
+    { name = "BEDROCK_EMBEDDING_MODEL", value = "amazon.titan-embed-text-v2:0" },
+    { name = "BEDROCK_EMBEDDING_DIMENSIONS", value = "1024" },
+    { name = "DOCUMENT_STORAGE_PROVIDER", value = "s3" },
+    { name = "DOCUMENT_S3_BUCKET", value = aws_s3_bucket.private_documents.bucket },
     { name = "POSTGRES_HOST", value = aws_db_instance.postgres.address },
     { name = "POSTGRES_DB", value = var.database_name },
     { name = "POSTGRES_USER", value = var.database_username },
@@ -269,6 +275,7 @@ resource "aws_ecs_service" "application" {
   depends_on = [
     aws_iam_role_policy_attachment.ecs_execution,
     aws_iam_role_policy.ecs_execution_secrets,
+    aws_iam_role_policy.ecs_task_private_knowledge,
     aws_lb_listener.http,
   ]
 }

@@ -22,7 +22,7 @@ from app.services.cache import (
     RedisResearchRateLimiter,
     RedisResearchResultCache,
 )
-from app.services.embeddings.ollama import OllamaEmbeddingClient
+from app.services.embeddings.factory import create_embedding_client
 from app.services.knowledge import KnowledgeDocumentService, PostgresKnowledgeDocumentStore
 from app.services.knowledge.indexing import KnowledgeIndexer
 from app.services.knowledge.retrieval import PrivateKnowledgeRetriever
@@ -38,7 +38,7 @@ from app.services.research.postgres import (
     PostgresResearchRunStore,
 )
 from app.services.research.reports import PostgresResearchReportStore
-from app.services.storage import LocalDocumentStorage
+from app.services.storage import create_document_storage
 from app.services.vector_store.factory import create_vector_store
 
 configure_logging()
@@ -63,11 +63,11 @@ async def lifespan(
             redis_connection.close,
         )
 
-        embedding_client = OllamaEmbeddingClient()
+        embedding_client = create_embedding_client()
         resource_stack.push_async_callback(
             embedding_client.close,
         )
-        vector_store = create_vector_store()
+        vector_store = create_vector_store(dimensions=embedding_client.dimensions)
         resource_stack.push_async_callback(
             vector_store.close,
         )
@@ -81,9 +81,11 @@ async def lifespan(
         session_factory = create_session_factory(
             engine,
         )
+        document_storage = create_document_storage()
+        resource_stack.push_async_callback(document_storage.close)
         application.state.knowledge_document_service = KnowledgeDocumentService(
             PostgresKnowledgeDocumentStore(session_factory),
-            LocalDocumentStorage(settings.document_storage_root),
+            document_storage,
             KnowledgeIndexer(embedding_client, vector_store),
             vector_store,
             max_upload_bytes=settings.document_max_upload_bytes,

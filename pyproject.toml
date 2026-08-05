@@ -12,6 +12,7 @@ dependencies = [
     "alembic",
     "anthropic",
     "asyncpg",
+    "boto3>=1.34,<2.0",
     "fastapi",
     "httpx",
     "langgraph",

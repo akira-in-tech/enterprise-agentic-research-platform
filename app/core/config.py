@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,6 +18,8 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     document_storage_root: str = "uploads"
+    document_storage_provider: Literal["local", "s3"] = "local"
+    document_s3_bucket: str = ""
     document_max_upload_bytes: int = Field(
         default=10_000_000,
         ge=1,
@@ -34,6 +37,10 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen3:8b"
     ollama_embedding_model: str = "qwen3-embedding:0.6b"
     ollama_embedding_dimensions: int = 1024
+    embedding_provider: Literal["ollama", "bedrock"] = "ollama"
+    aws_region: str = "us-west-2"
+    bedrock_embedding_model: str = "amazon.titan-embed-text-v2:0"
+    bedrock_embedding_dimensions: Literal[256, 512, 1024] = 1024
 
     milvus_uri: str = "http://localhost:19530"
     milvus_token: SecretStr = SecretStr("")

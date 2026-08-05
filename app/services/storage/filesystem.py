@@ -45,6 +45,9 @@ class LocalDocumentStorage:
         except OSError as error:
             raise DocumentStorageError("Could not delete the private document.") from error
 
+    async def close(self) -> None:
+        """Close the filesystem provider without external resources."""
+
     def _resolve_key(self, key: str) -> Path:
         normalized_key = key.strip()
         pure_key = PurePosixPath(normalized_key)

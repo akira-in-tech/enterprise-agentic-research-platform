@@ -33,12 +33,21 @@ class RecordingJobManager:
 class RecordingEmbeddingClient:
     def __init__(self) -> None:
         self.closed = False
+        self.dimensions = 1024
 
     async def close(self) -> None:
         self.closed = True
 
 
 class RecordingVectorStore:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class RecordingDocumentStorage:
     def __init__(self) -> None:
         self.closed = False
 
@@ -66,7 +75,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     embedding_client = RecordingEmbeddingClient()
     vector_store = RecordingVectorStore()
     knowledge_document_store = object()
-    document_storage = object()
+    document_storage = RecordingDocumentStorage()
     knowledge_indexer = object()
     knowledge_document_service = object()
     private_retriever = object()
@@ -205,7 +214,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     monkeypatch.setattr(
         main_module,
-        "OllamaEmbeddingClient",
+        "create_embedding_client",
         create_embedding_client,
     )
     monkeypatch.setattr(
@@ -220,7 +229,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     monkeypatch.setattr(
         main_module,
-        "LocalDocumentStorage",
+        "create_document_storage",
         create_document_storage,
     )
     monkeypatch.setattr(
@@ -265,12 +274,14 @@ async def test_lifespan_wires_and_closes_application_resources(
         assert job_manager.closed is False
         assert embedding_client.closed is False
         assert vector_store.closed is False
+        assert document_storage.closed is False
 
     assert redis_connection.closed is True
     assert engine.disposed is True
     assert job_manager.closed is True
     assert embedding_client.closed is True
     assert vector_store.closed is True
+    assert document_storage.closed is True
 
     create_idempotency_store.assert_called_once_with(
         redis_connection,
@@ -307,13 +318,13 @@ async def test_lifespan_wires_and_closes_application_resources(
         execution_service,
     )
     create_embedding_client.assert_called_once_with()
-    create_vector_store.assert_called_once_with()
+    create_vector_store.assert_called_once_with(
+        dimensions=embedding_client.dimensions,
+    )
     create_knowledge_document_store.assert_called_once_with(
         database_session_factory,
     )
-    create_document_storage.assert_called_once_with(
-        main_module.settings.document_storage_root,
-    )
+    create_document_storage.assert_called_once_with()
     create_knowledge_indexer.assert_called_once_with(
         embedding_client,
         vector_store,
