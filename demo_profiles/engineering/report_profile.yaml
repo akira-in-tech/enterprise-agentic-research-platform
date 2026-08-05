@@ -1,0 +1,34 @@
+# Reference report outline for the engineering demo profile.
+#
+# The Planner (app/agents/planner.py) already chooses report sections
+# dynamically per request rather than using a fixed template; this file is
+# not consumed by the Planner today. It documents the outline shape an
+# engineering-domain request is expected to converge on, for demo narration
+# and for a future evaluation harness to compare generated outlines against.
+#
+# See docs/PROJECT_CHARTER.md section 12 for the general-report and
+# market-research reference profiles.
+
+profile: engineering
+description: >
+  Reference outline for backend, infrastructure, networking, database, and
+  distributed-systems research requests.
+sections:
+  - title: Executive Summary
+    purpose: Conclusion-first answer to the research goal.
+  - title: Technical Background
+    purpose: Foundational concepts needed to follow the rest of the report.
+  - title: Architecture
+    purpose: Relevant system, protocol, or component design.
+  - title: Trade-offs
+    purpose: Competing options and the conditions under which each wins.
+  - title: Reliability
+    purpose: Failure modes, recovery behavior, and operational risk.
+  - title: Performance
+    purpose: Throughput, latency, and resource-cost characteristics.
+  - title: Security
+    purpose: Relevant threat model and mitigations, when applicable.
+  - title: Recommendations
+    purpose: Actionable guidance grounded in the gathered evidence.
+  - title: References
+    purpose: Full source list with stable source IDs.
