@@ -12,6 +12,7 @@ def test_database_base_exposes_registered_metadata() -> None:
     assert metadata is Base.metadata
     assert set(metadata.tables) == {
         "knowledge_documents",
+        "research_agent_steps",
         "research_audit_events",
         "research_checkpoints",
         "research_reports",

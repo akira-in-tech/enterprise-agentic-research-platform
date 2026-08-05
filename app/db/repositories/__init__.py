@@ -1,3 +1,4 @@
+from app.db.repositories.agent_steps import ResearchAgentStepRepository
 from app.db.repositories.documents import (
     KnowledgeDocumentRepository,
     KnowledgeDocumentTransitionError,
@@ -14,6 +15,7 @@ from app.db.repositories.tenants import (
 )
 
 __all__ = [
+    "ResearchAgentStepRepository",
     "ResearchDurabilityRepository",
     "KnowledgeDocumentRepository",
     "KnowledgeDocumentTransitionError",
