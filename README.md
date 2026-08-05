@@ -34,7 +34,8 @@ Implemented and locally verified: Amazon Bedrock Titan V2 embeddings and private
 Terraform validated and mock tested: encrypted, versioned, public-blocked S3 plus least-privilege ECS task access
 Deployment status: state bucket and CI identity only; staging application resources are not applied
 Implemented and live verified: official SDK Streamable HTTP MCP server, client, and Web Scout federation
-Next: add PostgreSQL document checkpoints, audit events, and durable worker ownership
+Implemented and live migration verified: PostgreSQL checkpoint, audit-event, and worker-lease schema foundation
+Next: add atomic worker claim/renew/release, checkpoint persistence, and resume execution
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -254,6 +255,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Durable report and evidence-source persistence | Tested with reversible live migration and integration test |
 | Tenant-scoped research report retrieval API | Tested |
 | Durable queued background research jobs | Tested with unit and live integration tests |
+| Research checkpoint, audit, and worker-lease schema | SQLAlchemy and Alembic tested; live PostgreSQL upgrade/check/downgrade/restore verified |
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
 | Vue 3 + TypeScript + Vite frontend | Typechecked, 12 tests passed, production built, and desktop/mobile browser QA verified |
