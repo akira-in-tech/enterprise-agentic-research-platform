@@ -108,7 +108,7 @@ def create_test_chunks() -> list[DocumentChunk]:
     """Create two deterministic private-document chunks."""
 
     document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="postgresql.md",
         raw_content=(b"PostgreSQL B-tree indexes support ordered range queries efficiently."),
     )

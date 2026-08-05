@@ -103,7 +103,7 @@ def create_test_chunk() -> DocumentChunk:
     """Create one deterministic private-document chunk."""
 
     document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="networking.md",
         raw_content=(
             b"HTTP persistent connections reduce repeated connection establishment overhead."
@@ -158,7 +158,7 @@ def test_search_uses_cosine_metric_and_tenant_filter() -> None:
 
     matches = asyncio.run(
         store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=(1.0, 0.0),
             limit=3,
         )
@@ -170,7 +170,7 @@ def test_search_uses_cosine_metric_and_tenant_filter() -> None:
         {
             "collection_name": "private_chunks_test",
             "data": [[1.0, 0.0]],
-            "filter": 'tenant_id == "tenant-hennge"',
+            "filter": 'tenant_id == "tenant-acme"',
             "limit": 3,
             "output_fields": [
                 "document_id",
@@ -220,7 +220,7 @@ def test_search_accepts_generic_id_key() -> None:
 
     matches = asyncio.run(
         store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=(1.0, 0.0),
         )
     )
@@ -243,7 +243,7 @@ def test_search_returns_empty_list_for_no_hits() -> None:
 
     matches = asyncio.run(
         store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=(1.0, 0.0),
         )
     )
@@ -303,7 +303,7 @@ def test_search_rejects_invalid_limit(
     ):
         asyncio.run(
             store.search(
-                tenant_id="tenant-hennge",
+                tenant_id="tenant-acme",
                 query_vector=(1.0, 0.0),
                 limit=limit,
             )
@@ -349,7 +349,7 @@ def test_search_rejects_invalid_query_vector(
     ):
         asyncio.run(
             store.search(
-                tenant_id="tenant-hennge",
+                tenant_id="tenant-acme",
                 query_vector=query_vector,
             )
         )
@@ -381,7 +381,7 @@ def test_search_rejects_malformed_milvus_hit() -> None:
     ):
         asyncio.run(
             store.search(
-                tenant_id="tenant-hennge",
+                tenant_id="tenant-acme",
                 query_vector=(1.0, 0.0),
             )
         )

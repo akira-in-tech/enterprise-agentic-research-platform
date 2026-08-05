@@ -62,12 +62,12 @@ def test_create_pdf_document_extracts_text() -> None:
     )
 
     first_document = create_pdf_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="http-notes.pdf",
         raw_content=raw_content,
     )
     second_document = create_pdf_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="http-notes.pdf",
         raw_content=raw_content,
     )
@@ -95,7 +95,7 @@ def test_create_pdf_document_rejects_scanned_pdf() -> None:
         match="no extractable text",
     ):
         create_pdf_document(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             filename="scanned.pdf",
             raw_content=raw_content,
         )
@@ -109,7 +109,7 @@ def test_create_pdf_document_rejects_encrypted_pdf() -> None:
         match="Encrypted PDF",
     ):
         create_pdf_document(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             filename="encrypted.pdf",
             raw_content=raw_content,
         )
@@ -121,7 +121,7 @@ def test_create_pdf_document_rejects_invalid_bytes() -> None:
         match="Could not read",
     ):
         create_pdf_document(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             filename="invalid.pdf",
             raw_content=b"This is not a PDF.",
         )
@@ -133,7 +133,7 @@ def test_create_pdf_document_requires_pdf_extension() -> None:
         match="must end with .pdf",
     ):
         create_pdf_document(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             filename="notes.txt",
             raw_content=b"Not parsed.",
         )

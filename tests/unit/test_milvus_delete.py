@@ -106,7 +106,7 @@ def test_delete_document_uses_tenant_and_document_filter() -> None:
 
     deleted_count = asyncio.run(
         store.delete_document(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             document_id="DOC-0123456789ABCDEF",
         )
     )
@@ -117,7 +117,7 @@ def test_delete_document_uses_tenant_and_document_filter() -> None:
     assert client.delete_calls == [
         (
             "private_chunks_test",
-            ('tenant_id == "tenant-hennge" and document_id == "DOC-0123456789ABCDEF"'),
+            ('tenant_id == "tenant-acme" and document_id == "DOC-0123456789ABCDEF"'),
         )
     ]
 
@@ -137,7 +137,7 @@ def test_delete_document_returns_zero_when_nothing_matches() -> None:
 
     deleted_count = asyncio.run(
         store.delete_document(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             document_id="DOC-0123456789ABCDEF",
         )
     )
@@ -182,7 +182,7 @@ def test_delete_document_escapes_filter_values() -> None:
             "tenant_id must not be empty",
         ),
         (
-            "tenant-hennge",
+            "tenant-acme",
             "   ",
             "document_id must not be empty",
         ),
@@ -265,7 +265,7 @@ def test_delete_document_rejects_invalid_response(
     ):
         asyncio.run(
             store.delete_document(
-                tenant_id="tenant-hennge",
+                tenant_id="tenant-acme",
                 document_id="DOC-0123456789ABCDEF",
             )
         )

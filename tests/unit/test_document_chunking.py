@@ -10,12 +10,12 @@ from app.services.knowledge.documents import (
 
 def test_create_text_document_is_deterministic() -> None:
     first_document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="architecture.MD",
         raw_content=(b"\xef\xbb\xbf# Architecture\r\n\r\nHTTP and networking notes.\r\n"),
     )
     second_document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="architecture.MD",
         raw_content=(b"# Architecture\n\nHTTP and networking notes.\n"),
     )
@@ -39,7 +39,7 @@ def test_create_text_document_rejects_invalid_filename(
 ) -> None:
     with pytest.raises(ValueError):
         create_text_document(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             filename=filename,
             raw_content=b"Valid text content.",
         )
@@ -51,7 +51,7 @@ def test_create_text_document_rejects_empty_content() -> None:
         match="Document content must not be empty",
     ):
         create_text_document(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             filename="empty.txt",
             raw_content=b"   \n",
         )
@@ -59,7 +59,7 @@ def test_create_text_document_rejects_empty_content() -> None:
 
 def test_chunk_document_is_deterministic() -> None:
     document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="networking.md",
         raw_content=(b"one two three four five six seven eight nine ten"),
     )
@@ -106,7 +106,7 @@ def test_chunk_document_rejects_invalid_parameters(
     overlap_words: int,
 ) -> None:
     document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="networking.txt",
         raw_content=b"one two three four",
     )
