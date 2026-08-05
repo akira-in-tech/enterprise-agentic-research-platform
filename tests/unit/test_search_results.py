@@ -45,13 +45,8 @@ def test_deduplicate_search_results_accepts_empty_input() -> None:
 
 
 def test_create_web_source_id_is_stable() -> None:
-    first_id = create_web_source_id(
-        "HTTPS://Example.COM:443/docs/"
-        "?utm_source=newsletter#section"
-    )
-    second_id = create_web_source_id(
-        "https://example.com/docs"
-    )
+    first_id = create_web_source_id("HTTPS://Example.COM:443/docs/?utm_source=newsletter#section")
+    second_id = create_web_source_id("https://example.com/docs")
 
     assert first_id == second_id
     assert first_id.startswith("WEB-")
@@ -62,10 +57,7 @@ def test_build_web_source_pool_assigns_ids_and_deduplicates() -> None:
     results = [
         SearchResult(
             title="HTTP Semantics",
-            url=(
-                "https://www.rfc-editor.org/rfc/rfc9110"
-                "?utm_source=test"
-            ),
+            url=("https://www.rfc-editor.org/rfc/rfc9110?utm_source=test"),
             content="HTTP semantics specification.",
             source="tavily",
         ),
@@ -91,9 +83,7 @@ def test_build_web_source_pool_assigns_ids_and_deduplicates() -> None:
         "https://www.rfc-editor.org/rfc/rfc9110"
     )
     assert web_sources[0].title == "HTTP Semantics"
-    assert web_sources[0].url == (
-        "https://www.rfc-editor.org/rfc/rfc9110"
-    )
+    assert web_sources[0].url == ("https://www.rfc-editor.org/rfc/rfc9110")
     assert web_sources[0].provider == "tavily"
 
     assert web_sources[1].source_id == create_web_source_id(

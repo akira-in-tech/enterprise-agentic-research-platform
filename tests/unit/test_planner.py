@@ -23,33 +23,19 @@ async def test_planner_returns_structured_research_plan(
     expected_plan = ResearchPlan(
         goal="Compare HTTP/2 and HTTP/3 for production web services.",
         sub_questions=[
-            (
-                "How do HTTP/2 and HTTP/3 differ in their transport "
-                "and connection architecture?"
-            ),
-            (
-                "How do the protocols behave under latency, packet loss, "
-                "and connection migration?"
-            ),
+            ("How do HTTP/2 and HTTP/3 differ in their transport and connection architecture?"),
+            ("How do the protocols behave under latency, packet loss, and connection migration?"),
         ],
         tasks=[
             ResearchTask(
                 title="Protocol architecture",
-                search_query=(
-                    "HTTP/2 HTTP/3 protocol architecture differences"
-                ),
-                rationale=(
-                    "Establish the transport and protocol design differences."
-                ),
+                search_query=("HTTP/2 HTTP/3 protocol architecture differences"),
+                rationale=("Establish the transport and protocol design differences."),
             ),
             ResearchTask(
                 title="Reliability and performance",
-                search_query=(
-                    "HTTP/2 vs HTTP/3 latency reliability benchmarks"
-                ),
-                rationale=(
-                    "Compare behavior under latency and packet loss."
-                ),
+                search_query=("HTTP/2 vs HTTP/3 latency reliability benchmarks"),
+                rationale=("Compare behavior under latency and packet loss."),
             ),
         ],
         report_outline=[
@@ -72,9 +58,7 @@ async def test_planner_returns_structured_research_plan(
         ],
     )
 
-    generate_structured = AsyncMock(
-        return_value=expected_plan
-    )
+    generate_structured = AsyncMock(return_value=expected_plan)
     monkeypatch.setattr(
         llm_client,
         "generate_structured",
@@ -83,9 +67,7 @@ async def test_planner_returns_structured_research_plan(
 
     planner = PlannerAgent(llm_client)
 
-    result = await planner.create_plan(
-        "Compare HTTP/2 and HTTP/3 using current technical sources."
-    )
+    result = await planner.create_plan("Compare HTTP/2 and HTTP/3 using current technical sources.")
 
     assert result == expected_plan
     assert len(result.sub_questions) == 2

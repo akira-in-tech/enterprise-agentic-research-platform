@@ -42,9 +42,7 @@ class DirectAnswerAgent:
         answer = response.strip()
 
         if not answer:
-            raise RuntimeError(
-                "LLM provider returned an empty direct answer."
-            )
+            raise RuntimeError("LLM provider returned an empty direct answer.")
 
         logger.info("Direct answer generated")
 

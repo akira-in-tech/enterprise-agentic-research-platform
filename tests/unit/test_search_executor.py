@@ -39,14 +39,10 @@ class FakeSearchClient:
         )
 
         try:
-            await asyncio.sleep(
-                self.delays.get(query, 0.01)
-            )
+            await asyncio.sleep(self.delays.get(query, 0.01))
 
             if query in self.failing_queries:
-                raise RuntimeError(
-                    "Simulated search failure."
-                )
+                raise RuntimeError("Simulated search failure.")
 
             return [
                 SearchResult(
@@ -115,22 +111,12 @@ def test_executor_runs_tasks_concurrently() -> None:
     plan = create_test_plan()
     outcomes = asyncio.run(executor.execute(plan))
 
-    assert [
-        outcome.task.search_query
-        for outcome in outcomes
-    ] == [
-        task.search_query
-        for task in plan.tasks
+    assert [outcome.task.search_query for outcome in outcomes] == [
+        task.search_query for task in plan.tasks
     ]
 
-    assert all(
-        outcome.succeeded
-        for outcome in outcomes
-    )
-    assert all(
-        len(outcome.results) == 1
-        for outcome in outcomes
-    )
+    assert all(outcome.succeeded for outcome in outcomes)
+    assert all(len(outcome.results) == 1 for outcome in outcomes)
 
     assert client.max_active_requests == 2
 
@@ -152,17 +138,13 @@ def test_executor_isolates_task_failure() -> None:
         max_concurrency=3,
     )
 
-    outcomes = asyncio.run(
-        executor.execute(create_test_plan())
-    )
+    outcomes = asyncio.run(executor.execute(create_test_plan()))
 
     assert outcomes[0].succeeded is True
 
     assert outcomes[1].succeeded is False
     assert outcomes[1].results == []
-    assert outcomes[1].error == (
-        "RuntimeError: Simulated search failure."
-    )
+    assert outcomes[1].error == ("RuntimeError: Simulated search failure.")
 
     assert outcomes[2].succeeded is True
 
@@ -178,16 +160,12 @@ def test_executor_isolates_task_timeout() -> None:
         task_timeout_seconds=0.02,
     )
 
-    outcomes = asyncio.run(
-        executor.execute(create_test_plan())
-    )
+    outcomes = asyncio.run(executor.execute(create_test_plan()))
 
     assert outcomes[0].succeeded is True
     assert outcomes[1].succeeded is False
     assert outcomes[1].results == []
-    assert outcomes[1].error == (
-        "TimeoutError: search exceeded 0.02 seconds."
-    )
+    assert outcomes[1].error == ("TimeoutError: search exceeded 0.02 seconds.")
     assert outcomes[2].succeeded is True
 
 
@@ -215,10 +193,7 @@ def test_executor_rejects_invalid_result_limit(
 
     with pytest.raises(
         ValueError,
-        match=(
-            "max_results_per_task must be "
-            "between 1 and 20"
-        ),
+        match=("max_results_per_task must be between 1 and 20"),
     ):
         SearchExecutor(
             client,
@@ -237,9 +212,7 @@ def test_executor_rejects_invalid_timeout(
 
     with pytest.raises(
         ValueError,
-        match=(
-            "task_timeout_seconds must be greater than 0"
-        ),
+        match=("task_timeout_seconds must be greater than 0"),
     ):
         SearchExecutor(
             client,

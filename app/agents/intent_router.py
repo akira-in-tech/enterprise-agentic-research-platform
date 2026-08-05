@@ -69,9 +69,7 @@ class IntentRouter:
                 max_tokens=200,
             )
         except Exception:
-            logger.exception(
-                "Claude intent classification failed; using rule fallback"
-            )
+            logger.exception("Claude intent classification failed; using rule fallback")
 
             return IntentDecision(
                 route=fallback_route,

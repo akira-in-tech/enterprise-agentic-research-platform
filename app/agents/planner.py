@@ -49,8 +49,7 @@ class PlannerAgent:
         )
 
         logger.info(
-            "Research plan created | sub_question_count=%s | "
-            "task_count=%s | section_count=%s",
+            "Research plan created | sub_question_count=%s | task_count=%s | section_count=%s",
             len(plan.sub_questions),
             len(plan.tasks),
             len(plan.report_outline),

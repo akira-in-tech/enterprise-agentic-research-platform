@@ -28,9 +28,7 @@ def create_web_source_id(url: str) -> str:
     """Create a deterministic source ID from a canonical URL."""
 
     normalized_url = normalize_url(url)
-    digest = sha256(
-        normalized_url.encode("utf-8")
-    ).hexdigest()[:16].upper()
+    digest = sha256(normalized_url.encode("utf-8")).hexdigest()[:16].upper()
 
     return f"WEB-{digest}"
 
@@ -45,9 +43,7 @@ def build_web_source_pool(
 
     for result in results:
         normalized_url = normalize_url(result.url)
-        source_id = create_web_source_id(
-            normalized_url
-        )
+        source_id = create_web_source_id(normalized_url)
 
         if source_id in seen_source_ids:
             continue

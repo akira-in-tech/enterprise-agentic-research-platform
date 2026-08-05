@@ -34,23 +34,17 @@ class FakeLLMClient:
         *,
         max_tokens: int = 256,
     ) -> StructuredModel:
-        raise AssertionError(
-            "DirectAnswerAgent must not request structured output."
-        )
+        raise AssertionError("DirectAnswerAgent must not request structured output.")
 
 
 @pytest.mark.anyio
 async def test_direct_answer_returns_llm_response() -> None:
-    llm_client = FakeLLMClient(
-        "A mutex protects shared state from concurrent access."
-    )
+    llm_client = FakeLLMClient("A mutex protects shared state from concurrent access.")
     agent = DirectAnswerAgent(llm_client)
 
     answer = await agent.answer("What is a mutex?")
 
-    assert answer == (
-        "A mutex protects shared state from concurrent access."
-    )
+    assert answer == ("A mutex protects shared state from concurrent access.")
     assert len(llm_client.requests) == 1
 
     prompt, max_tokens = llm_client.requests[0]
