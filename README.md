@@ -40,7 +40,17 @@ Implemented and live verified: background execution claims, renews, releases, au
 Implemented and live verified: startup discovery of abandoned queued/running work and per-node LangGraph PostgreSQL checkpoint resume
 Implemented and contract tested: standalone research sources, provider capabilities, and dependency readiness endpoints
 Implemented and contract tested: tenant-scoped durable cancellation across PostgreSQL, worker tasks, SSE, REST, and Vue
-Next: add domain-adaptive planning and writing profiles
+Implemented and tested: domain-neutral Intent Router, Planner, and Direct Answer agents; routing and plan-outline prompts no longer name or favor engineering vocabulary
+Implemented and tested: demo_profiles/engineering/ isolates demo queries, evaluation cases, a reference report outline, and a private-knowledge manifest from core application code, with no company or organization branding
+Implemented and tested: high-risk domain detection (medical, legal, financial, safety/security) on the Intent Router, propagated through the workflow to a human_review_required flag on the final reflection decision regardless of citation quality
+Implemented and tested: the MCP server now exposes all seven charter research tools (search_web, search_private_documents, retrieve_source, ingest_document, save_research_report, get_research_history, request_human_review) alongside the original reference-card demo tool, each degrading independently when its own credentials are missing
+Implemented and tested: a research_agent_steps table and repository for a durable per-agent-role trace, migrated and live-verified; not yet written to by the live LangGraph execution path
+Implemented and tested: a report-export service storing durable report snapshots through the existing DocumentStorage interface (local filesystem or S3), plus a REST endpoint to trigger and retrieve one
+Implemented and tested: per-request correlation IDs attached to every log line and echoed as a response header
+Implemented and tested: a closed/open/half-open circuit breaker, wired into the Tavily search executor
+Implemented and verified: a PostgreSQL/Redis GitHub Actions integration job running 19 live integration tests against real service containers
+Implemented: docs/PROJECT_CHARTER.md plus docs/{architecture,workflow,data-model,deployment,reliability,security,evaluation,trade-offs}.md, all free of company-specific naming
+Next: Vue Router, Pinia, and TanStack Query for the frontend; a Playwright end-to-end suite; wiring research_agent_steps into live execution; CORS; Anthropic/Milvus circuit breakers
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -192,9 +202,9 @@ explicit opt-in integration check rather than a default-test claim.
 | Provider-neutral LLM interface | Tested |
 | Claude provider | Tested with mocks |
 | Qwen LLM provider through Ollama | Tested with mocks and live integration test |
-| Intent router with deterministic fallback | Tested |
-| Direct-answer agent | Tested |
-| Structured research planner | Tested |
+| Domain-neutral intent router with deterministic fallback | Tested |
+| Domain-neutral direct-answer agent | Tested |
+| Domain-neutral structured research planner | Tested |
 | Canonical eight-agent LangGraph workflow | Tested with deterministic graph and factory tests |
 | Intent Router direct/deep branch | Tested |
 | Planner structured research tasks | Tested |
@@ -265,7 +275,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Durable research repository operations | Atomic expired-only lease takeover, owner-token renewal/release, latest checkpoint, and chronological audit trail unit and live PostgreSQL tested |
 | Runtime worker ownership | PostgreSQL lease claim, heartbeat renewal, token-checked release, audit events, and queued/completed boundary checkpoints live integration tested |
 | Restart recovery and node-level resume | Official AsyncPostgresSaver, startup discovery, tenant/run thread IDs, pending-write-safe node checkpoints, and no-repeat resume live PostgreSQL tested |
-| Durable research cancellation | Queued/running-only PostgreSQL transition, local worker interruption, terminal Redis/SSE progress, tenant-scoped REST endpoint, and Vue action tested; migration SQL generated offline, not newly live applied |
+| Durable research cancellation | Queued/running-only PostgreSQL transition, local worker interruption, terminal Redis/SSE progress, tenant-scoped REST endpoint, and Vue action tested; migration live applied, verified, and downgraded against local PostgreSQL |
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
 | Vue 3 + TypeScript + Vite frontend | Typechecked, 26 tests passed, production built, and desktop/mobile browser QA verified |
@@ -279,6 +289,15 @@ explicit opt-in integration check rather than a default-test claim.
 | GitHub OIDC deployment identity | Applied and AWS verified: exact repository/environment trust, three reviewed inline policies, protected remote state, and zero Terraform drift |
 | GitHub OIDC deployment workflow | Remotely verified on GitHub Actions: protected staging environment assumed the expected AWS account and deployment role, then generated the zero-task staging plan with short-lived credentials |
 | AWS deployment | Remote-state bootstrap deployed and staging backend initialized; Claude, Tavily, and managed Milvus inputs live verified; application apply, Bedrock live invocation, a fresh plan, and public endpoint verification remain pending |
+| Domain-neutral agent isolation | demo_profiles/engineering/ holds example queries, evaluation cases, a reference report outline, and a private-knowledge manifest, none of it imported by application code; deleting the directory does not change routing, planning, retrieval, or report-writing behavior |
+| High-risk domain human review | Intent Router detection and ReflectionAgent human_review_required/reason unit tested; surfaced on the synchronous research-run API response |
+| Full MCP research tool set | search_web, search_private_documents, retrieve_source, ingest_document, save_research_report, and get_research_history unit tested against real repositories/services with mocked sessions; request_human_review unit tested against the durability audit-event repository |
+| research_agent_steps schema and repository | SQLAlchemy and Alembic tested; live PostgreSQL upgrade/downgrade/zero-drift and a live tenant/run/step round trip verified; not yet wired into live workflow execution |
+| Report export storage | ResearchReportExportService unit tested over the existing local/S3 DocumentStorage interface; REST endpoint pending |
+| Per-request correlation IDs | Middleware, log-record injection, and header echo unit tested |
+| Circuit breaker | Closed/open/half-open state machine unit tested with a fake clock; wired into the Tavily search executor with a dedicated integration-style unit test; Anthropic and Milvus not yet wired |
+| PostgreSQL/Redis CI integration gate | 19 integration tests run against postgres:17-alpine and redis:8-alpine service containers on every pull request and push to main |
+| Architecture documentation | docs/PROJECT_CHARTER.md and eight supporting documents, cross-referencing actual code paths and explicitly separating implemented from planned |
 | Open-source contribution | Planned |
 
 There are no published evaluation metrics or deployed application environments

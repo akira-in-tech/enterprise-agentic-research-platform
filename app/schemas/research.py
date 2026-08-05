@@ -45,6 +45,8 @@ class CreateResearchRunResponse(BaseModel):
     citation_coverage: float | None = Field(default=None, ge=0.0, le=1.0)
     reflection_status: Literal["approved", "revise"] | None = None
     reflection_reasons: list[str] = Field(default_factory=list)
+    human_review_required: bool = False
+    human_review_reason: str | None = None
 
 
 class CreateResearchJobResponse(BaseModel):

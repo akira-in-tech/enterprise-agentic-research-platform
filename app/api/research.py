@@ -434,4 +434,14 @@ async def create_research_run(
         reflection_reasons=(
             result.state["reflection"].reasons if "reflection" in result.state else []
         ),
+        human_review_required=(
+            result.state["reflection"].human_review_required
+            if "reflection" in result.state
+            else False
+        ),
+        human_review_reason=(
+            result.state["reflection"].human_review_reason
+            if "reflection" in result.state
+            else None
+        ),
     )

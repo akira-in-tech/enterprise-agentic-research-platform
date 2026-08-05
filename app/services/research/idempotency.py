@@ -301,6 +301,30 @@ class IdempotentResearchExecutionService:
             route=result.state.get("route"),
             route_reason=result.state.get("route_reason"),
             answer=result.state.get("answer"),
+            citation_valid=(
+                result.state["citation_audit"].valid if "citation_audit" in result.state else None
+            ),
+            citation_coverage=(
+                result.state["citation_audit"].coverage_ratio
+                if "citation_audit" in result.state
+                else None
+            ),
+            reflection_status=(
+                result.state["reflection"].status if "reflection" in result.state else None
+            ),
+            reflection_reasons=(
+                result.state["reflection"].reasons if "reflection" in result.state else []
+            ),
+            human_review_required=(
+                result.state["reflection"].human_review_required
+                if "reflection" in result.state
+                else False
+            ),
+            human_review_reason=(
+                result.state["reflection"].human_review_reason
+                if "reflection" in result.state
+                else None
+            ),
         )
 
     @staticmethod

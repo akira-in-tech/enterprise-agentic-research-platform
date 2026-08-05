@@ -51,13 +51,13 @@ def test_tenant_repository_normalizes_and_flushes() -> None:
 
     tenant = asyncio.run(
         repository.create(
-            slug="  HENNGE-Platform  ",
-            name="  HENNGE Platform Engineering  ",
+            slug="  ACME-Platform  ",
+            name="  ACME Platform Engineering  ",
         )
     )
 
-    assert tenant.slug == "hennge-platform"
-    assert tenant.name == "HENNGE Platform Engineering"
+    assert tenant.slug == "acme-platform"
+    assert tenant.name == "ACME Platform Engineering"
 
     session_mock.add.assert_called_once_with(tenant)
     session_mock.flush.assert_awaited_once_with()
@@ -69,21 +69,21 @@ def test_tenant_repository_normalizes_and_flushes() -> None:
     [
         (
             "   ",
-            "HENNGE",
+            "ACME",
             "slug must not be empty",
         ),
         (
-            "hennge",
+            "acme",
             "   ",
             "name must not be empty",
         ),
         (
             "a" * 101,
-            "HENNGE",
+            "ACME",
             "slug must not exceed 100 characters",
         ),
         (
-            "hennge",
+            "acme",
             "a" * 201,
             "name must not exceed 200 characters",
         ),
@@ -120,13 +120,13 @@ def test_user_repository_normalizes_identity_fields() -> None:
     user = asyncio.run(
         repository.create(
             tenant_id=tenant_id,
-            email="  Engineer@HENNGE.COM  ",
+            email="  Engineer@ACME.COM  ",
             display_name="  Platform Engineer  ",
         )
     )
 
     assert user.tenant_id == tenant_id
-    assert user.email == "engineer@hennge.com"
+    assert user.email == "engineer@acme.com"
     assert user.display_name == "Platform Engineer"
 
     session_mock.add.assert_called_once_with(user)
