@@ -6,7 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN groupadd --system app && useradd --system --gid app --create-home app
+RUN groupadd --system app && useradd --system --gid app --create-home app \
+    && mkdir -p /home/app/documents \
+    && chown app:app /home/app/documents
 
 COPY pyproject.toml README.md alembic.ini ./
 COPY alembic ./alembic

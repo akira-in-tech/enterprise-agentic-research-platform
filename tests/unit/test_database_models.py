@@ -132,6 +132,7 @@ def test_knowledge_document_enforces_tenant_and_lifecycle_constraints() -> None:
         "fk_knowledge_documents_tenant_user",
         "uq_knowledge_documents_tenant_id_id",
         "uq_knowledge_documents_tenant_content_sha256",
+        "uq_knowledge_documents_tenant_vector_document_id",
         "ck_knowledge_documents_filename_not_blank",
         "ck_knowledge_documents_media_type_valid",
         "ck_knowledge_documents_byte_size_positive",

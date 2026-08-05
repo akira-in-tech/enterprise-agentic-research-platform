@@ -16,6 +16,13 @@ class Settings(BaseSettings):
     api_host: str = "127.0.0.1"
     api_port: int = 8000
 
+    document_storage_root: str = "uploads"
+    document_max_upload_bytes: int = Field(
+        default=10_000_000,
+        ge=1,
+        le=100_000_000,
+    )
+
     anthropic_model: str = ""
     anthropic_api_key: SecretStr = SecretStr("")
     tavily_api_key: SecretStr = SecretStr("")

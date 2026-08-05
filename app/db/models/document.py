@@ -61,7 +61,8 @@ class KnowledgeDocument(Base):
             name="error_state_valid",
         ),
         CheckConstraint(
-            "(status = 'ready' AND indexed_at IS NOT NULL) "
+            "(status = 'ready' AND indexed_at IS NOT NULL "
+            "AND vector_document_id IS NOT NULL) "
             "OR (status <> 'ready' AND indexed_at IS NULL)",
             name="indexed_state_valid",
         ),
@@ -84,6 +85,11 @@ class KnowledgeDocument(Base):
             "tenant_id",
             "content_sha256",
             name="uq_knowledge_documents_tenant_content_sha256",
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "vector_document_id",
+            name="uq_knowledge_documents_tenant_vector_document_id",
         ),
     )
 
@@ -126,6 +132,11 @@ class KnowledgeDocument(Base):
     content_sha256: Mapped[str] = mapped_column(
         String(64),
         nullable=False,
+    )
+
+    vector_document_id: Mapped[str | None] = mapped_column(
+        String(20),
+        nullable=True,
     )
 
     storage_key: Mapped[str] = mapped_column(

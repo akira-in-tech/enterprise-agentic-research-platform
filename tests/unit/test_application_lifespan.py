@@ -65,6 +65,10 @@ async def test_lifespan_wires_and_closes_application_resources(
     job_manager = RecordingJobManager()
     embedding_client = RecordingEmbeddingClient()
     vector_store = RecordingVectorStore()
+    knowledge_document_store = object()
+    document_storage = object()
+    knowledge_indexer = object()
+    knowledge_document_service = object()
     private_retriever = object()
     local_scout = object()
     expected_workflow = object()
@@ -112,6 +116,18 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_vector_store = Mock(
         return_value=vector_store,
+    )
+    create_knowledge_document_store = Mock(
+        return_value=knowledge_document_store,
+    )
+    create_document_storage = Mock(
+        return_value=document_storage,
+    )
+    create_knowledge_indexer = Mock(
+        return_value=knowledge_indexer,
+    )
+    create_knowledge_document_service = Mock(
+        return_value=knowledge_document_service,
     )
     create_private_retriever = Mock(
         return_value=private_retriever,
@@ -199,6 +215,26 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     monkeypatch.setattr(
         main_module,
+        "PostgresKnowledgeDocumentStore",
+        create_knowledge_document_store,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "LocalDocumentStorage",
+        create_document_storage,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "KnowledgeIndexer",
+        create_knowledge_indexer,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "KnowledgeDocumentService",
+        create_knowledge_document_service,
+    )
+    monkeypatch.setattr(
+        main_module,
         "PrivateKnowledgeRetriever",
         create_private_retriever,
     )
@@ -223,6 +259,7 @@ async def test_lifespan_wires_and_closes_application_resources(
         assert application.state.research_progress_store is progress_store
         assert application.state.research_report_store is report_store
         assert application.state.research_job_manager is job_manager
+        assert application.state.knowledge_document_service is knowledge_document_service
         assert engine.disposed is False
         assert redis_connection.closed is False
         assert job_manager.closed is False
@@ -271,6 +308,23 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_embedding_client.assert_called_once_with()
     create_vector_store.assert_called_once_with()
+    create_knowledge_document_store.assert_called_once_with(
+        database_session_factory,
+    )
+    create_document_storage.assert_called_once_with(
+        main_module.settings.document_storage_root,
+    )
+    create_knowledge_indexer.assert_called_once_with(
+        embedding_client,
+        vector_store,
+    )
+    create_knowledge_document_service.assert_called_once_with(
+        knowledge_document_store,
+        document_storage,
+        knowledge_indexer,
+        vector_store,
+        max_upload_bytes=main_module.settings.document_max_upload_bytes,
+    )
     create_private_retriever.assert_called_once_with(
         embedding_client,
         vector_store,

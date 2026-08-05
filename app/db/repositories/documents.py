@@ -1,5 +1,5 @@
 import re
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -51,13 +51,16 @@ class KnowledgeDocumentRepository:
         media_type: str,
         byte_size: int,
         content_sha256: str,
+        vector_document_id: str,
         storage_key: str,
         uploaded_by_user_id: UUID | None = None,
+        document_id: UUID | None = None,
     ) -> KnowledgeDocument:
         """Create a pending document without committing its transaction."""
 
         normalized_media_type = media_type.strip().lower()
         normalized_sha256 = content_sha256.strip().lower()
+        normalized_vector_document_id = vector_document_id.strip().upper()
 
         if normalized_media_type not in SUPPORTED_DOCUMENT_MEDIA_TYPES:
             raise ValueError(
@@ -70,7 +73,11 @@ class KnowledgeDocumentRepository:
         if SHA256_PATTERN.fullmatch(normalized_sha256) is None:
             raise ValueError("content_sha256 must be a lowercase 64-character SHA-256 digest.")
 
+        if re.fullmatch(r"DOC-[0-9A-F]{16}", normalized_vector_document_id) is None:
+            raise ValueError("vector_document_id must use the DOC-* private-document format.")
+
         document = KnowledgeDocument(
+            id=document_id or uuid4(),
             tenant_id=tenant_id,
             uploaded_by_user_id=uploaded_by_user_id,
             filename=_normalize_required(
@@ -81,6 +88,7 @@ class KnowledgeDocumentRepository:
             media_type=normalized_media_type,
             byte_size=byte_size,
             content_sha256=normalized_sha256,
+            vector_document_id=normalized_vector_document_id,
             storage_key=_normalize_required(
                 storage_key,
                 field_name="storage_key",
@@ -92,6 +100,28 @@ class KnowledgeDocumentRepository:
         await self._session.flush()
 
         return document
+
+    async def get_by_content_sha256(
+        self,
+        *,
+        tenant_id: UUID,
+        content_sha256: str,
+    ) -> KnowledgeDocument | None:
+        """Return a duplicate document only within the tenant boundary."""
+
+        normalized_sha256 = content_sha256.strip().lower()
+
+        if SHA256_PATTERN.fullmatch(normalized_sha256) is None:
+            raise ValueError("content_sha256 must be a lowercase 64-character SHA-256 digest.")
+
+        result = await self._session.scalar(
+            select(KnowledgeDocument).where(
+                KnowledgeDocument.tenant_id == tenant_id,
+                KnowledgeDocument.content_sha256 == normalized_sha256,
+            )
+        )
+
+        return result
 
     async def get_for_tenant(
         self,
@@ -193,7 +223,7 @@ class KnowledgeDocumentRepository:
         return await self._transition(
             tenant_id=tenant_id,
             document_id=document_id,
-            from_statuses=("pending", "indexing"),
+            from_statuses=("pending", "indexing", "deleting"),
             values={
                 "status": "failed",
                 "error_message": normalized_error,

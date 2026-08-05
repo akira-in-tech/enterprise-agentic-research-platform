@@ -3,6 +3,7 @@ from typing import cast
 from fastapi import Request
 
 from app.services.cache import RedisResearchProgressStore, RedisResearchRateLimiter
+from app.services.knowledge import KnowledgeDocumentService
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
 )
@@ -82,3 +83,16 @@ def get_research_job_manager(
         raise RuntimeError("Research job manager is not initialized.") from error
 
     return cast(ResearchJobManager, job_manager)
+
+
+def get_knowledge_document_service(
+    request: Request,
+) -> KnowledgeDocumentService:
+    """Return the application-scoped private-document service."""
+
+    try:
+        service = request.app.state.knowledge_document_service
+    except AttributeError as error:
+        raise RuntimeError("Knowledge document service is not initialized.") from error
+
+    return cast(KnowledgeDocumentService, service)

@@ -45,6 +45,7 @@ async def test_repository_creates_normalized_pending_document_without_commit() -
         media_type="  APPLICATION/PDF  ",
         byte_size=1024,
         content_sha256="A" * 64,
+        vector_document_id="doc-0123456789abcdef",
         storage_key="  tenants/example/documents/architecture.pdf  ",
     )
 
@@ -53,6 +54,7 @@ async def test_repository_creates_normalized_pending_document_without_commit() -
     assert document.filename == "architecture.pdf"
     assert document.media_type == "application/pdf"
     assert document.content_sha256 == "a" * 64
+    assert document.vector_document_id == "DOC-0123456789ABCDEF"
     assert document.storage_key == "tenants/example/documents/architecture.pdf"
     assert document.status == "pending"
     session_mock.add.assert_called_once_with(document)
@@ -84,6 +86,7 @@ async def test_repository_rejects_invalid_document_metadata(
         "media_type": "application/pdf",
         "byte_size": 1024,
         "content_sha256": "a" * 64,
+        "vector_document_id": "DOC-0123456789ABCDEF",
         "storage_key": "tenants/example/documents/architecture.pdf",
     }
     values.update(overrides)

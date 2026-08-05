@@ -27,9 +27,10 @@ Generated and remotely verified: configured-provider zero-task staging plan, 48 
 Configured and live verified: Claude Sonnet 5 structured output through the Anthropic API
 Configured and live verified: managed Zilliz Cloud Milvus round trip in AWS us-west-2
 Configured and live verified: Tavily Basic Search and canonical web-source normalization
-Gap remediation in progress: durable tenant-scoped private-document metadata and indexing lifecycle
+Gap remediation in progress: complete Private Knowledge upload product flow
+Implemented and live verified: tenant-scoped document upload, list, detail, delete, source storage, indexing, retrieval, and lifecycle persistence
 Deployment status: state bucket and CI identity only; staging application resources are not applied
-Next: complete the private-document upload/indexing API and console flow before the application apply
+Next: add the Vue Private Knowledge console and AWS external embedding/object-storage providers
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -200,6 +201,9 @@ explicit opt-in integration check rather than a default-test claim.
 | PDF text extraction | Tested |
 | Deterministic document chunking | Tested |
 | Durable tenant-scoped private-document metadata and indexing lifecycle | Tested with repository coverage and a reversible live PostgreSQL migration |
+| Private source object storage | Local filesystem provider tested with atomic writes, private file permissions, safe keys, and idempotent deletion |
+| Tenant-scoped document REST API | Upload, list, detail, and delete paths tested with multipart limits and explicit duplicate, indexing, storage, and not-found states |
+| End-to-end private-document lifecycle | Live PostgreSQL upload, deterministic indexing, semantic retrieval, source deletion, vector deletion, and metadata cleanup verified |
 | Provider-neutral embedding interface | Tested |
 | Qwen embeddings through Ollama | Tested with mocks and live smoke test |
 | Provider-neutral vector-store interface | Tested |
@@ -394,13 +398,28 @@ Engineering question
 
 ```text
 Private document
-→ validation and text extraction
+→ POST /documents with tenant and optional user headers
+→ bounded multipart read and TXT, Markdown, or PDF validation
+→ atomic source-object write
+→ short PostgreSQL pending transaction
+→ indexing lifecycle transition
 → deterministic chunks
 → embedding provider
 → vector-store provider
+→ ready or failed PostgreSQL lifecycle state
+→ GET /documents and GET /documents/{document_id}
 → tenant-scoped similarity search
 → stable PRIVATE-* sources
+→ DELETE /documents/{document_id}
+→ vector, source-object, and metadata cleanup
 ```
+
+The long-running embedding and vector calls execute outside PostgreSQL
+transactions. PostgreSQL records each short lifecycle transition, while the
+source object and vector records remain provider-owned artifacts. Duplicate
+normalized content is rejected per tenant. The current application provider
+stores source files in a private local runtime volume; an AWS object-storage
+provider and the Vue upload console remain the next product slice.
 
 ### Provider Boundaries
 

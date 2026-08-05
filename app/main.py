@@ -6,6 +6,7 @@ from functools import partial
 from fastapi import FastAPI
 
 from app.agents.local_scout import LocalScoutAgent
+from app.api.documents import router as documents_router
 from app.api.research import router as research_router
 from app.core.config import settings
 from app.core.logging import configure_logging
@@ -22,6 +23,8 @@ from app.services.cache import (
     RedisResearchResultCache,
 )
 from app.services.embeddings.ollama import OllamaEmbeddingClient
+from app.services.knowledge import KnowledgeDocumentService, PostgresKnowledgeDocumentStore
+from app.services.knowledge.indexing import KnowledgeIndexer
 from app.services.knowledge.retrieval import PrivateKnowledgeRetriever
 from app.services.research.execution import (
     ResearchExecutionService,
@@ -35,6 +38,7 @@ from app.services.research.postgres import (
     PostgresResearchRunStore,
 )
 from app.services.research.reports import PostgresResearchReportStore
+from app.services.storage import LocalDocumentStorage
 from app.services.vector_store.factory import create_vector_store
 
 configure_logging()
@@ -76,6 +80,13 @@ async def lifespan(
 
         session_factory = create_session_factory(
             engine,
+        )
+        application.state.knowledge_document_service = KnowledgeDocumentService(
+            PostgresKnowledgeDocumentStore(session_factory),
+            LocalDocumentStorage(settings.document_storage_root),
+            KnowledgeIndexer(embedding_client, vector_store),
+            vector_store,
+            max_upload_bytes=settings.document_max_upload_bytes,
         )
         research_store = PostgresResearchRunStore(
             session_factory,
@@ -137,6 +148,9 @@ app = FastAPI(
 
 app.include_router(
     research_router,
+)
+app.include_router(
+    documents_router,
 )
 
 
