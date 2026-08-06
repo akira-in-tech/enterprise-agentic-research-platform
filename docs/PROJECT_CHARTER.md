@@ -376,15 +376,15 @@ Redis 不作为 durable business-data database，Milvus 不保存用户和 billi
 Vue 3
 TypeScript
 Vite
-Vue Router      (目标状态，尚未接入)
-Pinia           (目标状态，尚未接入)
-TanStack Vue Query  (目标状态，尚未接入)
+Vue Router
+Pinia
+TanStack Vue Query
 Vitest
 Vue Test Utils
-Playwright      (目标状态，尚未接入)
+Playwright
 ```
 
-当前实现使用简单组件 state 而非 Pinia/TanStack Query，也没有客户端路由。这是本章程中尚未完成的部分（见根 README Project Status 表）。
+Vue Router 驱动客户端路由与认证守卫（`router/index.ts`），Pinia 管理认证与主题 state（`stores/auth.ts`、`stores/workspace.ts`），TanStack Vue Query 管理研究数据的请求缓存（`views/ResearchRunView.vue`、`components/KnowledgeLibrary.vue`），Playwright 覆盖端到端流程（`frontend/e2e/`）。详见根 README Project Status 表。
 
 Frontend 标题保持通用："Enterprise Research Platform"，placeholder 保持通用："Ask a research question..."。内置 demo profile 可以展示工程示例，但不限制用户输入其他领域的问题。
 
@@ -393,7 +393,7 @@ Frontend 标题保持通用："Enterprise Research Platform"，placeholder 保�
 - Per-provider timeout
 - Exponential backoff with jitter
 - Retry only for retryable failures
-- Circuit-breaker boundaries where justified（已应用于 Tavily 搜索；Anthropic/Milvus 待跟进）
+- Circuit-breaker boundaries where justified（已应用于 Tavily 搜索、Anthropic 客户端和 Milvus 向量存储）
 - Partial search-result preservation
 - Checkpoint and resume
 - Idempotent research-run creation
@@ -416,7 +416,7 @@ Frontend 标题保持通用："Enterprise Research Platform"，placeholder 保�
 - SSRF protection for user-provided URLs
 - Rate limiting
 - Audit events
-- CORS allowlist（尚未实现）
+- CORS allowlist
 - Least-privilege AWS IAM
 - Private database networking
 - Encryption in transit
