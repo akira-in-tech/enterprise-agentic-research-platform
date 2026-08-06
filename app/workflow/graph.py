@@ -5,6 +5,7 @@ from uuid import UUID
 from langgraph.checkpoint.base import BaseCheckpointSaver
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
+from tavily.errors import TimeoutError as TavilyTimeoutError  # type: ignore[import-untyped]
 
 from app.agents.analyst import AnalystAgent
 from app.agents.direct_answer import DirectAnswerAgent
@@ -39,6 +40,7 @@ from app.services.llm.base import LLMClient
 from app.services.llm.factory import create_llm_client
 from app.services.mcp import MCPReferenceScout
 from app.services.search.executor import (
+    DEFAULT_RETRYABLE_ERRORS,
     ResearchTaskResult,
     SearchExecutor,
 )
@@ -980,6 +982,7 @@ def build_research_graph_for_client(
     search_executor = SearchExecutor(
         tavily_client,
         circuit_breaker=CircuitBreaker(),
+        retryable_errors=(*DEFAULT_RETRYABLE_ERRORS, TavilyTimeoutError),
     )
     web_scout = WebScoutAgent(search_executor)
     evidence_scorer = EvidenceScorer()

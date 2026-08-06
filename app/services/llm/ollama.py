@@ -5,8 +5,15 @@ import httpx
 from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
+from app.core.retry import call_with_backoff
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
+
+# Only retry connection-level failures (refused/reset/timed-out connections).
+# An HTTP status error is either a client bug (4xx, retrying won't help) or a
+# local Ollama-side failure unlikely to clear within a couple of retries
+# (5xx) -- neither is retried here.
+_RETRYABLE_ERRORS = (httpx.TransportError,)
 
 
 class OllamaClient:
@@ -33,19 +40,26 @@ class OllamaClient:
         if not normalized_prompt:
             raise ValueError("Prompt must not be empty.")
 
-        response = await self._client.post(
-            "/api/generate",
-            json={
-                "model": self._model,
-                "prompt": normalized_prompt,
-                "stream": False,
-                "think": False,
-                "options": {
-                    "num_predict": max_tokens,
+        async def post_generate() -> httpx.Response:
+            response = await self._client.post(
+                "/api/generate",
+                json={
+                    "model": self._model,
+                    "prompt": normalized_prompt,
+                    "stream": False,
+                    "think": False,
+                    "options": {
+                        "num_predict": max_tokens,
+                    },
                 },
-            },
+            )
+            response.raise_for_status()
+            return response
+
+        response = await call_with_backoff(
+            post_generate,
+            retryable=_RETRYABLE_ERRORS,
         )
-        response.raise_for_status()
 
         response_data = cast(dict[str, Any], response.json())
         response_text = str(response_data.get("response") or "").strip()
@@ -77,20 +91,27 @@ class OllamaClient:
             f"{prompt}\n\nReturn only valid JSON matching this JSON schema:\n{json.dumps(schema)}"
         )
 
-        response = await self._client.post(
-            "/api/generate",
-            json={
-                "model": self._model,
-                "prompt": structured_prompt,
-                "stream": False,
-                "think": False,
-                "format": schema,
-                "options": {
-                    "num_predict": max_tokens,
+        async def post_generate() -> httpx.Response:
+            response = await self._client.post(
+                "/api/generate",
+                json={
+                    "model": self._model,
+                    "prompt": structured_prompt,
+                    "stream": False,
+                    "think": False,
+                    "format": schema,
+                    "options": {
+                        "num_predict": max_tokens,
+                    },
                 },
-            },
+            )
+            response.raise_for_status()
+            return response
+
+        response = await call_with_backoff(
+            post_generate,
+            retryable=_RETRYABLE_ERRORS,
         )
-        response.raise_for_status()
 
         raw_text = response.json().get("response", "").strip()
 

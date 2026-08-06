@@ -1,5 +1,6 @@
 import asyncio
 
+import httpx
 import pytest
 
 from app.core.circuit_breaker import CircuitBreaker
@@ -10,6 +11,40 @@ from app.schemas.planner import (
 )
 from app.services.search.base import SearchResult
 from app.services.search.executor import SearchExecutor
+
+
+class FlakySearchClient:
+    """Fail with a given error a fixed number of times, then succeed."""
+
+    def __init__(
+        self,
+        *,
+        failures: int,
+        error: Exception,
+    ) -> None:
+        self.failures = failures
+        self.error = error
+        self.calls = 0
+
+    async def search(
+        self,
+        query: str,
+        *,
+        max_results: int = 5,
+    ) -> list[SearchResult]:
+        self.calls += 1
+
+        if self.calls <= self.failures:
+            raise self.error
+
+        return [
+            SearchResult(
+                title=f"Result for {query}",
+                url="https://example.com/result",
+                content=f"Evidence about {query}.",
+                source="fake",
+            )
+        ]
 
 
 class FakeSearchClient:
@@ -195,6 +230,42 @@ def test_executor_circuit_breaker_stops_calling_after_threshold() -> None:
     # The third task never reached the search client: the breaker opened
     # after the second consecutive failure and rejected the call locally.
     assert len(client.calls) == 2
+
+
+def test_executor_retries_a_transient_transport_error() -> None:
+    client = FlakySearchClient(
+        failures=1,
+        error=httpx.ConnectError("Connection refused."),
+    )
+    executor = SearchExecutor(
+        client,
+        max_concurrency=1,
+    )
+
+    outcomes = asyncio.run(
+        executor.execute_tasks(create_test_plan().tasks[:1]),
+    )
+
+    assert outcomes[0].succeeded is True
+    assert client.calls == 2
+
+
+def test_executor_does_not_retry_a_non_transient_error() -> None:
+    client = FlakySearchClient(
+        failures=1,
+        error=RuntimeError("Simulated search failure."),
+    )
+    executor = SearchExecutor(
+        client,
+        max_concurrency=1,
+    )
+
+    outcomes = asyncio.run(
+        executor.execute_tasks(create_test_plan().tasks[:1]),
+    )
+
+    assert outcomes[0].succeeded is False
+    assert client.calls == 1
 
 
 def test_executor_rejects_invalid_concurrency() -> None:

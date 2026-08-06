@@ -43,16 +43,36 @@ retrofitting them without breaking existing test coverage was real,
 separate work per integration. Shipping one well-tested integration at a
 time beat shipping three rushed ones together.
 
-### `research_agent_steps`: schema before wiring
+### `research_agent_steps`: schema before wiring, then wired separately
 
 The table, model, repository, migration, and both unit and live tests for
 `agent_steps` shipped in one change; wiring it into
-`app/services/research/execution.py` did not. That file already carries
-durable worker-lease, heartbeat, and checkpoint-resume logic — folding a
-new per-node write path into it deserved its own careful change rather
-than being rushed alongside a schema addition. This mirrors an existing
-pattern in the codebase (e.g. the Bedrock embedding adapter shipped
-unit-tested with live invocation explicitly marked pending).
+`app/services/research/execution.py` was a deliberately separate, later
+change. That file already carried durable worker-lease, heartbeat, and
+checkpoint-resume logic — folding a new per-node write path into it
+deserved its own careful change rather than being rushed alongside the
+schema addition. When it landed, the actual wiring used
+`graph.astream(stream_mode=["tasks", "values"])` instead of the simpler
+`graph.ainvoke()` specifically to get per-node start/finish events without
+touching any of the eight agent node functions in `app/workflow/graph.py`
+— confirmed by direct experimentation that manually replaying the
+"values" stream reconstructs the exact same final state `ainvoke()`
+returns, including across a durable resume.
+
+### Retry wraps the circuit breaker, not the other way around
+
+`call_with_backoff` (the outer layer) retries individual attempts that go
+through `CircuitBreaker.call` (the inner layer), not the reverse. Retrying
+outside the breaker means each attempt is independently subject to it, so
+the breaker's failure count reflects real attempts against the
+dependency; putting the breaker outside a retry loop would count a whole
+retried operation as one failure, letting a truly-failing dependency stay
+under the breaker's threshold far longer than intended. Every retryable
+set is scoped to each client's actual transient-failure types and
+deliberately excludes `CircuitBreakerOpenError` (a `RuntimeError`, not a
+`MilvusException`/`httpx.TransportError`/etc.), so once the breaker is
+open, a request fails on the first attempt instead of burning its retry
+budget against a dependency it already knows is down.
 
 ### Authentication: server-side sessions, not JWT
 

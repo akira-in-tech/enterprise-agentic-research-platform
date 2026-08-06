@@ -9,14 +9,28 @@ from pymilvus import (  # type: ignore[import-untyped]
     AsyncMilvusClient,
     DataType,
 )
+from pymilvus.exceptions import (  # type: ignore[import-untyped]
+    ConnectError,
+    MilvusUnavailableException,
+)
 
 from app.core.circuit_breaker import CircuitBreaker
 from app.core.config import settings
+from app.core.retry import call_with_backoff
 from app.schemas.document import DocumentChunk
 from app.services.vector_store.base import (
     Vector,
     VectorRecord,
     VectorSearchResult,
+)
+
+# Retry only connectivity-level failures. Other MilvusException subtypes
+# (bad params, missing collection, schema mismatch) indicate a bug in this
+# client's own request, not a transient condition -- retrying would just
+# delay the same failure.
+DEFAULT_RETRYABLE_ERRORS: tuple[type[Exception], ...] = (
+    MilvusUnavailableException,
+    ConnectError,
 )
 
 COLLECTION_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,254}$")
@@ -85,6 +99,7 @@ class MilvusVectorStore:
         token: str | None = None,
         client: AsyncMilvusClientProtocol | None = None,
         circuit_breaker: CircuitBreaker | None = None,
+        retryable_errors: tuple[type[Exception], ...] = DEFAULT_RETRYABLE_ERRORS,
     ) -> None:
         selected_dimensions = (
             dimensions if dimensions is not None else settings.ollama_embedding_dimensions
@@ -111,6 +126,7 @@ class MilvusVectorStore:
         self._initialized = False
         self._initialize_lock = asyncio.Lock()
         self._circuit_breaker = circuit_breaker
+        self._retryable_errors = retryable_errors
 
         if client is None:
             raw_client = AsyncMilvusClient(
@@ -227,10 +243,15 @@ class MilvusVectorStore:
                 anns_field="embedding",
             )
 
-        search_results = (
-            await self._circuit_breaker.call(run_search)
-            if self._circuit_breaker is not None
-            else await run_search()
+        async def run_search_with_breaker() -> list[list[dict[str, object]]]:
+            if self._circuit_breaker is not None:
+                return await self._circuit_breaker.call(run_search)
+
+            return await run_search()
+
+        search_results = await call_with_backoff(
+            run_search_with_breaker,
+            retryable=self._retryable_errors,
         )
 
         if not search_results:

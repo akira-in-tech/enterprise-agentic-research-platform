@@ -1,6 +1,7 @@
 import asyncio
 
 import pytest
+from pymilvus.exceptions import MilvusUnavailableException  # type: ignore[import-untyped]
 
 from app.core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from app.schemas.document import DocumentChunk
@@ -23,9 +24,15 @@ class FakeAsyncMilvusClient:
         *,
         search_results: list[list[dict[str, object]]],
         search_error: Exception | None = None,
+        search_failures: float = float("inf"),
     ) -> None:
         self.search_results = search_results
         self.search_error = search_error
+        # Number of leading calls that raise search_error before succeeding;
+        # defaults to "always fail" so existing always-failing tests are
+        # unaffected.
+        self.search_failures = search_failures
+        self.search_call_count = 0
         self.has_collection_calls: list[str] = []
         self.load_collection_calls: list[str] = []
         self.search_calls: list[dict[str, object]] = []
@@ -87,7 +94,9 @@ class FakeAsyncMilvusClient:
             }
         )
 
-        if self.search_error is not None:
+        self.search_call_count += 1
+
+        if self.search_error is not None and self.search_call_count <= self.search_failures:
             raise self.search_error
 
         return self.search_results
@@ -426,3 +435,52 @@ def test_search_opens_the_circuit_after_repeated_failures() -> None:
 
     # The second search never reached the client: rejected locally by the breaker.
     assert len(client.search_calls) == 1
+
+
+def test_search_retries_a_transient_connectivity_error() -> None:
+    chunk = create_test_chunk()
+    client = FakeAsyncMilvusClient(
+        search_results=[[create_search_hit(chunk)]],
+        search_error=MilvusUnavailableException(message="Milvus is unavailable."),
+        search_failures=1,
+    )
+    store = MilvusVectorStore(
+        dimensions=2,
+        collection_name="private_chunks_test",
+        uri="http://milvus.test:19530",
+        client=client,
+    )
+
+    matches = asyncio.run(
+        store.search(
+            tenant_id="tenant-acme",
+            query_vector=(1.0, 0.0),
+        )
+    )
+
+    assert len(matches) == 1
+    assert client.search_call_count == 2
+
+
+def test_search_does_not_retry_a_non_connectivity_error() -> None:
+    client = FakeAsyncMilvusClient(
+        search_results=[],
+        search_error=RuntimeError("Milvus is unavailable."),
+        search_failures=1,
+    )
+    store = MilvusVectorStore(
+        dimensions=2,
+        collection_name="private_chunks_test",
+        uri="http://milvus.test:19530",
+        client=client,
+    )
+
+    with pytest.raises(RuntimeError, match="Milvus is unavailable"):
+        asyncio.run(
+            store.search(
+                tenant_id="tenant-acme",
+                query_vector=(1.0, 0.0),
+            )
+        )
+
+    assert client.search_call_count == 1

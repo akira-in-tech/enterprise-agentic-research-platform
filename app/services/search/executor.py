@@ -3,11 +3,16 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 
+import httpx
+
 from app.core.circuit_breaker import CircuitBreaker
+from app.core.retry import call_with_backoff
 from app.schemas.planner import ResearchPlan, ResearchTask
 from app.services.search.base import SearchClient, SearchResult
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_RETRYABLE_ERRORS: tuple[type[Exception], ...] = (httpx.TransportError,)
 
 
 @dataclass(slots=True)
@@ -36,6 +41,7 @@ class SearchExecutor:
         max_results_per_task: int = 5,
         task_timeout_seconds: float = 15.0,
         circuit_breaker: CircuitBreaker | None = None,
+        retryable_errors: tuple[type[Exception], ...] = DEFAULT_RETRYABLE_ERRORS,
     ) -> None:
         if max_concurrency < 1:
             raise ValueError("max_concurrency must be at least 1.")
@@ -51,6 +57,7 @@ class SearchExecutor:
         self._max_results_per_task = max_results_per_task
         self._task_timeout_seconds = task_timeout_seconds
         self._circuit_breaker = circuit_breaker
+        self._retryable_errors = retryable_errors
 
     async def execute(
         self,
@@ -94,12 +101,18 @@ class SearchExecutor:
                     max_results=self._max_results_per_task,
                 )
 
+            async def run_search_with_breaker() -> list[SearchResult]:
+                if self._circuit_breaker is not None:
+                    return await self._circuit_breaker.call(run_search)
+
+                return await run_search()
+
             try:
                 async with asyncio.timeout(self._task_timeout_seconds):
-                    if self._circuit_breaker is not None:
-                        results = await self._circuit_breaker.call(run_search)
-                    else:
-                        results = await run_search()
+                    results = await call_with_backoff(
+                        run_search_with_breaker,
+                        retryable=self._retryable_errors,
+                    )
             except TimeoutError:
                 logger.warning(
                     "Search task timed out | title=%s | timeout_seconds=%s",
