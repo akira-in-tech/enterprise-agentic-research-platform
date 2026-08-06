@@ -29,5 +29,10 @@
     "vite": "^6.4.1",
     "vitest": "^3.2.4",
     "vue-tsc": "^2.2.12"
+  },
+  "overrides": {
+    "vue-router": {
+      "vite": "$vite"
+    }
   }
 }
