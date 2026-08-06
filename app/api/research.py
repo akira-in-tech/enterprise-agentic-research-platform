@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 from collections.abc import AsyncIterator
 from typing import Annotated, cast
 from uuid import UUID
@@ -142,10 +143,22 @@ async def _research_progress_events(
     research_run_id: UUID,
     progress_store: RedisResearchProgressStore,
     poll_interval_seconds: float = 0.25,
+    heartbeat_interval_seconds: float = 8.0,
 ) -> AsyncIterator[str]:
-    """Poll tenant-scoped progress and encode it as SSE frames."""
+    """Poll tenant-scoped progress and encode it as SSE frames.
+
+    A single agent step can legitimately run for a minute or more (a local
+    LLM call), during which nothing changes and this generator would
+    otherwise write no bytes at all. Dev-server proxies and many
+    intermediate proxies drop a streaming connection after some period of
+    silence, which the client then reports as a disconnect even though the
+    run is still healthy server-side. A periodic SSE comment line (ignored
+    by clients, but still bytes on the wire) keeps the connection alive
+    without changing the actual progress payload.
+    """
 
     previous_payload: str | None = None
+    last_sent_at = time.monotonic()
 
     while True:
         try:
@@ -170,10 +183,15 @@ async def _research_progress_events(
             return
 
         payload = record.model_dump_json()
+        now = time.monotonic()
 
         if payload != previous_payload:
             yield f"event: progress\ndata: {payload}\n\n"
             previous_payload = payload
+            last_sent_at = now
+        elif now - last_sent_at >= heartbeat_interval_seconds:
+            yield ": keepalive\n\n"
+            last_sent_at = now
 
         if record.status in {"completed", "failed", "cancelled"}:
             return
