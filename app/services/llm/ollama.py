@@ -15,6 +15,38 @@ StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 # (5xx) -- neither is retried here.
 _RETRYABLE_ERRORS = (httpx.TransportError,)
 
+# Ollama compiles the "format" schema into a GBNF grammar (llama.cpp) for
+# constrained decoding. That compiler cannot parse minLength/maxLength on
+# string fields -- present on every structured-output model in this
+# codebase -- and fails the whole request with a 400 "failed to parse
+# grammar" before any generation happens. Pydantic still enforces these
+# constraints for real once the response comes back
+# (model_validate_json below), so dropping them only from the grammar hint
+# does not weaken validation.
+_UNSUPPORTED_GRAMMAR_KEYWORDS = frozenset({"minLength", "maxLength"})
+
+
+def _strip_unsupported_grammar_keywords(schema: dict[str, Any]) -> dict[str, Any]:
+    """Recursively drop JSON Schema keywords Ollama's grammar compiler rejects."""
+
+    sanitized: dict[str, Any] = {}
+
+    for key, value in schema.items():
+        if key in _UNSUPPORTED_GRAMMAR_KEYWORDS:
+            continue
+
+        if isinstance(value, dict):
+            sanitized[key] = _strip_unsupported_grammar_keywords(value)
+        elif isinstance(value, list):
+            sanitized[key] = [
+                _strip_unsupported_grammar_keywords(item) if isinstance(item, dict) else item
+                for item in value
+            ]
+        else:
+            sanitized[key] = value
+
+    return sanitized
+
 
 class OllamaClient:
     """Provide local LLM access through the Ollama HTTP API."""
@@ -86,6 +118,7 @@ class OllamaClient:
         """Generate JSON and validate it against a Pydantic model."""
 
         schema = output_model.model_json_schema()
+        grammar_schema = _strip_unsupported_grammar_keywords(schema)
 
         structured_prompt = (
             f"{prompt}\n\nReturn only valid JSON matching this JSON schema:\n{json.dumps(schema)}"
@@ -99,7 +132,7 @@ class OllamaClient:
                     "prompt": structured_prompt,
                     "stream": False,
                     "think": False,
-                    "format": schema,
+                    "format": grammar_schema,
                     "options": {
                         "num_predict": max_tokens,
                     },
