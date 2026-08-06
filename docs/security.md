@@ -52,11 +52,22 @@
 
 - **Email verification, password reset, and MFA** — deliberately deferred
   MVP scope for the authentication system above.
-- **SSRF protection for user-provided URLs** — not yet audited/implemented
-  as a dedicated control.
 - **Prompt-injection-aware private document handling** — private documents
   are validated and tenant-isolated, but no dedicated prompt-injection
   mitigation exists on their content before it reaches an LLM.
 
 Report these as open items, not as implemented controls, until each has a
 corresponding test.
+
+## Not applicable today
+
+- **SSRF protection for user-provided URLs** — the charter names this as a
+  target-state control, but no current code path fetches a URL supplied by
+  a tenant or an LLM. Private-document ingestion takes raw uploaded bytes
+  (`app/api/documents.py`), not a URL; public retrieval goes through
+  Tavily's search API by query text (`app/services/search/`), not a
+  direct fetch of a caller-supplied address; the MCP `retrieve_source`
+  tool reads a stored source row by ID from PostgreSQL
+  (`app/services/mcp/tools.py`), it does not fetch anything live. Revisit
+  this control if a feature is added that has the server fetch a
+  caller-supplied URL (e.g. ingest-by-URL).
