@@ -1349,6 +1349,77 @@ button:disabled {
   padding: 42px 0 80px;
 }
 
+.auth-page {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  width: 100%;
+  padding: 48px 24px;
+}
+
+.auth-card {
+  width: min(420px, 100%);
+  padding: 32px;
+  color: var(--ink);
+  background: var(--canvas-strong);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+}
+
+.auth-card h1 {
+  margin: 6px 0 24px;
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 28px;
+}
+
+.auth-form {
+  display: grid;
+  gap: 16px;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 7px;
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.auth-form label small {
+  color: var(--ink-faint);
+  font-weight: 500;
+}
+
+.auth-form input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  color: var(--ink);
+  background: var(--surface-muted);
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  font-size: 14px;
+}
+
+.auth-form .primary-button {
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.auth-switch {
+  margin: 20px 0 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  text-align: center;
+}
+
+.auth-switch a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 .back-button {
   min-height: 44px;
   gap: 7px;

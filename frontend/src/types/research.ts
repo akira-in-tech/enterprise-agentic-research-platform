@@ -36,6 +36,23 @@ export interface WorkspaceContext {
   userId: string;
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  display_name: string | null;
+}
+
+export interface AuthTenant {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+export interface AuthIdentity {
+  user: AuthUser;
+  tenant: AuthTenant;
+}
+
 export type KnowledgeDocumentStatus = "pending" | "indexing" | "ready" | "failed" | "deleting";
 
 export interface KnowledgeDocument {

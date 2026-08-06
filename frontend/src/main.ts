@@ -7,11 +7,17 @@ import { createApp } from "vue";
 
 import App from "./App.vue";
 import router from "./router";
+import { useAuthStore } from "./stores/auth";
 
-createApp(App)
+const app = createApp(App);
+
+app
   .use(createPinia())
   .use(router)
   .use(VueQueryPlugin, {
     queryClientConfig: { defaultOptions: { queries: { retry: false } } },
-  })
-  .mount("#app");
+  });
+
+void useAuthStore().bootstrap();
+
+app.mount("#app");
