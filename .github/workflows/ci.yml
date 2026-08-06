@@ -68,6 +68,9 @@ jobs:
       - name: Audit frontend dependencies
         run: npm audit --audit-level=high
 
+      - name: Lint frontend
+        run: npm run lint
+
       - name: Type-check frontend
         run: npm run typecheck
 
