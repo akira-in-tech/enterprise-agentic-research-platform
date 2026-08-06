@@ -7,6 +7,8 @@ erDiagram
     tenants ||--o{ users : has
     tenants ||--o{ research_runs : owns
     users ||--o{ research_runs : requests
+    users ||--o{ sessions : authenticates
+    tenants ||--o{ sessions : scopes
     research_runs ||--o| research_reports : produces
     research_reports ||--o{ research_sources : cites
     research_runs ||--o{ research_agent_steps : traces
@@ -18,7 +20,8 @@ erDiagram
 
 | Table | Purpose | Added in |
 |---|---|---|
-| `tenants`, `users` | Pre-authentication tenant/user identity | Phase 8 |
+| `tenants`, `users` | Tenant/user identity — `users.password_hash` (Argon2id) and a global `users.email` uniqueness constraint were added alongside `sessions` | Phase 8; extended this session |
+| `sessions` | Durable login sessions: `token_hash` (SHA-256 of the raw cookie value, never stored raw), `expires_at`, nullable `revoked_at` for explicit logout | Added this session |
 | `research_runs` | One durable workflow execution: query, provider, route, status, timestamps | Phase 8 |
 | `research_reports` | One completed report per run (unique on `research_run_id`), with citation/reflection summary columns | Phase 11 |
 | `research_sources` | Scored evidence rows attached to a report | Phase 11 |
@@ -32,15 +35,6 @@ LangGraph's official `AsyncPostgresSaver` also owns four of its own tables
 (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`,
 `checkpoint_migrations`), migrated by the checkpointer itself and
 intentionally excluded from Alembic's schema-drift checks.
-
-### Intentionally not implemented: `sessions`
-
-The charter's target data model includes a `sessions` table for
-authenticated user sessions. It is not implemented: the platform still uses
-pre-authentication `X-Tenant-ID` / `X-User-ID` headers (see the root
-README's Research API section), and a `sessions` table with no
-authentication system to populate it would be unused scaffolding rather
-than a real feature. Add it alongside real authentication, not before.
 
 ## Redis
 

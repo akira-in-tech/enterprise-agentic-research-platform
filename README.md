@@ -47,10 +47,14 @@ Implemented and tested: the MCP server now exposes all seven charter research to
 Implemented and tested: a research_agent_steps table and repository for a durable per-agent-role trace, migrated and live-verified; not yet written to by the live LangGraph execution path
 Implemented and tested: a report-export service storing durable report snapshots through the existing DocumentStorage interface (local filesystem or S3), plus a REST endpoint to trigger and retrieve one
 Implemented and tested: per-request correlation IDs attached to every log line and echoed as a response header
-Implemented and tested: a closed/open/half-open circuit breaker, wired into the Tavily search executor
-Implemented and verified: a PostgreSQL/Redis GitHub Actions integration job running 19 live integration tests against real service containers
+Implemented and tested: a closed/open/half-open circuit breaker, wired into the Tavily search executor, then extended to the Anthropic client and the Milvus vector store
+Implemented and verified: a PostgreSQL/Redis GitHub Actions integration job running live integration tests against real service containers
 Implemented: docs/PROJECT_CHARTER.md plus docs/{architecture,workflow,data-model,deployment,reliability,security,evaluation,trade-offs}.md, all free of company-specific naming
-Next: Vue Router, Pinia, and TanStack Query for the frontend; a Playwright end-to-end suite; wiring research_agent_steps into live execution; CORS; Anthropic/Milvus circuit breakers
+Implemented and tested: Vue Router, Pinia, and TanStack Query for the frontend, plus a Playwright end-to-end suite
+Implemented and tested: an optional CORS allowlist, disabled by default, and Redis idempotency-lock lease renewal for executions that outlive the coordination lock's TTL
+Implemented and tested: GET /research-runs (list) and GET /research-runs/{research_run_id} (single), both tenant-scoped
+Implemented and live verified: real authentication replacing the pre-authentication X-Tenant-ID/X-User-ID headers — Argon2id password hashing, a durable sessions table (the charter's data-model item, previously deliberately deferred), httpOnly session cookies, self-service tenant signup, and matching Login/Register views with router guards on the frontend
+Next: wiring research_agent_steps into live execution; exponential backoff with jitter for provider retries; a reproducible evaluation harness over demo_profiles/engineering/evaluation_cases.jsonl; slimming this README to point at docs/ instead of duplicating it
 ```
 
 Phase 8 completed durable research execution and user-selectable LLM providers:
@@ -295,7 +299,8 @@ explicit opt-in integration check rather than a default-test claim.
 | research_agent_steps schema and repository | SQLAlchemy and Alembic tested; live PostgreSQL upgrade/downgrade/zero-drift and a live tenant/run/step round trip verified; not yet wired into live workflow execution |
 | Report export storage | ResearchReportExportService unit tested over the existing local/S3 DocumentStorage interface; REST endpoint pending |
 | Per-request correlation IDs | Middleware, log-record injection, and header echo unit tested |
-| Circuit breaker | Closed/open/half-open state machine unit tested with a fake clock; wired into the Tavily search executor with a dedicated integration-style unit test; Anthropic and Milvus not yet wired |
+| Circuit breaker | Closed/open/half-open state machine unit tested with a fake clock; wired into the Tavily search executor, the Anthropic client, and the Milvus vector store, each with a dedicated test |
+| Authentication | Email+password registration and login, Argon2id password hashing, a durable sessions table, httpOnly session-cookie middleware, and self-service tenant signup, replacing the pre-authentication X-Tenant-ID/X-User-ID headers; unit, live-Postgres, and Vue/Playwright tested |
 | PostgreSQL/Redis CI integration gate | 19 integration tests run against postgres:17-alpine and redis:8-alpine service containers on every pull request and push to main |
 | Architecture documentation | docs/PROJECT_CHARTER.md and eight supporting documents, cross-referencing actual code paths and explicitly separating implemented from planned |
 | Open-source contribution | Planned |
@@ -310,8 +315,8 @@ production deployments.
 The portfolio MVP application is implemented and tested through Phase 13. That
 does not mean every production concern is finished: the Phase 14 AWS
 application stack has not been applied, AWS private RAG providers are locally
-implemented but not live invoked, and restart recovery, authentication, and
-application deployment remain production-hardening work.
+implemented but not live invoked, and application deployment remains
+production-hardening work.
 
 ### System Architecture
 
@@ -657,7 +662,7 @@ ResearchExecutionService
 ```
 
 Clients can poll `GET /research-runs/{research_run_id}/progress` or consume
-`GET /research-runs/{research_run_id}/events` with the `X-Tenant-ID` header.
+`GET /research-runs/{research_run_id}/events` with a valid session cookie.
 The SSE stream emits changed snapshots and closes after `completed` or `failed`.
 Keys include both the tenant UUID and research-run UUID, so another tenant
 cannot read the snapshot. Progress publishing fails open to preserve durable
@@ -737,13 +742,31 @@ cp .env.example .env
 
 Add only the credentials required for the integrations you intend to run.
 
+## Authentication
+
+The API requires a real session, not a client-supplied identity header.
+`POST /auth/register` creates a new tenant and its first user in one
+transaction (self-service signup — no invite system yet) and returns a
+session cookie; `POST /auth/login` authenticates an existing user the same
+way; `POST /auth/logout` revokes the session; `GET /auth/me` returns the
+current identity. The session cookie is `httpOnly`, `SameSite=Lax`, and
+`Secure` outside development, and is looked up against a durable
+`sessions` table (Argon2id-hashed passwords, SHA-256-hashed session
+tokens, 7-day fixed expiry, no sliding refresh). Every other endpoint
+derives `tenant_id`/`user_id` from that session via the
+`get_current_session` dependency — there is no way to act as a tenant you
+are not authenticated into.
+
+This is a deliberately scoped MVP: no email verification, no
+password-reset flow, no MFA, no multi-tenant-per-email support. See
+[docs/security.md](docs/security.md) for what is and is not implemented.
+
 ## Research API
 
-The synchronous MVP endpoint requires:
+Every endpoint below requires an authenticated session (see
+Authentication) in addition to:
 
 - PostgreSQL with the current Alembic migration applied
-- an existing tenant ID
-- an optional user ID belonging to that tenant
 - the selected provider configuration
 
 The response includes `cache_hit` and `idempotency_replayed`. Redis result
@@ -779,25 +802,30 @@ Start the API:
 uvicorn app.main:app --reload
 ```
 
-Submit a Qwen-backed request:
+Register a tenant (or `/auth/login` if one already exists), keeping the
+session cookie in a cookie jar, then submit a Qwen-backed request:
 
 ```bash
-curl \
+curl -c cookies.txt \
+  -X POST \
+  http://127.0.0.1:8000/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "email": "engineer@example.com",
+    "password": "correct-horse-battery",
+    "tenant_name": "Example Corp"
+  }'
+
+curl -b cookies.txt \
   -X POST \
   http://127.0.0.1:8000/research-runs \
   -H 'Content-Type: application/json' \
-  -H 'X-Tenant-ID: 00000000-0000-0000-0000-000000000000' \
-  -H 'X-User-ID: 00000000-0000-0000-0000-000000000000' \
   -H 'Idempotency-Key: research-request-001' \
   -d '{
     "query": "What is a mutex?",
     "llm_provider": "qwen"
   }'
 ```
-
-The tenant and user headers are an explicit pre-authentication MVP boundary.
-They will be derived from authenticated identity rather than trusted directly
-in a production deployment.
 
 ## Default Verification
 

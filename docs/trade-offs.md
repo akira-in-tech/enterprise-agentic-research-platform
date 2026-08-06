@@ -32,15 +32,16 @@ implement and proxy, reconnect-friendly. It would be the wrong choice for
 high-frequency bidirectional collaboration, which this platform doesn't
 need.
 
-### Circuit breaker scope (this session)
+### Circuit breaker scope
 
 A generic `CircuitBreaker` (`app/core/circuit_breaker.py`) was wired into
-exactly one call site — `SearchExecutor` around Tavily — rather than into
-Anthropic and Milvus at the same time. Tavily has one `search()` entry
-point on the hot path of every deep-research run; Anthropic and Milvus each
-have multiple call sites, and retrofitting them without breaking their
-existing test coverage is real, separate work. Shipping one well-tested
-integration beat shipping three rushed ones.
+`SearchExecutor` around Tavily first, then extended to the Anthropic client
+and the Milvus vector store as separate changes rather than all three at
+once. Tavily has one `search()` entry point on the hot path of every
+deep-research run; Anthropic and Milvus each have multiple call sites, so
+retrofitting them without breaking existing test coverage was real,
+separate work per integration. Shipping one well-tested integration at a
+time beat shipping three rushed ones together.
 
 ### `research_agent_steps`: schema before wiring
 
@@ -53,13 +54,20 @@ than being rushed alongside a schema addition. This mirrors an existing
 pattern in the codebase (e.g. the Bedrock embedding adapter shipped
 unit-tested with live invocation explicitly marked pending).
 
-### `sessions`: charter item deliberately not built
+### Authentication: server-side sessions, not JWT
 
-The charter's data model includes a `sessions` table for authenticated
-user sessions. The platform has no authentication system yet — it uses
-pre-authentication `X-Tenant-ID` / `X-User-ID` headers. A `sessions` table
-with nothing to populate it would be unused scaffolding. It belongs with a
-real authentication feature, not as a bare table added ahead of one.
+The charter's data model names a `sessions` table, which points at
+server-side sessions rather than stateless JWT — that's what got built:
+an opaque, SHA-256-hashed token in an `httpOnly` cookie, resolved against
+PostgreSQL on every request. The trade-off is an extra DB lookup per
+request versus a stateless JWT; the payoff is that logout actually
+revokes the session (a JWT needs a separate blocklist to support real
+logout) and a leaked session row can't be turned back into a usable
+token. Self-service registration always creates a brand-new tenant, which
+made global `email` uniqueness the simpler choice over per-tenant
+uniqueness — without an invite/switcher UI, the same email in two tenants
+would make login ambiguous, and nothing today lets one email join a
+second tenant anyway.
 
 ### Vue: framework choice, not a core dependency
 
