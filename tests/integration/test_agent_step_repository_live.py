@@ -38,6 +38,7 @@ async def test_agent_step_repository_live_round_trip() -> None:
                 user = await UserRepository(session).create(
                     tenant_id=tenant.id,
                     email=f"engineer-{unique_suffix}@acme.example",
+                    password_hash="test-password-hash",
                     display_name="ACME Engineer",
                 )
                 run = await ResearchRunRepository(session).create(

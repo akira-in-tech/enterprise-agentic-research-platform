@@ -1,4 +1,5 @@
 import asyncio
+from datetime import UTC, datetime, timedelta
 from typing import cast
 from unittest.mock import AsyncMock
 from uuid import uuid4
@@ -7,9 +8,12 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models.research import ResearchRun
+from app.db.models.session import Session
+from app.db.models.tenant import User
 from app.db.repositories import (
     ResearchRunRepository,
     ResearchRunTransitionError,
+    SessionRepository,
     TenantRepository,
     UserRepository,
 )
@@ -121,6 +125,7 @@ def test_user_repository_normalizes_identity_fields() -> None:
         repository.create(
             tenant_id=tenant_id,
             email="  Engineer@ACME.COM  ",
+            password_hash="test-password-hash",
             display_name="  Platform Engineer  ",
         )
     )
@@ -162,6 +167,7 @@ def test_user_repository_rejects_invalid_email(
             repository.create(
                 tenant_id=uuid4(),
                 email=email,
+                password_hash="test-password-hash",
             )
         )
 
@@ -399,3 +405,123 @@ def test_research_run_repository_rejects_invalid_failure(
         )
 
     session_mock.scalar.assert_not_awaited()
+
+
+def test_user_repository_finds_by_email() -> None:
+    session, session_mock = create_session_mock()
+    repository = UserRepository(session)
+    user = User(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        email="engineer@acme.example",
+        password_hash="test-password-hash",
+    )
+    session_mock.scalar.return_value = user
+
+    result = asyncio.run(
+        repository.get_by_email(
+            email="  Engineer@ACME.EXAMPLE  ",
+        )
+    )
+
+    assert result is user
+    session_mock.scalar.assert_awaited_once()
+
+
+def test_user_repository_returns_none_for_unknown_email() -> None:
+    session, session_mock = create_session_mock()
+    repository = UserRepository(session)
+    session_mock.scalar.return_value = None
+
+    result = asyncio.run(
+        repository.get_by_email(
+            email="nobody@acme.example",
+        )
+    )
+
+    assert result is None
+
+
+def test_session_repository_creates_and_flushes() -> None:
+    session, session_mock = create_session_mock()
+    repository = SessionRepository(session)
+    user_id = uuid4()
+    tenant_id = uuid4()
+    expires_at = datetime.now(UTC) + timedelta(days=7)
+
+    record = asyncio.run(
+        repository.create(
+            user_id=user_id,
+            tenant_id=tenant_id,
+            token_hash="a" * 64,
+            expires_at=expires_at,
+        )
+    )
+
+    assert record.user_id == user_id
+    assert record.tenant_id == tenant_id
+    assert record.token_hash == "a" * 64
+    assert record.expires_at == expires_at
+
+    session_mock.add.assert_called_once_with(record)
+    session_mock.flush.assert_awaited_once_with()
+
+
+def test_session_repository_finds_by_token_hash() -> None:
+    session, session_mock = create_session_mock()
+    repository = SessionRepository(session)
+    record = Session(
+        id=uuid4(),
+        user_id=uuid4(),
+        tenant_id=uuid4(),
+        token_hash="b" * 64,
+        expires_at=datetime.now(UTC) + timedelta(days=7),
+    )
+    session_mock.scalar.return_value = record
+
+    result = asyncio.run(
+        repository.get_by_token_hash(
+            token_hash="b" * 64,
+        )
+    )
+
+    assert result is record
+
+
+def test_session_repository_revokes_existing_session() -> None:
+    session, session_mock = create_session_mock()
+    repository = SessionRepository(session)
+    record = Session(
+        id=uuid4(),
+        user_id=uuid4(),
+        tenant_id=uuid4(),
+        token_hash="c" * 64,
+        expires_at=datetime.now(UTC) + timedelta(days=7),
+    )
+    session_mock.scalar.return_value = record
+    revoked_at = datetime.now(UTC)
+
+    asyncio.run(
+        repository.revoke(
+            token_hash="c" * 64,
+            revoked_at=revoked_at,
+        )
+    )
+
+    assert record.revoked_at == revoked_at
+    session_mock.flush.assert_awaited_once_with()
+
+
+def test_session_repository_revoke_ignores_unknown_token() -> None:
+    session, session_mock = create_session_mock()
+    repository = SessionRepository(session)
+    session_mock.scalar.return_value = None
+
+    asyncio.run(
+        repository.revoke(
+            token_hash="d" * 64,
+            revoked_at=datetime.now(UTC),
+        )
+    )
+
+    session_mock.flush.assert_not_awaited()

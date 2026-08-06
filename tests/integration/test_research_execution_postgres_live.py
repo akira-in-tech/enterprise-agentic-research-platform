@@ -74,6 +74,7 @@ async def test_research_execution_persists_provider_and_lifecycle() -> None:
             user = await user_repository.create(
                 tenant_id=tenant.id,
                 email=f"engineer-{unique_suffix}@example.com",
+                password_hash="test-password-hash",
                 display_name="Integration Test Engineer",
             )
 

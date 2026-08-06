@@ -60,11 +60,13 @@ async def test_postgres_repositories_live_round_trip() -> None:
                 user_a = await user_repository.create(
                     tenant_id=tenant_a.id,
                     email="engineer@acme.example",
+                    password_hash="test-password-hash",
                     display_name="ACME Engineer",
                 )
                 user_b = await user_repository.create(
                     tenant_id=tenant_b.id,
                     email="engineer@cloud.example",
+                    password_hash="test-password-hash",
                     display_name="Cloud Engineer",
                 )
 

@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import Tenant, User
@@ -72,6 +73,7 @@ class UserRepository:
         *,
         tenant_id: UUID,
         email: str,
+        password_hash: str,
         display_name: str | None = None,
     ) -> User:
         """Create a tenant user without committing its transaction."""
@@ -93,6 +95,7 @@ class UserRepository:
         user = User(
             tenant_id=tenant_id,
             email=normalized_email,
+            password_hash=password_hash,
             display_name=normalized_display_name,
         )
 
@@ -100,3 +103,18 @@ class UserRepository:
         await self._session.flush()
 
         return user
+
+    async def get_by_email(
+        self,
+        *,
+        email: str,
+    ) -> User | None:
+        """Return the user with this email, if any."""
+
+        normalized_email = email.strip().lower()
+
+        statement = select(User).where(User.email == normalized_email)
+
+        result = await self._session.scalar(statement)
+
+        return result

@@ -52,6 +52,7 @@ async def create_test_identity() -> tuple[
             user = await user_repository.create(
                 tenant_id=tenant.id,
                 email=f"api-{unique_suffix}@example.com",
+                password_hash="test-password-hash",
                 display_name="API Integration Engineer",
             )
 

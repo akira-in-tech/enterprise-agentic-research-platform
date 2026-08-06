@@ -102,6 +102,7 @@ async def test_job_manager_delivers_progress_and_durable_report() -> None:
             user = await UserRepository(session).create(
                 tenant_id=tenant.id,
                 email=f"async-{suffix}@example.com",
+                password_hash="test-password-hash",
                 display_name="Async Integration User",
             )
             tenant_id = tenant.id

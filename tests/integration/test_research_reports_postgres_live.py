@@ -87,6 +87,7 @@ async def test_completed_research_persists_tenant_scoped_report_and_sources() ->
             user = await UserRepository(session).create(
                 tenant_id=tenant.id,
                 email=f"report-{suffix}@example.com",
+                password_hash="test-password-hash",
                 display_name="Report Integration User",
             )
             tenant_id = tenant.id

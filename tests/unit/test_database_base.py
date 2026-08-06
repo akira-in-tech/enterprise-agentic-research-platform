@@ -19,6 +19,7 @@ def test_database_base_exposes_registered_metadata() -> None:
         "research_runs",
         "research_sources",
         "research_worker_leases",
+        "sessions",
         "tenants",
         "users",
     }
