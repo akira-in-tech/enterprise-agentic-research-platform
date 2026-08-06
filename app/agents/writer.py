@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from app.agents.prompting import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted_content
 from app.schemas.evidence import EvidenceScore, EvidenceSource, ReflectionDecision
 from app.schemas.planner import ResearchPlan
 from app.schemas.workflow import ResearchAnalysis
@@ -38,7 +39,7 @@ class WriterAgent:
                         f"TITLE: {source.title}",
                         f"LOCATOR: {source.locator}",
                         f"QUALITY_SCORE: {overall:.4f}",
-                        f"CONTENT: {source.content[:4_000]}",
+                        f"CONTENT: {wrap_untrusted_content(source.content[:4_000])}",
                     ]
                 )
             )
@@ -67,6 +68,7 @@ class WriterAgent:
 
         prompt = (
             "You are the Writer in an evidence-backed research system.\n"
+            f"{UNTRUSTED_CONTENT_NOTICE}\n\n"
             f"Research question: {query}\n\n"
             f"Approved analysis: {analysis.summary}\n"
             f"Approved findings:\n{findings or 'NO APPROVED FINDINGS'}\n\n"

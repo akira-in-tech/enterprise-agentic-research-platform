@@ -238,6 +238,8 @@ async def test_analyst_returns_source_bound_structured_findings() -> None:
     )
 
     assert result == analysis
+    assert "untrusted retrieved data" in llm.prompts[0]
+    assert "<<<UNTRUSTED_SOURCE_CONTENT_START>>>" in llm.prompts[0]
 
 
 @pytest.mark.anyio
@@ -319,3 +321,5 @@ async def test_writer_uses_approved_analysis_and_source_ids() -> None:
 
     assert report.endswith("[WEB-0123456789ABCDEF]")
     assert "Approved findings" in llm.prompts[0]
+    assert "untrusted retrieved data" in llm.prompts[0]
+    assert "<<<UNTRUSTED_SOURCE_CONTENT_START>>>" in llm.prompts[0]

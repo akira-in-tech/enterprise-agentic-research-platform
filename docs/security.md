@@ -47,14 +47,24 @@
 - **No raw credentials in logs** — provider clients keep SDK types and
   secrets behind application interfaces; the correlation-ID log filter
   only ever injects a UUID or a validated, printable client-supplied ID.
+- **Prompt-injection-aware evidence handling** — every evidence `CONTENT`
+  field the Analyst and Writer agents interpolate into an LLM prompt (web,
+  private-document, and MCP origin alike) is delimited by
+  `wrap_untrusted_content` (`app/agents/prompting.py`) and preceded by an
+  explicit notice that delimited content is untrusted data, not
+  instructions, before it reaches an LLM
+  (`app/agents/analyst.py`, `app/agents/writer.py`). The wrapper also
+  strips any literal delimiter sequence already present in retrieved
+  content first, so a malicious source cannot forge a fake boundary to
+  smuggle text the model would read as trusted. This is a mitigation
+  (prompt-level delimiting/"spotlighting"), not a guarantee that no LLM
+  can ever be misled by adversarial content — there is no dedicated
+  claim-level audit for it beyond the existing citation validator.
 
 ## Not yet implemented
 
 - **Email verification, password reset, and MFA** — deliberately deferred
   MVP scope for the authentication system above.
-- **Prompt-injection-aware private document handling** — private documents
-  are validated and tenant-isolated, but no dedicated prompt-injection
-  mitigation exists on their content before it reaches an LLM.
 
 Report these as open items, not as implemented controls, until each has a
 corresponding test.

@@ -78,6 +78,8 @@ async def test_analyst_prompt_requires_canonical_citations() -> None:
     assert report.endswith("[WEB-0123456789ABCDEF]")
     assert "Use only SOURCE_ID values shown above" in llm.prompts[0]
     assert "QUALITY_SCORE: 0.7750" in llm.prompts[0]
+    assert "untrusted retrieved data" in llm.prompts[0]
+    assert "<<<UNTRUSTED_SOURCE_CONTENT_START>>>\nHTTP/3 uses QUIC." in llm.prompts[0]
 
 
 def test_reflection_approves_sufficient_valid_evidence() -> None:

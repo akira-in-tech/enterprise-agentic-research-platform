@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from app.agents.prompting import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted_content
 from app.schemas.evidence import EvidenceScore, EvidenceSource, ReflectionDecision
 from app.schemas.planner import ResearchPlan
 from app.schemas.workflow import ResearchAnalysis
@@ -25,6 +26,7 @@ class AnalystAgent:
         evidence = [
             {
                 **source.model_dump(),
+                "content": wrap_untrusted_content(source.content),
                 "quality": score_by_source.get(source.source_id),
             }
             for source in sources
@@ -34,6 +36,7 @@ class AnalystAgent:
             "Produce structured conclusions, not a final report. Every finding must "
             "reference one or more supplied source IDs. Mark needs_more_research when "
             "material questions remain unresolved. Never invent facts or source IDs.\n\n"
+            f"{UNTRUSTED_CONTENT_NOTICE}\n\n"
             f"Research question: {query}\n"
             f"Evidence: {evidence}"
         )
@@ -80,7 +83,7 @@ class AnalystAgent:
                         f"TITLE: {source.title}",
                         f"LOCATOR: {source.locator}",
                         f"QUALITY_SCORE: {overall:.4f}",
-                        f"CONTENT: {source.content[:4_000]}",
+                        f"CONTENT: {wrap_untrusted_content(source.content[:4_000])}",
                     ]
                 )
             )
@@ -105,6 +108,7 @@ class AnalystAgent:
 
         prompt = (
             "You are the analyst in an evidence-backed research system.\n"
+            f"{UNTRUSTED_CONTENT_NOTICE}\n\n"
             f"Research question: {query}\n\n"
             f"Required outline:\n{outline}\n\n"
             f"Evidence:\n{evidence}\n\n"
