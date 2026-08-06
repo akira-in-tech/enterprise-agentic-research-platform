@@ -6,6 +6,7 @@ from app.agents.reflection import ReflectionAgent
 from app.schemas.evidence import CitationAudit, EvidenceScore, EvidenceSource, ReflectionDecision
 from app.schemas.intent import IntentDecision
 from app.schemas.planner import ReportSection, ResearchPlan, ResearchTask
+from app.schemas.progress import ResearchProgressRecord
 from app.services.evidence import CitationValidator
 from app.services.research.execution import LangGraphResearchWorkflow, ResearchExecutionService
 from app.workflow.graph import build_eight_agent_research_graph
@@ -184,6 +185,40 @@ class FailingAgentStepStore:
         raise RuntimeError("Postgres is unavailable.")
 
 
+class RecordingAgentStepStore:
+    """Record every appended step without touching a real database."""
+
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str]] = []
+
+    async def append(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        sequence: int,
+        agent_role: str,
+        status: str,
+        summary: str | None = None,
+    ) -> None:
+        self.calls.append((agent_role, status))
+
+
+class RecordingResearchProgressStore:
+    """Record every published progress snapshot without touching Redis."""
+
+    def __init__(self) -> None:
+        self.calls: list[ResearchProgressRecord] = []
+
+    async def set(
+        self,
+        *,
+        tenant_id: UUID,
+        record: ResearchProgressRecord,
+    ) -> None:
+        self.calls.append(record)
+
+
 class RecordingResearchRunStoreForSteps:
     def __init__(self) -> None:
         self.research_run_id = uuid4()
@@ -243,3 +278,32 @@ async def test_execution_service_survives_a_failing_agent_step_store() -> None:
     )
 
     assert result.state["answer"] == "Direct: Explain idempotency."
+
+
+@pytest.mark.anyio
+async def test_step_start_publishes_live_progress_with_the_node_name() -> None:
+    store = RecordingResearchRunStoreForSteps()
+    progress_store = RecordingResearchProgressStore()
+    workflow = build_direct_route_workflow()
+    service = ResearchExecutionService(
+        store,
+        lambda _: workflow,
+        agent_step_store=RecordingAgentStepStore(),
+        progress_store=progress_store,
+    )
+
+    await service.execute(
+        tenant_id=uuid4(),
+        query="Explain idempotency.",
+        llm_provider="qwen",
+    )
+
+    workflow_statuses = [record.workflow_status for record in progress_store.calls]
+    assert workflow_statuses == [
+        None,  # queued
+        None,  # running (published before the workflow starts)
+        "intent_router",  # intent_router started
+        "direct_answer",  # direct_answer started
+        "direct_answer_completed",  # completed, from the final state
+    ]
+    assert all(record.status == "running" for record in progress_store.calls[2:4])

@@ -596,6 +596,26 @@ class ResearchExecutionService:
                     exc_info=True,
                 )
 
+            if status != "started":
+                return
+
+            try:
+                await self._publish_progress(
+                    tenant_id=tenant_id,
+                    research_run_id=research_run_id,
+                    status="running",
+                    message=f"Running {agent_role.replace('_', ' ')}.",
+                    workflow_status=agent_role,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to publish live progress for tenant %s run %s (role=%s).",
+                    tenant_id,
+                    research_run_id,
+                    agent_role,
+                    exc_info=True,
+                )
+
         return record
 
     async def _publish_progress(
