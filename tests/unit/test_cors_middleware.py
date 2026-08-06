@@ -28,7 +28,7 @@ def build_cors_app(origins_env: str) -> FastAPI:
         app.add_middleware(
             CORSMiddleware,
             allow_origins=allowed_origins,
-            allow_credentials=False,
+            allow_credentials=True,
             allow_methods=["*"],
             allow_headers=["*"],
             expose_headers=["X-Correlation-ID"],
@@ -46,6 +46,19 @@ def test_configured_origin_receives_cors_headers() -> None:
     )
 
     assert response.headers["access-control-allow-origin"] == "https://console.example.com"
+
+
+def test_configured_origin_allows_credentialed_requests() -> None:
+    """Session cookies require allow_credentials, which forbids a wildcard origin."""
+
+    client = TestClient(build_cors_app("https://console.example.com"))
+
+    response = client.get(
+        "/probe",
+        headers={"Origin": "https://console.example.com"},
+    )
+
+    assert response.headers["access-control-allow-credentials"] == "true"
 
 
 def test_unlisted_origin_receives_no_cors_headers() -> None:

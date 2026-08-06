@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.agents.local_scout import LocalScoutAgent
+from app.api.auth import router as auth_router
 from app.api.documents import router as documents_router
 from app.api.operations import router as operations_router
 from app.api.research import router as research_router
@@ -17,6 +18,7 @@ from app.db.session import (
     create_database_engine,
     create_session_factory,
 )
+from app.services.auth import AuthService
 from app.services.cache import (
     RedisConnection,
     RedisResearchIdempotencyLockManager,
@@ -104,6 +106,11 @@ async def lifespan(
             vector_store,
             max_upload_bytes=settings.document_max_upload_bytes,
         )
+        application.state.auth_service = AuthService(
+            session_factory,
+            session_ttl_seconds=settings.session_ttl_seconds,
+        )
+
         research_store = PostgresResearchRunStore(
             session_factory,
         )
@@ -189,7 +196,7 @@ if cors_allowed_origins:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=cors_allowed_origins,
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
         expose_headers=[
@@ -200,6 +207,9 @@ if cors_allowed_origins:
         ],
     )
 
+app.include_router(
+    auth_router,
+)
 app.include_router(
     research_router,
 )

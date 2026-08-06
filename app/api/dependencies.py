@@ -1,7 +1,9 @@
-from typing import cast
+from typing import Annotated, cast
 
-from fastapi import Request
+from fastapi import Depends, HTTPException, Request, status
 
+from app.core.config import settings
+from app.services.auth import AuthService, ResolvedSession
 from app.services.cache import RedisResearchProgressStore, RedisResearchRateLimiter
 from app.services.knowledge import KnowledgeDocumentService
 from app.services.readiness import ApplicationReadinessService
@@ -121,3 +123,35 @@ def get_readiness_service(request: Request) -> ApplicationReadinessService:
     except AttributeError as error:
         raise RuntimeError("Readiness service is not initialized.") from error
     return cast(ApplicationReadinessService, service)
+
+
+def get_auth_service(
+    request: Request,
+) -> AuthService:
+    """Return the application-scoped authentication service."""
+
+    try:
+        service = request.app.state.auth_service
+    except AttributeError as error:
+        raise RuntimeError("Auth service is not initialized.") from error
+
+    return cast(AuthService, service)
+
+
+async def get_current_session(
+    request: Request,
+    auth_service: Annotated[AuthService, Depends(get_auth_service)],
+) -> ResolvedSession:
+    """Resolve the caller's session cookie into a tenant user, or reject the request."""
+
+    token = request.cookies.get(settings.session_cookie_name)
+
+    if not token:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
+
+    resolved_session = await auth_service.resolve_session(token=token)
+
+    if resolved_session is None:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
+
+    return resolved_session

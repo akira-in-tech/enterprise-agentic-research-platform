@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     api_port: int = 8000
     cors_allowed_origins: str = ""
 
+    session_cookie_name: str = "session_token"
+    session_ttl_seconds: int = Field(
+        default=60 * 60 * 24 * 7,
+        ge=60,
+        le=60 * 60 * 24 * 90,
+    )
+
     document_storage_root: str = "uploads"
     document_storage_provider: Literal["local", "s3"] = "local"
     document_s3_bucket: str = ""
