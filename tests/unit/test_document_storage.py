@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from app.services.storage import LocalDocumentStorage
+from app.services.storage import DocumentNotFoundError, LocalDocumentStorage
 
 
 @pytest.mark.anyio
@@ -20,6 +20,14 @@ async def test_local_document_storage_round_trip_is_private(tmp_path: Path) -> N
     await storage.delete(key=key)
 
     assert not stored_path.exists()
+
+
+@pytest.mark.anyio
+async def test_local_document_storage_get_raises_not_found(tmp_path: Path) -> None:
+    storage = LocalDocumentStorage(tmp_path)
+
+    with pytest.raises(DocumentNotFoundError):
+        await storage.get(key="tenants/example/documents/missing/source.md")
 
 
 @pytest.mark.parametrize(

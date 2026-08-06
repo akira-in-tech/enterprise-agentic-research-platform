@@ -62,6 +62,7 @@ tenants/{tenant_id}/report-exports/{research_run_id}/report.md — report export
 
 Report exports (`app/services/research/exports.py`) are immutable snapshots
 of an already-persisted report, distinct from the live `research_reports`
-database row — useful for sharing or download outside the API. As of this
-writing the export service is implemented and tested; the REST endpoint to
-trigger an export is pending (see the root README's current status).
+database row — useful for sharing or download outside the API. `POST
+/research-runs/{run_id}/report/export` writes a snapshot and `GET
+/research-runs/{run_id}/report/export` downloads it as Markdown (see the
+root README's Research API section).

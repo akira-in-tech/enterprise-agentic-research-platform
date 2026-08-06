@@ -7,6 +7,7 @@ from app.services.auth import AuthService, ResolvedSession
 from app.services.cache import RedisResearchProgressStore, RedisResearchRateLimiter
 from app.services.knowledge import KnowledgeDocumentService
 from app.services.readiness import ApplicationReadinessService
+from app.services.research.exports import ResearchReportExportService
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
 )
@@ -74,6 +75,19 @@ def get_research_report_store(
         raise RuntimeError("Research report store is not initialized.") from error
 
     return cast(PostgresResearchReportStore, report_store)
+
+
+def get_research_report_export_service(
+    request: Request,
+) -> ResearchReportExportService:
+    """Return the application-scoped report export service."""
+
+    try:
+        export_service = request.app.state.research_report_export_service
+    except AttributeError as error:
+        raise RuntimeError("Research report export service is not initialized.") from error
+
+    return cast(ResearchReportExportService, export_service)
 
 
 def get_research_run_store(

@@ -38,6 +38,7 @@ from app.services.research.execution import (
     ResearchExecutionService,
     create_default_workflow,
 )
+from app.services.research.exports import ResearchReportExportService
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
 )
@@ -106,6 +107,9 @@ async def lifespan(
             KnowledgeIndexer(embedding_client, vector_store),
             vector_store,
             max_upload_bytes=settings.document_max_upload_bytes,
+        )
+        application.state.research_report_export_service = ResearchReportExportService(
+            document_storage,
         )
         application.state.auth_service = AuthService(
             session_factory,

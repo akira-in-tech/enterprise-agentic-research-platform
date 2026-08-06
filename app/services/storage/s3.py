@@ -3,9 +3,10 @@ from typing import Protocol, cast
 
 import boto3  # type: ignore[import-untyped]
 from botocore.config import Config  # type: ignore[import-untyped]
+from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 
 from app.core.config import settings
-from app.services.storage.base import DocumentStorageError
+from app.services.storage.base import DocumentNotFoundError, DocumentStorageError
 
 
 class S3ResponseBody(Protocol):
@@ -94,6 +95,11 @@ class S3DocumentStorage:
                 return await asyncio.to_thread(stream.read)
             finally:
                 stream.close()
+        except ClientError as error:
+            error_code = error.response.get("Error", {}).get("Code")
+            if error_code in {"NoSuchKey", "404"}:
+                raise DocumentNotFoundError("The private document was not found.") from error
+            raise DocumentStorageError("Could not read the private document.") from error
         except Exception as error:
             raise DocumentStorageError("Could not read the private document.") from error
 

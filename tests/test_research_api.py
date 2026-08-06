@@ -12,6 +12,7 @@ from app.api.dependencies import (
     get_research_job_manager,
     get_research_progress_store,
     get_research_rate_limiter,
+    get_research_report_export_service,
     get_research_report_store,
     get_research_run_store,
 )
@@ -34,6 +35,7 @@ from app.services.research.idempotency import (
     ResearchIdempotencyInProgressError,
     ResearchIdempotencyUnavailableError,
 )
+from app.services.storage import DocumentNotFoundError, DocumentStorageError
 from app.workflow.state import ResearchState
 
 
@@ -239,6 +241,52 @@ class FakeResearchReportStore:
         return list(self.report.sources)
 
 
+class FakeResearchReportExportService:
+    def __init__(
+        self,
+        *,
+        storage_key: str = "tenants/example/report-exports/example/report.md",
+        content: str = "# Exported report",
+        export_error: Exception | None = None,
+        retrieve_error: Exception | None = None,
+    ) -> None:
+        self.storage_key = storage_key
+        self.content = content
+        self.export_error = export_error
+        self.retrieve_error = retrieve_error
+        self.export_calls: list[dict[str, object]] = []
+        self.retrieve_calls: list[tuple[UUID, UUID]] = []
+
+    async def export(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        content: str,
+    ) -> str:
+        self.export_calls.append(
+            {
+                "tenant_id": tenant_id,
+                "research_run_id": research_run_id,
+                "content": content,
+            }
+        )
+        if self.export_error is not None:
+            raise self.export_error
+        return self.storage_key
+
+    async def retrieve(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> str:
+        self.retrieve_calls.append((tenant_id, research_run_id))
+        if self.retrieve_error is not None:
+            raise self.retrieve_error
+        return self.content
+
+
 def override_current_session(
     *,
     tenant_id: UUID | None = None,
@@ -394,6 +442,169 @@ def test_get_research_report_returns_not_found() -> None:
 
     assert response.status_code == 404
     assert response.json() == {"detail": "Research report was not found."}
+
+
+def test_export_research_report_is_tenant_scoped() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    report = ResearchReportResponse(
+        report_id=uuid4(),
+        research_run_id=research_run_id,
+        content="Durable report.",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        created_at=datetime.now(UTC),
+        sources=[],
+    )
+    report_store = FakeResearchReportStore(report)
+    export_service = FakeResearchReportExportService(
+        storage_key=f"tenants/{tenant_id}/report-exports/{research_run_id}/report.md",
+    )
+    app.dependency_overrides[get_research_report_store] = lambda: report_store
+    app.dependency_overrides[get_research_report_export_service] = lambda: export_service
+    override_current_session(tenant_id=tenant_id)
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/research-runs/{research_run_id}/report/export",
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    assert response.json() == {
+        "storage_key": f"tenants/{tenant_id}/report-exports/{research_run_id}/report.md",
+    }
+    assert report_store.calls == [(tenant_id, research_run_id)]
+    assert export_service.export_calls == [
+        {
+            "tenant_id": tenant_id,
+            "research_run_id": research_run_id,
+            "content": "Durable report.",
+        }
+    ]
+
+
+def test_export_research_report_returns_not_found_without_report() -> None:
+    report_store = FakeResearchReportStore()
+    export_service = FakeResearchReportExportService()
+    app.dependency_overrides[get_research_report_store] = lambda: report_store
+    app.dependency_overrides[get_research_report_export_service] = lambda: export_service
+    override_current_session()
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/research-runs/{uuid4()}/report/export",
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Research report was not found."}
+    assert export_service.export_calls == []
+
+
+def test_export_research_report_returns_service_unavailable() -> None:
+    report = ResearchReportResponse(
+        report_id=uuid4(),
+        research_run_id=uuid4(),
+        content="Durable report.",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        created_at=datetime.now(UTC),
+        sources=[],
+    )
+    report_store = FakeResearchReportStore(report)
+    export_service = FakeResearchReportExportService(
+        export_error=DocumentStorageError("Could not store the private document."),
+    )
+    app.dependency_overrides[get_research_report_store] = lambda: report_store
+    app.dependency_overrides[get_research_report_export_service] = lambda: export_service
+    override_current_session()
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/research-runs/{uuid4()}/report/export",
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Report export storage is temporarily unavailable."}
+
+
+def test_download_research_report_export_is_tenant_scoped() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    export_service = FakeResearchReportExportService(content="# Exported report\n\nBody.")
+    app.dependency_overrides[get_research_report_export_service] = lambda: export_service
+    override_current_session(tenant_id=tenant_id)
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{research_run_id}/report/export",
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.text == "# Exported report\n\nBody."
+    assert response.headers["content-type"].startswith("text/markdown")
+    assert (
+        response.headers["content-disposition"]
+        == f'attachment; filename="report-{research_run_id}.md"'
+    )
+    assert export_service.retrieve_calls == [(tenant_id, research_run_id)]
+
+
+def test_download_research_report_export_returns_not_found() -> None:
+    export_service = FakeResearchReportExportService(
+        retrieve_error=DocumentNotFoundError("The private document was not found."),
+    )
+    app.dependency_overrides[get_research_report_export_service] = lambda: export_service
+    override_current_session()
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{uuid4()}/report/export",
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Report export was not found."}
+
+
+def test_download_research_report_export_returns_service_unavailable() -> None:
+    export_service = FakeResearchReportExportService(
+        retrieve_error=DocumentStorageError("Could not read the private document."),
+    )
+    app.dependency_overrides[get_research_report_export_service] = lambda: export_service
+    override_current_session()
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{uuid4()}/report/export",
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Report export storage is temporarily unavailable."}
 
 
 def test_list_research_sources_is_tenant_scoped() -> None:

@@ -1,6 +1,7 @@
 import pytest
+from botocore.exceptions import ClientError  # type: ignore[import-untyped]
 
-from app.services.storage import DocumentStorageError, S3DocumentStorage
+from app.services.storage import DocumentNotFoundError, DocumentStorageError, S3DocumentStorage
 
 
 class RecordingS3Body:
@@ -84,6 +85,44 @@ async def test_s3_document_storage_wraps_client_failures() -> None:
 
     with pytest.raises(DocumentStorageError, match="Could not store"):
         await storage.put(key="tenants/t1/source.pdf", content=b"content")
+
+
+@pytest.mark.anyio
+async def test_s3_document_storage_get_raises_not_found_for_missing_key() -> None:
+    class MissingKeyS3Client(RecordingS3Client):
+        def get_object(self, **kwargs: object) -> dict[str, object]:
+            raise ClientError(
+                {"Error": {"Code": "NoSuchKey", "Message": "The specified key does not exist."}},
+                "GetObject",
+            )
+
+    storage = S3DocumentStorage(
+        "evident-private-documents",
+        client=MissingKeyS3Client(),
+    )
+
+    with pytest.raises(DocumentNotFoundError):
+        await storage.get(key="tenants/t1/report-exports/missing/report.md")
+
+
+@pytest.mark.anyio
+async def test_s3_document_storage_get_wraps_other_client_errors() -> None:
+    class DeniedS3Client(RecordingS3Client):
+        def get_object(self, **kwargs: object) -> dict[str, object]:
+            raise ClientError(
+                {"Error": {"Code": "AccessDenied", "Message": "Access Denied."}},
+                "GetObject",
+            )
+
+    storage = S3DocumentStorage(
+        "evident-private-documents",
+        client=DeniedS3Client(),
+    )
+
+    with pytest.raises(DocumentStorageError) as excinfo:
+        await storage.get(key="tenants/t1/report-exports/blocked/report.md")
+
+    assert not isinstance(excinfo.value, DocumentNotFoundError)
 
 
 def test_s3_document_storage_requires_bucket() -> None:

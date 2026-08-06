@@ -152,6 +152,7 @@ jobs:
             tests/integration/test_research_idempotency_concurrency_live.py \
             tests/integration/test_research_job_delivery_live.py \
             tests/integration/test_research_progress_redis_live.py \
+            tests/integration/test_research_report_export_live.py \
             tests/integration/test_research_reports_postgres_live.py
 
   terraform:

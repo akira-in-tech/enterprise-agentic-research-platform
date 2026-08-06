@@ -21,13 +21,18 @@ from app.api.dependencies import (
     get_research_job_manager,
     get_research_progress_store,
     get_research_rate_limiter,
+    get_research_report_export_service,
     get_research_report_store,
     get_research_run_store,
 )
 from app.db.models import ResearchRun
 from app.schemas.intent import ResearchRoute
 from app.schemas.progress import ResearchProgressRecord
-from app.schemas.report import ResearchReportResponse, ResearchReportSourceResponse
+from app.schemas.report import (
+    ResearchReportExportResponse,
+    ResearchReportResponse,
+    ResearchReportSourceResponse,
+)
 from app.schemas.research import (
     CancelResearchRunResponse,
     CreateResearchJobResponse,
@@ -46,6 +51,7 @@ from app.services.cache import (
     ResearchRateLimitDecision,
     ResearchRateLimitUnavailableError,
 )
+from app.services.research.exports import ResearchReportExportService
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
     ResearchIdempotencyConflictError,
@@ -55,6 +61,7 @@ from app.services.research.idempotency import (
 from app.services.research.jobs import ResearchJobManager
 from app.services.research.postgres import PostgresResearchRunStore
 from app.services.research.reports import PostgresResearchReportStore
+from app.services.storage import DocumentNotFoundError, DocumentStorageError
 
 router = APIRouter(
     prefix="/research-runs",
@@ -262,6 +269,87 @@ async def get_research_run_report(
         )
 
     return report
+
+
+@router.post(
+    "/{research_run_id}/report/export",
+    response_model=ResearchReportExportResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def export_research_run_report(
+    research_run_id: UUID,
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
+    report_store: Annotated[
+        PostgresResearchReportStore,
+        Depends(get_research_report_store),
+    ],
+    export_service: Annotated[
+        ResearchReportExportService,
+        Depends(get_research_report_export_service),
+    ],
+) -> ResearchReportExportResponse:
+    """Store an immutable object-storage snapshot of one durable report."""
+
+    report = await report_store.get(
+        tenant_id=current_session.tenant_id,
+        research_run_id=research_run_id,
+    )
+
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research report was not found.",
+        )
+
+    try:
+        storage_key = await export_service.export(
+            tenant_id=current_session.tenant_id,
+            research_run_id=research_run_id,
+            content=report.content,
+        )
+    except DocumentStorageError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Report export storage is temporarily unavailable.",
+        ) from error
+
+    return ResearchReportExportResponse(storage_key=storage_key)
+
+
+@router.get("/{research_run_id}/report/export")
+async def download_research_run_report_export(
+    research_run_id: UUID,
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
+    export_service: Annotated[
+        ResearchReportExportService,
+        Depends(get_research_report_export_service),
+    ],
+) -> Response:
+    """Download one previously exported report snapshot as Markdown."""
+
+    try:
+        content = await export_service.retrieve(
+            tenant_id=current_session.tenant_id,
+            research_run_id=research_run_id,
+        )
+    except DocumentNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report export was not found.",
+        ) from error
+    except DocumentStorageError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Report export storage is temporarily unavailable.",
+        ) from error
+
+    return Response(
+        content=content,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="report-{research_run_id}.md"',
+        },
+    )
 
 
 @router.get(

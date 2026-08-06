@@ -163,7 +163,7 @@ this log used to spell out inline.
 | High-risk domain human review | Intent Router detection and ReflectionAgent human_review_required/reason unit tested; surfaced on the synchronous research-run API response |
 | Full MCP research tool set | search_web, search_private_documents, retrieve_source, ingest_document, save_research_report, and get_research_history unit tested against real repositories/services with mocked sessions; request_human_review unit tested against the durability audit-event repository |
 | research_agent_steps schema, repository, and live execution wiring | SQLAlchemy and Alembic tested; live PostgreSQL upgrade/downgrade/zero-drift and a live tenant/run/step round trip verified; wired into live workflow execution via LangGraph's astream, unit tested against a real graph (ordering, final-state equivalence, failure attribution) and live-Postgres and real-Ollama integration tested |
-| Report export storage | ResearchReportExportService unit tested over the existing local/S3 DocumentStorage interface; REST endpoint pending |
+| Report export storage and REST endpoint | ResearchReportExportService unit tested over the existing local/S3 DocumentStorage interface (including a not-found/other-failure distinction for both backends); tenant-scoped `POST`/`GET /research-runs/{id}/report/export` unit tested with mocked dependencies and live-Postgres/live-filesystem integration tested |
 | Per-request correlation IDs | Middleware, log-record injection, and header echo unit tested |
 | Circuit breaker | Closed/open/half-open state machine unit tested with a fake clock; wired into the Tavily search executor, the Anthropic client, and the Milvus vector store, each with a dedicated test |
 | Exponential backoff with jitter | Full-jitter retry helper unit tested (delay calculation, capping, exhaustion, non-retryable passthrough); wired around Ollama, Tavily, and Milvus search's actual connectivity-level exceptions, each with a dedicated retry test |
@@ -348,12 +348,15 @@ consuming SSE events, and reading the completed durable report.
 Additional operational contracts are:
 
 ```text
-GET /research-runs                   → tenant-scoped recent-run history
-GET /research-runs/{run_id}          → one run's durable lifecycle state
-GET /research-runs/{run_id}/sources  → tenant-scoped scored evidence
-GET /providers                       → Claude/Qwen capability metadata
-GET /health                          → process liveness only
-GET /ready                           → required PostgreSQL and Redis readiness
+GET  /research-runs                        → tenant-scoped recent-run history
+GET  /research-runs/{run_id}               → one run's durable lifecycle state
+GET  /research-runs/{run_id}/report        → durable report content and citations
+POST /research-runs/{run_id}/report/export → snapshot the report to object storage
+GET  /research-runs/{run_id}/report/export → download a previously exported snapshot
+GET  /research-runs/{run_id}/sources       → tenant-scoped scored evidence
+GET  /providers                            → Claude/Qwen capability metadata
+GET  /health                               → process liveness only
+GET  /ready                                → required PostgreSQL and Redis readiness
 ```
 
 `/ready` returns `503` without leaking dependency errors when either required
@@ -552,6 +555,7 @@ DATABASE_URL=postgresql+asyncpg://research_user:change_me@localhost:5433/researc
 RUN_LIVE_TESTS=true \
 pytest -q -m integration \
   tests/integration/test_research_execution_postgres_live.py \
+  tests/integration/test_research_report_export_live.py \
   tests/integration/test_research_reports_postgres_live.py
 ```
 

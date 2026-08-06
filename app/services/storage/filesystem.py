@@ -3,7 +3,7 @@ import os
 import tempfile
 from pathlib import Path, PurePosixPath
 
-from app.services.storage.base import DocumentStorageError
+from app.services.storage.base import DocumentNotFoundError, DocumentStorageError
 
 
 class LocalDocumentStorage:
@@ -32,6 +32,8 @@ class LocalDocumentStorage:
 
         try:
             return await asyncio.to_thread(path.read_bytes)
+        except FileNotFoundError as error:
+            raise DocumentNotFoundError("The private document was not found.") from error
         except OSError as error:
             raise DocumentStorageError("Could not read the private document.") from error
 

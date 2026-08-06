@@ -19,3 +19,7 @@ class DocumentStorage(Protocol):
 
 class DocumentStorageError(RuntimeError):
     """Represent an unavailable or failed source-document store."""
+
+
+class DocumentNotFoundError(DocumentStorageError):
+    """Represent a read for a source-document key that does not exist."""

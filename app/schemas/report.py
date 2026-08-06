@@ -36,3 +36,9 @@ class ResearchReportResponse(BaseModel):
     reflection_attempts: int = Field(ge=1)
     created_at: datetime
     sources: list[ResearchReportSourceResponse]
+
+
+class ResearchReportExportResponse(BaseModel):
+    """Represent one exported report snapshot's durable storage location."""
+
+    storage_key: str
