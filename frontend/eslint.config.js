@@ -7,7 +7,7 @@ export default withVueTs(
   {
     ignores: ["dist/**", "coverage/**", "playwright-report/**", "test-results/**"],
   },
-  pluginVue.configs["flat/essential"],
+  pluginVue.configs["flat/recommended"],
   vueTsConfigs.recommended,
   {
     languageOptions: {
