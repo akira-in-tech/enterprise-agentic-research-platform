@@ -7,16 +7,13 @@ from sqlalchemy import delete, func, select
 
 from app.core.config import settings
 from app.db.models import ResearchRun, Tenant, User
-from app.db.repositories import (
-    ResearchRunRepository,
-    TenantRepository,
-    UserRepository,
-)
+from app.db.repositories import ResearchRunRepository
 from app.db.session import (
     create_database_engine,
     create_session_factory,
 )
 from app.main import app
+from app.services.auth import AuthService
 from app.services.cache import (
     RedisConnection,
     create_research_idempotency_redis_key,
@@ -27,39 +24,35 @@ from app.services.cache import (
 async def create_test_identity() -> tuple[
     UUID,
     UUID,
+    str,
 ]:
+    """Register a fresh tenant/user through AuthService and return a live session token."""
+
     engine = create_database_engine(
         echo=False,
     )
     session_factory = create_session_factory(
         engine,
     )
+    auth_service = AuthService(
+        session_factory,
+    )
 
     try:
-        async with session_factory.begin() as session:
-            tenant_repository = TenantRepository(
-                session,
-            )
-            user_repository = UserRepository(
-                session,
-            )
-            unique_suffix = uuid4().hex[:12]
+        unique_suffix = uuid4().hex[:12]
 
-            tenant = await tenant_repository.create(
-                slug=f"research-api-{unique_suffix}",
-                name="Research API Live Test",
-            )
-            user = await user_repository.create(
-                tenant_id=tenant.id,
-                email=f"api-{unique_suffix}@example.com",
-                password_hash="test-password-hash",
-                display_name="API Integration Engineer",
-            )
+        authenticated_session = await auth_service.register(
+            email=f"api-{unique_suffix}@example.com",
+            password="correct-horse-battery",
+            tenant_name=f"Research API Live Test {unique_suffix}",
+            display_name="API Integration Engineer",
+        )
 
-            return (
-                tenant.id,
-                user.id,
-            )
+        return (
+            authenticated_session.identity.tenant.id,
+            authenticated_session.identity.user.id,
+            authenticated_session.token,
+        )
     finally:
         await engine.dispose()
 
@@ -201,7 +194,7 @@ def test_research_api_live_qwen_round_trip() -> None:
     if not settings.run_live_tests:
         pytest.skip("Set RUN_LIVE_TESTS=true to run external integration tests.")
 
-    tenant_id, user_id = asyncio.run(create_test_identity())
+    tenant_id, user_id, session_token = asyncio.run(create_test_identity())
     query = "What is a mutex?"
 
     try:
@@ -213,12 +206,12 @@ def test_research_api_live_qwen_round_trip() -> None:
         )
 
         with TestClient(app) as client:
+            client.cookies.set(
+                settings.session_cookie_name,
+                session_token,
+            )
             first_response = client.post(
                 "/research-runs",
-                headers={
-                    "X-Tenant-ID": str(tenant_id),
-                    "X-User-ID": str(user_id),
-                },
                 json={
                     "query": query,
                     "llm_provider": "qwen",
@@ -226,10 +219,6 @@ def test_research_api_live_qwen_round_trip() -> None:
             )
             second_response = client.post(
                 "/research-runs",
-                headers={
-                    "X-Tenant-ID": str(tenant_id),
-                    "X-User-ID": str(user_id),
-                },
                 json={
                     "query": query,
                     "llm_provider": "qwen",
@@ -311,7 +300,7 @@ def test_research_api_live_idempotency_replay_and_conflict() -> None:
     if not settings.run_live_tests:
         pytest.skip("Set RUN_LIVE_TESTS=true to run external integration tests.")
 
-    tenant_id, user_id = asyncio.run(create_test_identity())
+    tenant_id, user_id, session_token = asyncio.run(create_test_identity())
     query = "Explain idempotency in REST APIs."
     conflicting_query = "Explain Linux epoll."
     client_key = f"live-api-{uuid4().hex}"
@@ -331,9 +320,11 @@ def test_research_api_live_idempotency_replay_and_conflict() -> None:
         )
 
         with TestClient(app) as client:
+            client.cookies.set(
+                settings.session_cookie_name,
+                session_token,
+            )
             headers = {
-                "X-Tenant-ID": str(tenant_id),
-                "X-User-ID": str(user_id),
                 "Idempotency-Key": client_key,
             }
 

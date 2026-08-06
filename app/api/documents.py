@@ -5,7 +5,6 @@ from fastapi import (
     APIRouter,
     Depends,
     File,
-    Header,
     HTTPException,
     Query,
     Response,
@@ -13,8 +12,9 @@ from fastapi import (
     status,
 )
 
-from app.api.dependencies import get_knowledge_document_service
+from app.api.dependencies import get_current_session, get_knowledge_document_service
 from app.schemas.knowledge import KnowledgeDocumentResponse
+from app.services.auth import ResolvedSession
 from app.services.knowledge import (
     KnowledgeDocumentAlreadyExistsError,
     KnowledgeDocumentDeletionError,
@@ -36,15 +36,11 @@ router = APIRouter(
 )
 async def upload_document(
     file: Annotated[UploadFile, File()],
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     service: Annotated[
         KnowledgeDocumentService,
         Depends(get_knowledge_document_service),
     ],
-    uploaded_by_user_id: Annotated[
-        UUID | None,
-        Header(alias="X-User-ID"),
-    ] = None,
 ) -> KnowledgeDocumentResponse:
     """Validate, store, index, and return one tenant-owned document."""
 
@@ -64,8 +60,8 @@ async def upload_document(
 
     try:
         return await service.upload(
-            tenant_id=tenant_id,
-            uploaded_by_user_id=uploaded_by_user_id,
+            tenant_id=current_session.tenant_id,
+            uploaded_by_user_id=current_session.user_id,
             filename=filename,
             declared_media_type=declared_media_type,
             raw_content=raw_content,
@@ -94,7 +90,7 @@ async def upload_document(
 
 @router.get("", response_model=list[KnowledgeDocumentResponse])
 async def list_documents(
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     service: Annotated[
         KnowledgeDocumentService,
         Depends(get_knowledge_document_service),
@@ -104,7 +100,7 @@ async def list_documents(
     """List recent private documents only within the tenant boundary."""
 
     return await service.list(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         limit=limit,
     )
 
@@ -112,7 +108,7 @@ async def list_documents(
 @router.get("/{document_id}", response_model=KnowledgeDocumentResponse)
 async def get_document(
     document_id: UUID,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     service: Annotated[
         KnowledgeDocumentService,
         Depends(get_knowledge_document_service),
@@ -121,7 +117,7 @@ async def get_document(
     """Return one private document only within the tenant boundary."""
 
     document = await service.get(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         document_id=document_id,
     )
 
@@ -137,7 +133,7 @@ async def get_document(
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(
     document_id: UUID,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     service: Annotated[
         KnowledgeDocumentService,
         Depends(get_knowledge_document_service),
@@ -147,7 +143,7 @@ async def delete_document(
 
     try:
         deleted = await service.delete(
-            tenant_id=tenant_id,
+            tenant_id=current_session.tenant_id,
             document_id=document_id,
         )
     except KnowledgeDocumentDeletionError as error:

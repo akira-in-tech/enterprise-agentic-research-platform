@@ -3,9 +3,11 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
+from fastapi import HTTPException, status
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import (
+    get_current_session,
     get_research_execution_service,
     get_research_job_manager,
     get_research_progress_store,
@@ -18,6 +20,7 @@ from app.main import app
 from app.schemas.evidence import CitationAudit, ReflectionDecision
 from app.schemas.progress import ResearchProgressRecord
 from app.schemas.report import ResearchReportResponse
+from app.services.auth import ResolvedSession
 from app.services.cache import (
     CacheUnavailableError,
     ResearchRateLimitDecision,
@@ -236,6 +239,22 @@ class FakeResearchReportStore:
         return list(self.report.sources)
 
 
+def override_current_session(
+    *,
+    tenant_id: UUID | None = None,
+    user_id: UUID | None = None,
+) -> UUID:
+    """Install a get_current_session override and return the tenant_id used."""
+
+    resolved_tenant_id = tenant_id or uuid4()
+    app.dependency_overrides[get_current_session] = lambda: ResolvedSession(
+        tenant_id=resolved_tenant_id,
+        user_id=user_id or uuid4(),
+    )
+
+    return resolved_tenant_id
+
+
 def test_get_research_progress_is_tenant_scoped() -> None:
     tenant_id = uuid4()
     research_run_id = uuid4()
@@ -247,12 +266,12 @@ def test_get_research_progress_is_tenant_scoped() -> None:
     )
     progress_store = FakeResearchProgressStore(record=record)
     app.dependency_overrides[get_research_progress_store] = lambda: progress_store
+    override_current_session(tenant_id=tenant_id)
 
     try:
         with TestClient(app) as client:
             response = client.get(
                 f"/research-runs/{research_run_id}/progress",
-                headers={"X-Tenant-ID": str(tenant_id)},
             )
     finally:
         app.dependency_overrides.clear()
@@ -265,12 +284,12 @@ def test_get_research_progress_is_tenant_scoped() -> None:
 def test_get_research_progress_returns_not_found() -> None:
     progress_store = FakeResearchProgressStore()
     app.dependency_overrides[get_research_progress_store] = lambda: progress_store
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.get(
                 f"/research-runs/{uuid4()}/progress",
-                headers={"X-Tenant-ID": str(uuid4())},
             )
     finally:
         app.dependency_overrides.clear()
@@ -284,12 +303,12 @@ def test_get_research_progress_returns_service_unavailable() -> None:
         error=CacheUnavailableError("Redis is unavailable."),
     )
     app.dependency_overrides[get_research_progress_store] = lambda: progress_store
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.get(
                 f"/research-runs/{uuid4()}/progress",
-                headers={"X-Tenant-ID": str(uuid4())},
             )
     finally:
         app.dependency_overrides.clear()
@@ -310,12 +329,12 @@ def test_progress_events_stream_terminal_tenant_scoped_snapshot() -> None:
     )
     progress_store = FakeResearchProgressStore(record=record)
     app.dependency_overrides[get_research_progress_store] = lambda: progress_store
+    override_current_session(tenant_id=tenant_id)
 
     try:
         with TestClient(app) as client:
             response = client.get(
                 f"/research-runs/{research_run_id}/events",
-                headers={"X-Tenant-ID": str(tenant_id)},
             )
     finally:
         app.dependency_overrides.clear()
@@ -345,12 +364,12 @@ def test_get_research_report_is_tenant_scoped() -> None:
     )
     report_store = FakeResearchReportStore(report)
     app.dependency_overrides[get_research_report_store] = lambda: report_store
+    override_current_session(tenant_id=tenant_id)
 
     try:
         with TestClient(app) as client:
             response = client.get(
                 f"/research-runs/{research_run_id}/report",
-                headers={"X-Tenant-ID": str(tenant_id)},
             )
     finally:
         app.dependency_overrides.clear()
@@ -363,12 +382,12 @@ def test_get_research_report_is_tenant_scoped() -> None:
 def test_get_research_report_returns_not_found() -> None:
     report_store = FakeResearchReportStore()
     app.dependency_overrides[get_research_report_store] = lambda: report_store
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.get(
                 f"/research-runs/{uuid4()}/report",
-                headers={"X-Tenant-ID": str(uuid4())},
             )
     finally:
         app.dependency_overrides.clear()
@@ -395,11 +414,11 @@ def test_list_research_sources_is_tenant_scoped() -> None:
     )
     report_store = FakeResearchReportStore(report)
     app.dependency_overrides[get_research_report_store] = lambda: report_store
+    override_current_session(tenant_id=tenant_id)
     try:
         with TestClient(app) as client:
             response = client.get(
                 f"/research-runs/{research_run_id}/sources",
-                headers={"X-Tenant-ID": str(tenant_id)},
             )
     finally:
         app.dependency_overrides.clear()
@@ -427,15 +446,12 @@ def test_create_research_job_returns_durable_delivery_urls(
     research_run_id = uuid4()
     job_manager = FakeResearchJobManager(research_run_id)
     app.dependency_overrides[get_research_job_manager] = lambda: job_manager
+    override_current_session(tenant_id=tenant_id, user_id=user_id)
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/research-runs/jobs",
-                headers={
-                    "X-Tenant-ID": str(tenant_id),
-                    "X-User-ID": str(user_id),
-                },
                 json={
                     "query": "  Compare HTTP/2 and HTTP/3.  ",
                     "llm_provider": "qwen",
@@ -471,14 +487,13 @@ def test_create_research_run_accepts_qwen_selection(
     user_id = uuid4()
 
     app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+    override_current_session(tenant_id=tenant_id, user_id=user_id)
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/research-runs",
                 headers={
-                    "X-Tenant-ID": str(tenant_id),
-                    "X-User-ID": str(user_id),
                     "Idempotency-Key": "request-123",
                 },
                 json={
@@ -542,12 +557,12 @@ def test_create_research_run_exposes_report_quality() -> None:
         }
     )
     app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/research-runs",
-                headers={"X-Tenant-ID": str(uuid4())},
                 json={"query": "Compare HTTP versions.", "llm_provider": "qwen"},
             )
     finally:
@@ -566,13 +581,13 @@ def test_create_research_run_exposes_idempotency_replay() -> None:
     )
 
     app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/research-runs",
                 headers={
-                    "X-Tenant-ID": str(uuid4()),
                     "Idempotency-Key": "request-123",
                 },
                 json={
@@ -591,14 +606,12 @@ def test_create_research_run_rejects_invalid_provider() -> None:
     fake_service = FakeResearchExecutionService()
 
     app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/research-runs",
-                headers={
-                    "X-Tenant-ID": str(uuid4()),
-                },
                 json={
                     "query": "Explain DNS recursive resolution.",
                     "llm_provider": "openai",
@@ -611,10 +624,15 @@ def test_create_research_run_rejects_invalid_provider() -> None:
     assert fake_service.calls == []
 
 
-def test_create_research_run_requires_tenant_header() -> None:
+def test_create_research_run_requires_authentication() -> None:
     fake_service = FakeResearchExecutionService()
 
     app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+
+    def _raise_unauthenticated() -> ResolvedSession:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Not authenticated.")
+
+    app.dependency_overrides[get_current_session] = _raise_unauthenticated
 
     try:
         with TestClient(app) as client:
@@ -628,7 +646,7 @@ def test_create_research_run_requires_tenant_header() -> None:
     finally:
         app.dependency_overrides.clear()
 
-    assert response.status_code == 422
+    assert response.status_code == 401
     assert fake_service.calls == []
 
 
@@ -661,13 +679,13 @@ def test_create_research_run_maps_idempotency_errors(
     )
 
     app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/research-runs",
                 headers={
-                    "X-Tenant-ID": str(uuid4()),
                     "Idempotency-Key": "request-123",
                 },
                 json={
@@ -686,13 +704,13 @@ def test_create_research_run_rejects_long_idempotency_key() -> None:
     fake_service = FakeResearchExecutionService()
 
     app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/research-runs",
                 headers={
-                    "X-Tenant-ID": str(uuid4()),
                     "Idempotency-Key": "a" * 201,
                 },
                 json={
@@ -718,14 +736,12 @@ def test_create_research_run_rejects_request_above_rate_limit(
     )
     fake_service = FakeResearchExecutionService()
     app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/research-runs",
-                headers={
-                    "X-Tenant-ID": str(uuid4()),
-                },
                 json={
                     "query": "What is a mutex?",
                     "llm_provider": "qwen",
@@ -751,14 +767,12 @@ def test_create_research_run_fails_closed_when_rate_limiter_is_unavailable(
     )
     fake_service = FakeResearchExecutionService()
     app.dependency_overrides[get_research_execution_service] = lambda: fake_service
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 "/research-runs",
-                headers={
-                    "X-Tenant-ID": str(uuid4()),
-                },
                 json={
                     "query": "What is a mutex?",
                     "llm_provider": "qwen",
@@ -777,12 +791,12 @@ def test_cancel_research_job_is_tenant_scoped() -> None:
     research_run_id = uuid4()
     manager = FakeResearchJobManager(research_run_id)
     app.dependency_overrides[get_research_job_manager] = lambda: manager
+    override_current_session(tenant_id=tenant_id)
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 f"/research-runs/{research_run_id}/cancel",
-                headers={"X-Tenant-ID": str(tenant_id)},
             )
     finally:
         app.dependency_overrides.clear()
@@ -798,12 +812,12 @@ def test_cancel_research_job_is_tenant_scoped() -> None:
 def test_cancel_research_job_rejects_terminal_or_missing_run() -> None:
     manager = FakeResearchJobManager(cancel_result=False)
     app.dependency_overrides[get_research_job_manager] = lambda: manager
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.post(
                 f"/research-runs/{uuid4()}/cancel",
-                headers={"X-Tenant-ID": str(uuid4())},
             )
     finally:
         app.dependency_overrides.clear()
@@ -827,12 +841,12 @@ def test_get_research_run_returns_tenant_scoped_lifecycle_state() -> None:
     )
     store = FakeResearchRunStore(run)
     app.dependency_overrides[get_research_run_store] = lambda: store
+    override_current_session(tenant_id=tenant_id)
 
     try:
         with TestClient(app) as client:
             response = client.get(
                 f"/research-runs/{research_run_id}",
-                headers={"X-Tenant-ID": str(tenant_id)},
             )
     finally:
         app.dependency_overrides.clear()
@@ -849,12 +863,12 @@ def test_get_research_run_returns_tenant_scoped_lifecycle_state() -> None:
 def test_get_research_run_returns_404_when_missing() -> None:
     store = FakeResearchRunStore(None)
     app.dependency_overrides[get_research_run_store] = lambda: store
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.get(
                 f"/research-runs/{uuid4()}",
-                headers={"X-Tenant-ID": str(uuid4())},
             )
     finally:
         app.dependency_overrides.clear()
@@ -887,12 +901,12 @@ def test_list_research_runs_returns_tenant_scoped_history() -> None:
     ]
     store = FakeResearchRunStore(runs=runs)
     app.dependency_overrides[get_research_run_store] = lambda: store
+    override_current_session(tenant_id=tenant_id)
 
     try:
         with TestClient(app) as client:
             response = client.get(
                 "/research-runs",
-                headers={"X-Tenant-ID": str(tenant_id)},
                 params={"limit": 5},
             )
     finally:
@@ -907,12 +921,12 @@ def test_list_research_runs_returns_tenant_scoped_history() -> None:
 def test_list_research_runs_rejects_out_of_range_limit() -> None:
     store = FakeResearchRunStore(runs=[])
     app.dependency_overrides[get_research_run_store] = lambda: store
+    override_current_session()
 
     try:
         with TestClient(app) as client:
             response = client.get(
                 "/research-runs",
-                headers={"X-Tenant-ID": str(uuid4())},
                 params={"limit": 0},
             )
     finally:

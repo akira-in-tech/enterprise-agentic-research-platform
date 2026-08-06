@@ -16,6 +16,7 @@ from fastapi import (
 from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import (
+    get_current_session,
     get_research_execution_service,
     get_research_job_manager,
     get_research_progress_store,
@@ -36,6 +37,7 @@ from app.schemas.research import (
     ResearchRunResponse,
     ResearchRunStatus,
 )
+from app.services.auth import ResolvedSession
 from app.services.cache import (
     MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH,
     CacheUnavailableError,
@@ -82,7 +84,7 @@ def _to_run_response(run: ResearchRun) -> ResearchRunResponse:
     response_model=list[ResearchRunResponse],
 )
 async def list_research_runs(
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     run_store: Annotated[
         PostgresResearchRunStore,
         Depends(get_research_run_store),
@@ -92,7 +94,7 @@ async def list_research_runs(
     """Return one tenant's most recent research runs, newest first."""
 
     runs = await run_store.list_recent(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         limit=limit,
     )
 
@@ -105,7 +107,7 @@ async def list_research_runs(
 )
 async def get_research_run(
     research_run_id: UUID,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     run_store: Annotated[
         PostgresResearchRunStore,
         Depends(get_research_run_store),
@@ -114,7 +116,7 @@ async def get_research_run(
     """Return one durable research run's current lifecycle state."""
 
     run = await run_store.get(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         research_run_id=research_run_id,
     )
 
@@ -178,10 +180,7 @@ async def _research_progress_events(
 )
 async def get_research_run_progress(
     research_run_id: UUID,
-    tenant_id: Annotated[
-        UUID,
-        Header(alias="X-Tenant-ID"),
-    ],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     progress_store: Annotated[
         RedisResearchProgressStore,
         Depends(get_research_progress_store),
@@ -191,7 +190,7 @@ async def get_research_run_progress(
 
     try:
         record = await progress_store.get(
-            tenant_id=tenant_id,
+            tenant_id=current_session.tenant_id,
             research_run_id=research_run_id,
         )
     except CacheUnavailableError as error:
@@ -215,7 +214,7 @@ async def get_research_run_progress(
 )
 async def stream_research_run_progress(
     research_run_id: UUID,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     progress_store: Annotated[
         RedisResearchProgressStore,
         Depends(get_research_progress_store),
@@ -225,7 +224,7 @@ async def stream_research_run_progress(
 
     return StreamingResponse(
         _research_progress_events(
-            tenant_id=tenant_id,
+            tenant_id=current_session.tenant_id,
             research_run_id=research_run_id,
             progress_store=progress_store,
         ),
@@ -243,7 +242,7 @@ async def stream_research_run_progress(
 )
 async def get_research_run_report(
     research_run_id: UUID,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     report_store: Annotated[
         PostgresResearchReportStore,
         Depends(get_research_report_store),
@@ -252,7 +251,7 @@ async def get_research_run_report(
     """Return one durable report only within its tenant boundary."""
 
     report = await report_store.get(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         research_run_id=research_run_id,
     )
 
@@ -271,7 +270,7 @@ async def get_research_run_report(
 )
 async def list_research_run_sources(
     research_run_id: UUID,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     report_store: Annotated[
         PostgresResearchReportStore,
         Depends(get_research_report_store),
@@ -280,7 +279,7 @@ async def list_research_run_sources(
     """Return scored evidence only within the report's tenant boundary."""
 
     sources = await report_store.list_sources(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         research_run_id=research_run_id,
     )
     if sources is None:
@@ -297,7 +296,7 @@ async def list_research_run_sources(
 )
 async def cancel_research_run(
     research_run_id: UUID,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     job_manager: Annotated[
         ResearchJobManager,
         Depends(get_research_job_manager),
@@ -306,7 +305,7 @@ async def cancel_research_run(
     """Cancel one queued or running research job within its tenant boundary."""
 
     cancelled = await job_manager.cancel(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         research_run_id=research_run_id,
     )
     if not cancelled:
@@ -372,7 +371,7 @@ async def _enforce_rate_limit(
 )
 async def create_research_job(
     payload: CreateResearchRunRequest,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     job_manager: Annotated[
         ResearchJobManager,
         Depends(get_research_job_manager),
@@ -382,21 +381,17 @@ async def create_research_job(
         Depends(get_research_rate_limiter),
     ],
     response: Response,
-    requested_by_user_id: Annotated[
-        UUID | None,
-        Header(alias="X-User-ID"),
-    ] = None,
 ) -> CreateResearchJobResponse:
     """Persist and accept one research run for background execution."""
 
     await _enforce_rate_limit(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         rate_limiter=rate_limiter,
         response=response,
     )
     research_run_id = await job_manager.submit(
-        tenant_id=tenant_id,
-        requested_by_user_id=requested_by_user_id,
+        tenant_id=current_session.tenant_id,
+        requested_by_user_id=current_session.user_id,
         query=payload.query,
         llm_provider=payload.llm_provider,
     )
@@ -417,10 +412,7 @@ async def create_research_job(
 )
 async def create_research_run(
     payload: CreateResearchRunRequest,
-    tenant_id: Annotated[
-        UUID,
-        Header(alias="X-Tenant-ID"),
-    ],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     service: Annotated[
         IdempotentResearchExecutionService,
         Depends(get_research_execution_service),
@@ -439,23 +431,19 @@ async def create_research_run(
             pattern=r".*\S.*",
         ),
     ] = None,
-    requested_by_user_id: Annotated[
-        UUID | None,
-        Header(alias="X-User-ID"),
-    ] = None,
 ) -> CreateResearchRunResponse:
     """Execute one tenant-scoped research request."""
 
     await _enforce_rate_limit(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         rate_limiter=rate_limiter,
         response=response,
     )
 
     try:
         result = await service.execute(
-            tenant_id=tenant_id,
-            requested_by_user_id=requested_by_user_id,
+            tenant_id=current_session.tenant_id,
+            requested_by_user_id=current_session.user_id,
             query=payload.query,
             llm_provider=payload.llm_provider,
             idempotency_key=idempotency_key,

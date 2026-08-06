@@ -5,9 +5,10 @@ from uuid import UUID, uuid4
 from fastapi.testclient import TestClient
 from httpx import Response
 
-from app.api.dependencies import get_knowledge_document_service
+from app.api.dependencies import get_current_session, get_knowledge_document_service
 from app.main import app
 from app.schemas.knowledge import KnowledgeDocumentResponse
+from app.services.auth import ResolvedSession
 from app.services.knowledge import (
     KnowledgeDocumentAlreadyExistsError,
     KnowledgeDocumentIndexingError,
@@ -73,9 +74,16 @@ def request_with_service(
     service: FakeKnowledgeDocumentService,
     method: str,
     path: str,
+    *,
+    tenant_id: UUID,
+    user_id: UUID | None = None,
     **kwargs: Any,
 ) -> Response:
     app.dependency_overrides[get_knowledge_document_service] = lambda: service
+    app.dependency_overrides[get_current_session] = lambda: ResolvedSession(
+        tenant_id=tenant_id,
+        user_id=user_id or uuid4(),
+    )
     try:
         with TestClient(app) as client:
             return cast(Response, client.request(method, path, **kwargs))
@@ -93,7 +101,8 @@ def test_upload_document_passes_tenant_user_and_multipart_content() -> None:
         service,
         "POST",
         "/documents",
-        headers={"X-Tenant-ID": str(tenant_id), "X-User-ID": str(user_id)},
+        tenant_id=tenant_id,
+        user_id=user_id,
         files={"file": ("architecture.md", b"trusted evidence", "text/markdown")},
     )
 
@@ -117,7 +126,7 @@ def test_upload_document_rejects_oversized_body_before_service_call() -> None:
         service,
         "POST",
         "/documents",
-        headers={"X-Tenant-ID": str(uuid4())},
+        tenant_id=uuid4(),
         files={"file": ("large.txt", b"x" * 101, "text/plain")},
     )
 
@@ -134,7 +143,7 @@ def test_upload_document_maps_duplicate_to_conflict() -> None:
         service,
         "POST",
         "/documents",
-        headers={"X-Tenant-ID": str(uuid4())},
+        tenant_id=uuid4(),
         files={"file": ("architecture.txt", b"trusted evidence", "text/plain")},
     )
 
@@ -152,7 +161,7 @@ def test_upload_document_maps_index_failure_without_claiming_success() -> None:
         service,
         "POST",
         "/documents",
-        headers={"X-Tenant-ID": str(uuid4())},
+        tenant_id=uuid4(),
         files={"file": ("architecture.txt", b"trusted evidence", "text/plain")},
     )
 
@@ -169,7 +178,7 @@ def test_list_documents_is_tenant_scoped_and_bounded() -> None:
         service,
         "GET",
         "/documents?limit=25",
-        headers={"X-Tenant-ID": str(tenant_id)},
+        tenant_id=tenant_id,
     )
 
     assert response.status_code == 200
@@ -184,7 +193,7 @@ def test_get_document_returns_not_found_inside_tenant_boundary() -> None:
         service,
         "GET",
         f"/documents/{uuid4()}",
-        headers={"X-Tenant-ID": str(uuid4())},
+        tenant_id=uuid4(),
     )
 
     assert response.status_code == 404
@@ -201,7 +210,7 @@ def test_delete_document_returns_no_content() -> None:
         service,
         "DELETE",
         f"/documents/{document_id}",
-        headers={"X-Tenant-ID": str(tenant_id)},
+        tenant_id=tenant_id,
     )
 
     assert response.status_code == 204
