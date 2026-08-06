@@ -14,20 +14,33 @@ separate `detect_high_risk_domain()` rule for the risk flag.
 ## Deep research path
 
 ```text
-Planner
-  → creates 2-6 sub-questions, 2-6 search tasks, and a 3-8 section outline
-    whose sections fit the request's actual domain
-  ├── Web Scout   → SearchExecutor → Tavily (circuit-breaker guarded)
-  └── Local Scout → PrivateKnowledgeRetriever → Milvus (tenant-scoped)
-  → Evidence Judge normalizes both pools, scores relevance/quality/
-    traceability, and detects gaps and conflicts
-  → Analyst produces structured findings with canonical source IDs
-  → Reflect decides: write, or run one bounded supplementary round
-    (and independently sets human_review_required for high-risk domains)
-  → Writer produces a conclusion-first Markdown report with [SOURCE-ID]
-    citations, then runs a bounded citation-repair loop against the
-    citation validator's audit
+Intent Router
+├── direct question → Direct Answer → END
+└── deep research → Planner
+                    ├── Web Scout ──┐
+                    └── Local Scout ┘  run in parallel
+                                      ↓
+                               Evidence Judge
+                                      ↓
+                                   Analyst
+                                      ↓
+                                   Reflect
+                    ├── evidence gap + budget → targeted scout round
+                    └── sufficient evidence  → Writer → END
 ```
+
+Planner creates 2-6 sub-questions, 2-6 search tasks, and a 3-8 section
+outline whose sections fit the request's actual domain. Web Scout
+(`SearchExecutor` → Tavily, circuit-breaker and retry guarded) and Local
+Scout (`PrivateKnowledgeRetriever` → Milvus, tenant-scoped) run in
+parallel and are joined before Evidence Judge normalizes both pools,
+scores relevance/quality/traceability, and detects gaps and conflicts.
+Analyst produces structured findings with canonical source IDs. Reflect
+decides whether to write or run one bounded supplementary round routed
+back to either scout, and independently sets `human_review_required` for
+high-risk domains regardless of citation quality. Writer produces a
+conclusion-first Markdown report with `[SOURCE-ID]` citations, then runs a
+bounded citation-repair loop against the citation validator's audit.
 
 ## State
 
@@ -55,9 +68,11 @@ official LangGraph `AsyncPostgresSaver` resumes a graph from its last
 successful superstep rather than repeating it.
 
 `research_agent_steps` (`app/db/models/agent_step.py`,
-`app/db/repositories/agent_steps.py`) can additionally record one row per
-agent-role transition for a finer trace than the checkpoint/audit tables
-provide. As of this writing it is a tested, migrated table and repository
-that is **not yet wired into the live execution path** — see the schema
-addition's commit for the reasoning (the execution path's lease/heartbeat/
-resume logic is sensitive enough to deserve its own dedicated change).
+`app/db/repositories/agent_steps.py`) additionally records a
+started/completed/failed row per agent-role transition — a finer trace
+than the checkpoint/audit tables provide. `LangGraphResearchWorkflow`
+(`app/services/research/execution.py`) reconstructs this from LangGraph's
+`astream(stream_mode=["tasks", "values"])` rather than a single opaque
+`ainvoke()`: "tasks" events drive the trace rows and the last "values"
+event is the final state, confirmed to exactly match what `ainvoke()`
+would return, including across a durable resume.

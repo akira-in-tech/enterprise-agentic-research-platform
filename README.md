@@ -44,7 +44,7 @@ Implemented and tested: domain-neutral Intent Router, Planner, and Direct Answer
 Implemented and tested: demo_profiles/engineering/ isolates demo queries, evaluation cases, a reference report outline, and a private-knowledge manifest from core application code, with no company or organization branding
 Implemented and tested: high-risk domain detection (medical, legal, financial, safety/security) on the Intent Router, propagated through the workflow to a human_review_required flag on the final reflection decision regardless of citation quality
 Implemented and tested: the MCP server now exposes all seven charter research tools (search_web, search_private_documents, retrieve_source, ingest_document, save_research_report, get_research_history, request_human_review) alongside the original reference-card demo tool, each degrading independently when its own credentials are missing
-Implemented and tested: a research_agent_steps table and repository for a durable per-agent-role trace, migrated and live-verified; not yet written to by the live LangGraph execution path
+Implemented and tested: a research_agent_steps table and repository for a durable per-agent-role trace, migrated and live-verified (wiring into live execution followed as a separate entry below)
 Implemented and tested: a report-export service storing durable report snapshots through the existing DocumentStorage interface (local filesystem or S3), plus a REST endpoint to trigger and retrieve one
 Implemented and tested: per-request correlation IDs attached to every log line and echoed as a response header
 Implemented and tested: a closed/open/half-open circuit breaker, wired into the Tavily search executor, then extended to the Anthropic client and the Milvus vector store
@@ -56,149 +56,13 @@ Implemented and tested: GET /research-runs (list) and GET /research-runs/{resear
 Implemented and live verified: real authentication replacing the pre-authentication X-Tenant-ID/X-User-ID headers — Argon2id password hashing, a durable sessions table (the charter's data-model item, previously deliberately deferred), httpOnly session cookies, self-service tenant signup, and matching Login/Register views with router guards on the frontend
 Implemented and live verified: research_agent_steps wired into live execution via LangGraph's astream(stream_mode=["tasks", "values"]), tracing every canonical agent step as a real run executes, confirmed against the real production graph and a real Ollama call
 Implemented and tested: exponential backoff with full jitter (app/core/retry.py), wired around the actual connectivity-level failures of Ollama, Tavily, and Milvus search -- deliberately not Anthropic, whose SDK already retries internally, and deliberately layered outside the circuit breaker rather than inside it
-Next: a reproducible evaluation harness over demo_profiles/engineering/evaluation_cases.jsonl; slimming this README to point at docs/ instead of duplicating it
+Next: a reproducible evaluation harness over demo_profiles/engineering/evaluation_cases.jsonl
 ```
 
-Phase 8 completed durable research execution and user-selectable LLM providers:
-
-```text
-FastAPI request
-→ tenant and user scope
-→ Claude or Qwen selection
-→ canonical Anthropic or Ollama provider
-→ queued PostgreSQL research run
-→ running transition
-→ LangGraph workflow
-→ completed or failed transition
-→ API response
-```
-
-The real Qwen path has been integration tested through:
-
-```text
-FastAPI
-→ Qwen through Ollama
-→ structured intent routing
-→ direct answer generation
-→ PostgreSQL lifecycle persistence
-→ tenant-scoped database verification
-→ cleanup
-```
-
-The Redis-backed API path has also been live integration tested:
-
-```text
-first FastAPI request
-→ PostgreSQL lifecycle persistence
-→ Qwen through Ollama
-→ Redis result write with TTL
-→ cache_hit=false
-
-second tenant/provider/query-equivalent request
-→ new durable PostgreSQL research run
-→ Redis result read
-→ Qwen workflow skipped
-→ cache_hit=true
-→ PostgreSQL and Redis test cleanup
-```
-
-The idempotent API and Redis coordination paths have been verified across live
-API tests, live Redis tests, and deterministic concurrency coverage:
-
-```text
-first request with Idempotency-Key
-→ validate a canonical request fingerprint
-→ acquire a short-lived Redis lock with SET NX EX
-→ double-check for a completed record
-→ execute and persist one research run
-→ store the completed idempotency response
-→ release the lock only when the owner token still matches
-
-concurrent request with the same key
-→ lock acquisition rejected
-→ workflow not executed a second time
-→ API maps the in-progress result to HTTP 409
-
-later retry with the same key and payload
-→ replay the original research run and response
-→ idempotency_replayed=true
-```
-
-Research progress coordination has been verified against a live Redis service:
-
-```text
-queued PostgreSQL research run
-→ tenant-scoped Redis progress snapshot
-→ running snapshot visible while the workflow is blocked
-→ completed or failed terminal snapshot
-→ GET /research-runs/{run_id}/progress
-→ cross-tenant lookup returns no record
-→ bounded TTL and test cleanup
-```
-
-Phase 10 completes the evidence-quality path for deep research:
-
-```text
-MCP Streamable HTTP tool boundary
-→ canonical Web, Private, or MCP evidence
-→ deterministic relevance, content-quality, and traceability scores
-→ analyst report with canonical source IDs
-→ unknown-citation and uncited-claim audit
-→ reflection quality gate
-→ report and quality state in the workflow, cache, and API
-```
-
-Phase 11 makes those research artifacts durable and independently consumable:
-
-```text
-POST /research-runs/jobs
-→ commit a tenant-scoped queued run before returning HTTP 202
-→ execute the workflow in an application-owned background task
-→ allow one evidence-guided report revision after the initial draft
-→ atomically commit completed lifecycle, report, and evidence sources
-→ stream Redis progress through tenant-scoped SSE
-→ retrieve the durable report through GET /research-runs/{run_id}/report
-```
-
-The asynchronous path has been live tested against PostgreSQL and Redis. The
-test starts a background job, observes its terminal progress snapshot, reads
-its report and scored source from PostgreSQL, and leaves both services empty.
-
-The deep-research branch now uses eight explicit, independently testable
-roles rather than presenting eight UI labels over a smaller backend graph:
-
-```text
-Intent Router
-├── direct question → direct answer → END
-└── deep research → Planner
-                    ├── Web Scout ──┐
-                    └── Local Scout ┘  run in parallel
-                                      ↓
-                               Evidence Judge
-                                      ↓
-                                   Analyst
-                                      ↓
-                                   Reflect
-                    ├── evidence gap + budget → targeted scout round
-                    └── sufficient evidence  → Writer → END
-```
-
-`ResearchState` carries tenant scope, source collections, evidence gaps and
-conflicts, structured findings, supplementary queries, iteration budget, and
-the final report between roles. Web and private retrieval are joined before
-evidence judgment. Reflect can request a bounded supplementary round and route
-each query to web, private knowledge, or both. Writer receives approved
-analysis rather than raw search output and performs a bounded citation-repair
-attempt before returning a report.
-
-The FastAPI application constructs the production graph with an
-application-scoped Ollama embedding client, Milvus vector store, private
-retriever, and Local Scout. Local retrieval failures are isolated per task so
-available web evidence can still proceed. The canonical graph, parallel join,
-supplementary loop, source-preference routing, direct branch, tenant
-propagation, resource cleanup, and frontend role mapping are covered by the
-default automated suite. A real external deep-research round trip remains an
-explicit opt-in integration check rather than a default-test claim.
+See [docs/workflow.md](docs/workflow.md) for the deep-research agent path
+and `ResearchState` shape, and [docs/architecture.md](docs/architecture.md)
+for the request-flow, caching, idempotency, and rate-limiting sequences
+this log used to spell out inline.
 
 ## Project Status
 
@@ -284,7 +148,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Durable research cancellation | Queued/running-only PostgreSQL transition, local worker interruption, terminal Redis/SSE progress, tenant-scoped REST endpoint, and Vue action tested; migration live applied, verified, and downgraded against local PostgreSQL |
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
-| Vue 3 + TypeScript + Vite frontend | Typechecked, 26 tests passed, production built, and desktop/mobile browser QA verified |
+| Vue 3 + TypeScript + Vite frontend | Typechecked, 50 tests passed, 13 Playwright end-to-end tests passed, production built, and desktop/mobile browser QA verified |
 | Canonical eight-agent workflow and console role mapping | Backend tested; frontend typechecked, component tested, and built |
 | Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
 | Docker Compose project stack | Built and smoke tested across eight healthy services, including the official-SDK MCP server |
@@ -304,7 +168,7 @@ explicit opt-in integration check rather than a default-test claim.
 | Circuit breaker | Closed/open/half-open state machine unit tested with a fake clock; wired into the Tavily search executor, the Anthropic client, and the Milvus vector store, each with a dedicated test |
 | Exponential backoff with jitter | Full-jitter retry helper unit tested (delay calculation, capping, exhaustion, non-retryable passthrough); wired around Ollama, Tavily, and Milvus search's actual connectivity-level exceptions, each with a dedicated retry test |
 | Authentication | Email+password registration and login, Argon2id password hashing, a durable sessions table, httpOnly session-cookie middleware, and self-service tenant signup, replacing the pre-authentication X-Tenant-ID/X-User-ID headers; unit, live-Postgres, and Vue/Playwright tested |
-| PostgreSQL/Redis CI integration gate | 19 integration tests run against postgres:17-alpine and redis:8-alpine service containers on every pull request and push to main |
+| PostgreSQL/Redis CI integration gate | The Postgres/Redis-only subset of integration tests run against postgres:17-alpine and redis:8-alpine service containers on every pull request and push to main |
 | Architecture documentation | docs/PROJECT_CHARTER.md and eight supporting documents, cross-referencing actual code paths and explicitly separating implemented from planned |
 | Open-source contribution | Planned |
 
@@ -315,18 +179,19 @@ production deployments.
 
 ## Current Architecture
 
-The portfolio MVP application is implemented and tested through Phase 13. That
-does not mean every production concern is finished: the Phase 14 AWS
-application stack has not been applied, AWS private RAG providers are locally
-implemented but not live invoked, and application deployment remains
-production-hardening work.
+The portfolio MVP application is implemented and tested through Phase 13; the
+Phase 14 AWS application stack has not been applied yet (only the protected
+state bucket and GitHub OIDC identity are — see AWS Staging Deployment
+below), and AWS private RAG providers are locally implemented but not live
+invoked. See [docs/architecture.md](docs/architecture.md) for the full
+request-flow, caching, idempotency, rate-limiting, provider-boundary, and MCP
+detail this section used to duplicate, and
+[docs/data-model.md](docs/data-model.md) for the PostgreSQL/Redis/Milvus/S3
+schema.
 
-### System Architecture
-
-The diagram combines the implemented application with its planned AWS staging
-runtime. The ECS, RDS, Valkey, ALB, CloudFront, and ECR resources are declared
-in Terraform but are not deployed yet. The protected Terraform state bucket
-and GitHub OIDC deployment identity are the only applied AWS foundation.
+The diagram below combines the implemented application with its planned AWS
+staging runtime — the ECS, RDS, Valkey, ALB, CloudFront, and ECR resources are
+declared in Terraform but not deployed yet:
 
 ```mermaid
 flowchart TB
@@ -400,325 +265,19 @@ Terraform manages, and the guarded destroy workflow removes the billable
 staging resources after a demo. A successful plan is validation, not a
 deployment.
 
-### AWS Staging Runtime
-
-```text
-browser
-→ CloudFront HTTPS and static-asset cache
-→ CloudFront-only Application Load Balancer ingress
-→ one ARM64 ECS Fargate task
-   ├── Nginx + Vue frontend
-   └── FastAPI + Alembic
-       ├── private encrypted RDS PostgreSQL
-       ├── private encrypted ElastiCache for Valkey
-       ├── Secrets Manager provider credentials
-       ├── private encrypted and versioned S3 source objects
-       ├── external managed Milvus-compatible endpoint
-       └── Claude + Tavily + Bedrock over controlled outbound access
-```
-
-The staging topology deliberately omits a NAT Gateway. Fargate tasks receive
-explicit public egress addresses in public subnets, but accept application
-traffic only from the load balancer. RDS and Valkey remain in isolated data
-subnets and accept traffic only from the application security group. CloudFront
-provides the first HTTPS endpoint; a custom domain and certificate are not yet
-configured.
-
-The cloud image enables Claude only because the cost-controlled Fargate task
-does not run Ollama. Local builds continue to expose Qwen and Claude. The API
-still retains its provider-neutral Qwen contract for local deployments. AWS
-staging selects Titan Text Embeddings V2 through Bedrock and stores uploaded
-source objects in a private S3 bucket. Both adapters and the Terraform contract
-are locally verified, but no live Bedrock invocation or application apply is
-claimed yet.
-
-### Public Web Retrieval
-
-```text
-Engineering question
-→ structured planner
-→ bounded concurrent search tasks
-→ Tavily
-→ URL normalization
-→ deduplication
-→ stable WEB-* sources
-```
-
-### Private Knowledge Retrieval
-
-```text
-Private document
-→ POST /documents with tenant and optional user headers
-→ bounded multipart read and TXT, Markdown, or PDF validation
-→ atomic source-object write
-→ short PostgreSQL pending transaction
-→ indexing lifecycle transition
-→ deterministic chunks
-→ embedding provider
-→ vector-store provider
-→ ready or failed PostgreSQL lifecycle state
-→ GET /documents and GET /documents/{document_id}
-→ tenant-scoped similarity search
-→ stable PRIVATE-* sources
-→ DELETE /documents/{document_id}
-→ vector, source-object, and metadata cleanup
-```
-
-The long-running embedding and vector calls execute outside PostgreSQL
-transactions. PostgreSQL records each short lifecycle transition, while the
-source object and vector records remain provider-owned artifacts. Duplicate
-normalized content is rejected per tenant. Local development uses a private
-runtime directory and Ollama embeddings; AWS staging selects S3 and Bedrock
-through the same application interfaces.
-
-### Provider Boundaries
-
-```text
-LLMClient
-├── Claude
-└── Qwen through Ollama
-
-EmbeddingClient
-├── Deterministic test embeddings
-├── Qwen embeddings through Ollama
-└── Amazon Titan Text Embeddings V2 through Bedrock
-
-DocumentStorage
-├── private local filesystem
-└── private Amazon S3 bucket
-
-VectorStore
-├── InMemoryVectorStore
-└── MilvusVectorStore
-```
-
-Unit tests use mocks, deterministic providers, and the in-memory vector store.
-Real external integrations are opt-in.
-
-### MCP Tool Boundary
-
-```text
-StreamableHTTPMCPClient
-→ initialize and negotiate protocol version 2025-11-25
-→ send notifications/initialized
-→ preserve MCP session and protocol headers
-→ follow tools/list cursor pagination
-→ call tools/call and validate content or structuredContent
-→ distinguish JSON-RPC protocol errors from tool execution errors
-→ terminate the session and close owned HTTP resources
-
-Official FastMCP server
-→ stateless JSON Streamable HTTP at /mcp
-→ advertise search_research_standards
-→ return traceable organization reference text
-→ Web Scout federates successful results as MCP evidence
-→ fail open when the optional server or tool is unavailable
-```
-
-The client implements the JSON-response subset of the
-[MCP protocol revision 2025-11-25](https://modelcontextprotocol.io/specification/2025-11-25)
-Streamable HTTP transport using the existing `httpx` dependency. Its lifecycle,
-headers, pagination, tool-call results, error handling, and cleanup are contract
-tested with a deterministic HTTP transport. The repository now also runs a real
-stateless server from the official MCP Python SDK. Client/server interoperability
-is tested in-process and through a live loopback TCP subprocess. Compose runs it
-as an internal service and AWS Terraform declares it as an API-image sidecar;
-no third-party organization MCP endpoint is claimed.
-
-### Evidence Quality Pipeline
-
-```text
-Web Scout + tenant-scoped Local Scout
-→ Evidence Judge normalization, scoring, gaps, and conflicts
-→ Analyst structured findings with canonical source IDs
-→ Reflect: write or request a bounded supplementary-research round
-→ Writer: conclusion-first Markdown with [SOURCE-ID] citations
-→ bounded citation audit and repair
-```
-
-The same evidence model accepts web sources, tenant-scoped private sources,
-and successful MCP text results. Deterministic scoring records separate
-relevance, content-quality, and traceability signals. Evidence Judge adds a
-structured gap and conflict audit; Reflect decides whether another retrieval
-round is justified within the iteration budget; Writer owns final prose and
-one bounded citation-repair attempt. If the final audit still fails, the
-workflow retains an explicit revision-required result rather than presenting
-the report as fully approved.
-
-### Durable Request Execution
-
-```text
-POST /research-runs
-→ validate query and user-facing provider
-→ normalize claude/qwen to anthropic/ollama
-→ persist queued run
-→ atomically mark running
-→ execute LangGraph outside the database transaction
-→ close provider-owned HTTP resources
-→ atomically mark completed or failed
-→ return run ID, provider, route, status, and answer
-```
-
-The asynchronous contract separates durable acceptance from execution:
-
-```text
-POST /research-runs/jobs
-→ validate tenant, user, provider, and rate limit
-→ commit the queued PostgreSQL row
-→ return HTTP 202 with progress, events, and report URLs
-→ atomically claim the run with an expiring PostgreSQL worker lease
-→ write the queued checkpoint and worker audit event
-→ run the remaining lifecycle in an owned asyncio task
-→ renew ownership on a bounded heartbeat
-→ write the terminal checkpoint and audit event
-→ release only with the matching worker identity and lease token
-→ POST /research-runs/{run_id}/cancel interrupts locally owned work
-→ atomically mark only queued/running rows cancelled within the tenant boundary
-→ make remote worker heartbeat renewal fail after cancellation and stop that task
-→ publish cancelled as a terminal Redis snapshot and SSE event
-```
-
-PostgreSQL now coordinates ownership across processes and preserves the
-accepted run, terminal artifacts, audit history, and boundary checkpoints. The
-application scans queued/running rows without an active lease on startup and
-atomically claims them. The official asynchronous LangGraph PostgreSQL
-checkpointer saves every graph superstep and pending parallel writes under a
-tenant/run thread ID, so recovery continues after the last successful node
-without repeating it. Its four library-owned tables are migrated by the
-checkpointer and intentionally excluded from Alembic application-schema drift
-checks; application lifecycle/audit/checkpoint tables remain Alembic-owned.
-Cancellation is a first-class terminal state rather than a generic failure. The
-API returns a conflict for missing or already-terminal runs, and the console
-offers cancellation only while a job is queued or running. This avoids
-reporting a completed result as cancelled during a late client request. Normal
-application shutdown only interrupts local tasks and leaves their active rows
-recoverable; it does not impersonate an explicit user cancellation.
-
-### Redis-Backed Result Caching
-
-```text
-POST /research-runs
-→ create a durable PostgreSQL research run
-→ look up tenant + canonical provider + normalized query in Redis
-→ cache hit: restore API-visible state and skip the LLM workflow
-→ cache miss: execute the workflow and commit the completed run
-→ preserve report, evidence, citation, and reflection state on either path
-→ write the completed result to Redis with a bounded TTL
-→ return cache_hit in the API response
-```
-
-Redis is an optional acceleration layer. Redis read or write failures are
-logged and fail open, while PostgreSQL remains the durable source of truth.
-Cache hits still create distinct research-run records for auditability.
-
-### Idempotent Request Coordination
-
-```text
-POST /research-runs with Idempotency-Key
-→ normalize the tenant-scoped client key and request payload
-→ read a completed idempotency record
-→ acquire an expiring Redis lock when no record exists
-→ read the completed record again after acquiring the lock
-→ execute at most once while the lease is held
-→ store the completed response for later replay
-→ release with an atomic compare-and-delete Lua script
-```
-
-Idempotency is a correctness feature rather than an optional acceleration.
-Requests carrying `Idempotency-Key` fail closed with `503` when the Redis
-record store or coordination lock is unavailable. Reusing a key for a
-different payload, or retrying while its original request is still running,
-returns `409`. A completed retry returns the original research-run ID without
-creating another run.
-
-The coordination lock currently has a bounded 300-second default TTL. That
-prevents abandoned permanent locks, but lease renewal is still required before
-executions longer than the TTL can be treated as production-safe.
-
-### Tenant-Scoped Rate Limiting
-
-```text
-POST /research-runs
-→ derive a versioned tenant-scoped Redis key
-→ atomically increment the request counter with Lua
-→ initialize a bounded TTL for the fixed window
-→ allow requests within the configured tenant allowance
-→ return HTTP 429 and Retry-After when the allowance is exhausted
-→ expose X-RateLimit-Limit, Remaining, and Reset headers
-```
-
-The default policy allows 20 research requests per tenant per 60-second
-window. Both values are configurable. Rate limiting fails closed with `503`
-when Redis cannot guarantee enforcement, protecting the LLM-backed endpoint
-from unbounded work during a coordination outage. The live Redis test verifies
-concurrent atomic increments, tenant isolation, TTL behavior, and cleanup.
-
-### Research Progress Coordination
-
-```text
-ResearchExecutionService
-→ publish queued after durable run creation
-→ publish running after the PostgreSQL transition
-→ publish completed with the final workflow status
-→ publish failed with a bounded error message
-→ expire the latest snapshot with a configurable Redis TTL
-```
-
-Clients can poll `GET /research-runs/{research_run_id}/progress` or consume
-`GET /research-runs/{research_run_id}/events` with a valid session cookie.
-The SSE stream emits changed snapshots and closes after `completed` or `failed`.
-Keys include both the tenant UUID and research-run UUID, so another tenant
-cannot read the snapshot. Progress publishing fails open to preserve durable
-research execution when Redis is unavailable; query and stream consumers get
-an explicit unavailable or not-found result.
-
-`POST /research-runs` remains the synchronous convenience contract, while
-`POST /research-runs/jobs` provides the tested HTTP 202 background path.
-
 ## Data Responsibilities
 
 ```text
-PostgreSQL
-→ durable business data
-→ research runs
-→ reports
-→ sources
-→ worker leases and append-only audit events
-→ application boundary checkpoints
-→ official LangGraph node checkpoints and pending writes
-
-Redis
-→ temporary cache
-→ progress
-→ rate limiting
-→ idempotency and coordination
-
-Milvus
-→ private document chunks
-→ embeddings
-→ tenant-scoped vector similarity search
+PostgreSQL → durable business data (runs, reports, sources, sessions,
+             worker leases, audit events, checkpoints)
+Redis      → temporary cache, progress, rate limiting, idempotency
+Milvus     → private document chunks, embeddings, tenant-scoped search
 ```
 
-PostgreSQL persistence is implemented for tenants, users, research runs,
-reports, and scored evidence sources. A completed deep-research transition and
-its report artifacts share one transaction, preventing a completed run from
-being committed without its report. Tenant-scoped report retrieval, reversible
-migration, and live cleanup have been verified. Worker ownership, audit events,
-application checkpoints, and official LangGraph node-level resume are also
-implemented and live PostgreSQL verified.
-
-Redis result caching is implemented with tenant/provider/query-scoped keys,
-bounded TTLs, application-scoped connection management, fail-open behavior,
-and live miss/write/hit verification. Tenant-scoped idempotency records,
-canonical request fingerprints, atomic coordination locks, concurrent
-execution exclusion, and completed-response replay are also implemented and
-live tested. Tenant-scoped fixed-window rate limiting is implemented with
-atomic Redis counters, bounded TTLs, API response headers, and live concurrent
-verification. Tenant-scoped progress snapshots, lifecycle publishing, TTL,
-polling and SSE behavior, background delivery, and live running-to-completed
-transitions are implemented and tested. Lock renewal remains a
-production-hardening item for executions that may exceed the coordination
-lease. Milvus private retrieval is implemented and live integration tested.
+See [docs/data-model.md](docs/data-model.md) for the full schema (including
+the PostgreSQL ERD and the S3/local-filesystem key layout) and
+[docs/reliability.md](docs/reliability.md) for which paths fail open versus
+fail closed.
 
 ## Local Setup
 
@@ -788,6 +347,8 @@ consuming SSE events, and reading the completed durable report.
 Additional operational contracts are:
 
 ```text
+GET /research-runs                   → tenant-scoped recent-run history
+GET /research-runs/{run_id}          → one run's durable lifecycle state
 GET /research-runs/{run_id}/sources  → tenant-scoped scored evidence
 GET /providers                       → Claude/Qwen capability metadata
 GET /health                          → process liveness only
@@ -836,30 +397,26 @@ Run the default quality checks:
 
 ```bash
 ruff check .
-mypy \
-  app \
-  tests \
-  alembic/env.py \
-  alembic/versions/0eea26dcdef5_create_research_persistence_tables.py \
-  alembic/versions/9bd72c6f8a10_add_research_reports_and_sources.py
+mypy app tests alembic/env.py
 pytest -q
 ```
 
 Current verified default result:
 
 ```text
-436 passed
-20 integration tests deselected
+656 passed
+28 integration tests deselected
 1 dependency deprecation warning
 ```
 
 The warning comes from the current FastAPI/Starlette test-client dependency
-combination and does not represent a failed application test.
+combination and does not represent a failed application test. The default
+test suite does not call Claude, Tavily, Ollama, Milvus, PostgreSQL, or
+Redis.
 
-The default test suite does not call Claude, Tavily, Ollama, Milvus,
-PostgreSQL, or Redis.
-
-The Vue research console is verified independently:
+The Vue research console is verified independently (requires Node 22 — the
+default Node in some sandboxes breaks jsdom's `localStorage`, so `nvm use 22`
+first if `npm test` fails oddly):
 
 ```bash
 cd frontend
@@ -867,197 +424,73 @@ npm install
 npm run typecheck
 npm test
 npm run build
+npx playwright test
 ```
 
 Current frontend result:
 
 ```text
 Vue and TypeScript typecheck passed
-18 component, provider-configuration, and streaming-contract tests passed
+50 component, store, and API-contract tests passed
 Vite production build passed
-desktop, mobile, provider, report, evidence, and operational states browser checked
+13 Playwright end-to-end tests passed (auth, navigation, design-preview,
+  direct-run-hydration)
 ```
 
-The console uses the real asynchronous API contract. It submits durable jobs,
-parses tenant-authenticated SSE with `fetch`, retrieves completed reports, and
-presents evidence scores and source links. Tenant and optional user UUIDs are
-configured explicitly in the workspace dialog. Recent-run history remains
-browser-local until a tenant-scoped history endpoint is implemented.
+The console uses the real asynchronous API contract: it authenticates
+through the session cookie (see Authentication above), submits durable
+jobs, consumes SSE with `fetch`, retrieves completed reports, and presents
+evidence scores and source links. Recent-run history remains browser-local
+until a tenant-scoped history endpoint is implemented. The evidence panel
+is collapsed by default so the report keeps a readable line length; a
+citation or evidence action expands the traceable source details only
+when needed. Visual implementation evidence and the source-to-build
+comparison are recorded in `design-qa.md`.
 
 ## Continuous Integration
 
-GitHub Actions runs four explicit quality gates on pull requests and pushes to
-`main`:
-
-```text
-Backend quality
-→ install Python 3.13 dependencies
-→ Ruff
-→ strict mypy
-→ default pytest suite without live integrations
-
-Frontend quality
-→ reproducible npm ci install on Node.js 22
-→ dependency audit
-→ Vue and TypeScript typecheck
-→ Vitest
-→ Vite production build
-
-Terraform quality
-→ recursive formatting check
-→ bootstrap and staging initialization without remote state
-→ Terraform validation and mock plan-invariant test
-→ deployment and destroy script syntax checks
-
-Container packaging
-→ validate Compose configuration and smoke-script syntax
-→ build the FastAPI image
-→ build the Vue and Nginx image
-```
-
-The container job waits for backend, frontend, and Terraform quality. The
-eight-service Compose smoke test remains an explicit local integration check
-because starting Milvus, etcd, MinIO, PostgreSQL, and Redis on every pull
-request would add substantial latency. This separation keeps pull-request
-feedback bounded without claiming that image builds replace the live Compose
-verification documented below.
+GitHub Actions gates every pull request and push to `main` with backend
+(Ruff, mypy, pytest), frontend (typecheck, Vitest, Playwright, build),
+PostgreSQL+Redis integration, Terraform, and container-packaging jobs. See
+[docs/deployment.md](docs/deployment.md#cicd) for the full breakdown of
+each job.
 
 ## Local Docker Compose Stack
 
-The complete local application stack is reproducible from the repository:
-
 ```bash
 cp .env.example .env
-
 # Add provider credentials when needed, then start the stack.
 docker compose up --build --detach --wait
 ```
 
-Open `http://localhost:3000`. The frontend Nginx service proxies `/api` to the
-FastAPI container, including unbuffered SSE responses. The API runs Alembic to
-the current head before Uvicorn starts.
-
-The Compose network contains:
-
-```text
-browser
-→ Nginx and Vue frontend
-→ FastAPI and Alembic
-→ PostgreSQL + Redis + Milvus
-                 → etcd + MinIO
-→ host Ollama through host.docker.internal when Qwen is selected
-```
-
-PostgreSQL, Redis, Milvus, etcd, and MinIO are not published to the host by
-default. Only the frontend and API bind to loopback. This avoids exposing state
-services and prevents conflicts with separately managed integration-test
-containers.
-
-Run the repeatable isolated smoke check on temporary host ports:
-
-```bash
-./scripts/compose-smoke.sh
-```
-
-The script validates Compose configuration, builds both application images,
-waits for all eight services to become healthy, calls the API through Nginx,
-checks the Alembic head and Redis, validates Nginx, and stops the containers.
-Named development volumes remain available across runs. To stop a manually
-started stack without deleting those volumes:
-
-```bash
-docker compose down
-```
+Open `http://localhost:3000`. See [docs/deployment.md](docs/deployment.md#local)
+for the full port topology, the `scripts/compose-smoke.sh` verification
+script, and the eight services this starts.
 
 ## AWS Staging Deployment
 
-Phase 14 provides separate Terraform roots for the protected remote-state
-bucket and disposable staging resources:
-
-```text
-infra/terraform/bootstrap
-→ encrypted, versioned, public-access-blocked S3 state bucket
-→ native S3 state locking
-→ prevent_destroy guard
-
-infra/terraform/staging
-→ two-AZ VPC with public application and isolated data subnets
-→ immutable, encrypted, scan-on-push ECR repositories
-→ single-AZ encrypted RDS PostgreSQL
-→ single-node encrypted Valkey cache
-→ Secrets Manager credentials and least-privilege ECS execution access
-→ private encrypted, versioned, public-blocked S3 document storage
-→ least-privilege ECS task access to S3 objects and Titan embeddings
-→ ARM64 Fargate task, CloudWatch logs, ALB, and CloudFront
-→ monthly AWS Budget alerts
-```
-
-The staging defaults prioritize cost control, not high availability: zero
-running application tasks until images exist, 0.5 vCPU and 1 GiB per running
-task, small Graviton database/cache instances, seven-day logs, twenty retained
-images per repository, no NAT Gateway, and a USD 25 monthly budget alert. A
-budget alert does not stop charges. RDS, Valkey, ALB, CloudFront, Secrets
-Manager, ECR, and Fargate can all incur costs after apply, even when the ECS
-desired count is zero.
-
-The staging operating model is demo-on-demand. Apply the full stack only for an
-active review or interview session, verify the public endpoint, and destroy the
-staging stack afterward. Scaling ECS to zero is not sufficient because RDS,
-Valkey, the ALB, public IPv4 addresses, and secrets continue to incur charges.
-The separate protected state bucket intentionally remains after routine staging
-destruction.
-
-The protected, account-scoped state bucket is deployed in `us-west-2` using the
-`evident-research-platform-<account-id>-tfstate` naming rule. Terraform applied
-six resources with no updates or deletes. AWS API verification confirmed
-versioning, AES256 encryption, `BucketOwnerEnforced` ownership, all four
-public-access blocks, the HTTPS-only bucket policy, and the expected resource
-tags. A post-apply Terraform plan reports zero changes. The staging Terraform
-root has been initialized against this backend; initialization created no state
-object and no application resources.
-
-Before this private-knowledge AWS slice, the protected
-GitHub Actions workflow generated a fresh zero-task plan using
-`claude-sonnet-5` and the managed Zilliz Cloud AWS `us-west-2` endpoint. The
-plan reports 48 resources to add, zero to change, and zero to destroy. The plan
-remained on the ephemeral runner and was not applied. That historical plan is
-now stale because S3 and Bedrock permissions were added; a fresh authenticated
-plan is required before any apply.
-
-After configuring the staging backend file and supplying the required provider
-variables and secrets, deploy locally with:
+Only the protected Terraform state bucket and GitHub OIDC deployment
+identity are applied; the application stack (ECS, RDS, Valkey, ALB,
+CloudFront — an estimated $48.25–$66.32/month) has never been
+`terraform apply`'d. Deployment is demo-on-demand: apply for an active
+review, verify the endpoint, then destroy.
 
 ```bash
+# Deploy (after configuring the staging backend and required secrets):
 TF_VAR_budget_notification_email=you@example.com \
 TF_VAR_anthropic_model=replace-with-supported-model-id \
 TF_VAR_milvus_uri=https://replace-with-managed-milvus-endpoint \
-ANTHROPIC_API_KEY=... \
-TAVILY_API_KEY=... \
-MILVUS_TOKEN=... \
+ANTHROPIC_API_KEY=... TAVILY_API_KEY=... MILVUS_TOKEN=... \
 scripts/aws-deploy.sh
-```
 
-The script applies dependencies with zero tasks, writes cache and provider
-credentials to Secrets Manager without reading existing values, pushes both
-Linux ARM64 images under one immutable Git SHA, starts the service, waits for
-ECS stability, invalidates CloudFront, and verifies `/api/health`.
-Before Terraform initialization, it rejects missing deployment inputs and the
-documented Anthropic or Milvus placeholder values without printing secrets.
-The manual `Deploy AWS staging` workflow performs the same operation through a
-protected GitHub environment and AWS OIDC, without long-lived AWS keys.
-
-Destroy billable staging resources only after reviewing the active account and
-the generated plan:
-
-```bash
+# Destroy (billable resources only — the state bucket survives):
 AWS_DESTROY_CONFIRM=destroy-staging scripts/aws-destroy.sh
 ```
 
-The separate versioned Terraform state bucket remains protected during routine
-staging destruction. Full variables, bootstrap steps, GitHub environment
-configuration, and failure recovery are documented in
-`infra/terraform/staging/README.md`. No AWS account apply or public endpoint is
-claimed by this README yet.
+See [docs/deployment.md](docs/deployment.md#aws-staging) for the Terraform
+root breakdown, the full cost basis, what each script does, and
+`infra/terraform/staging/README.md` for every variable and the GitHub
+environment configuration.
 
 ## Live Integration Tests
 
@@ -1153,6 +586,14 @@ pytest -q -m integration \
   tests/integration/test_research_progress_redis_live.py
 ```
 
+The examples above are the most common combinations; `tests/integration/`
+has more files covering additional live paths (durability, knowledge
+lifecycle, LangGraph checkpoint resume, agent-step tracing, MCP server,
+readiness) that follow the same `RUN_LIVE_TESTS=true` plus
+`DATABASE_URL`/`REDIS_URL` pattern — point `pytest -q -m integration` at
+any specific file, or drop the file argument to run everything the
+configured environment supports.
+
 The private-RAG test verifies the real path:
 
 ```text
@@ -1177,88 +618,3 @@ private engineering documents
 - Do not describe planned, mocked, or local-only features as production
   capabilities.
 
-## Completed Phase 12 Scope
-
-Phase 11 is complete. Its tested scope is:
-
-```text
-reversible research_reports and research_sources migration
-atomic run-completion and artifact transaction
-tenant-scoped durable report retrieval
-cache-hit restoration of report and evidence state
-durably accepted HTTP 202 research jobs
-application-owned background task lifecycle
-tenant-scoped SSE progress and terminal delivery
-one bounded evidence-guided report revision
-live PostgreSQL and Redis background delivery round trip
-```
-
-The Phase 12 browser interface and local packaging are implemented and verified:
-
-```text
-Vue 3 + TypeScript + Vite research console
-original round eight-ray Evident brand mark and responsive application header
-warm editorial design tokens shared by the Vue components and real UI states
-provider selection and tenant/user request context
-durable asynchronous job submission
-fetch-based SSE progress visualization with tenant headers
-compact visualization of Intent Router, Planner, Web Scout, Local Scout,
-Evidence Judge, Analyst, Reflect, and Writer
-conclusion-first reports, research quality second, and evidence on demand
-running, completed, failed, empty, Redis-unavailable, SSE-disconnected,
-report-unavailable, and citation-revision-required states
-keyboard, focus, screen-reader, reduced-motion, light, dark, and mobile behavior
-multi-stage Python and Node/Nginx application images
-health-gated PostgreSQL, Redis, Milvus, etcd, MinIO, MCP, API, and frontend services
-automatic Alembic upgrade before API startup
-same-origin Nginx API and unbuffered SSE proxy
-loopback-only frontend and API ports with internal-only state services
-repeatable Compose smoke verification and non-destructive shutdown
-```
-
-The evidence panel is collapsed by default so the report keeps a readable line
-length. A citation or evidence action expands the traceable source details only
-when the user needs them. Visual implementation evidence and the source-to-build
-comparison are recorded in `design-qa.md`.
-
-Phase 13 is complete and its backend, frontend, and container jobs have passed
-on a GitHub-hosted pull-request run. A synchronous browser submission mode is
-intentionally not claimed; the console uses the durable background-job
-contract.
-
-Phase 14 infrastructure and deployment automation are implemented and locally
-validated. The work includes remote-state bootstrap, cost and lifecycle guards,
-private data services, private S3 document storage, a Bedrock embedding adapter,
-CloudFront-restricted ingress, immutable ARM64 images, GitHub OIDC deployment,
-a Claude cloud console, and explicit teardown. It
-is not marked as an application deployment: only the protected remote-state
-bootstrap and CI deployment identity have been applied and verified. No
-staging application apply or live endpoint smoke test has been run. The
-separate OIDC identity root passed
-Terraform validation and contract tests, then applied five IAM/OIDC objects
-without changing or destroying existing resources. AWS API readback confirmed
-the exact issuer, audience, immutable repository and environment trust, session
-limit, and three reviewed inline policies. Its protected remote state is
-versioned and encrypted, and the post-apply Terraform plan reports zero drift.
-The protected GitHub Actions workflow then assumed the expected staging role
-through OIDC and verified the AWS account and assumed-role ARN without storing
-long-lived AWS credentials. The same protected job generated the first real
-staging plan before S3 document storage and Bedrock task access were added. A
-new protected plan is required. No plan artifact was uploaded and no application
-resource was applied.
-
-At public `us-west-2` rates checked on 2026-08-02, the planned zero-task stack
-has an estimated fixed baseline of about $48.25 per 730-hour month. One 0.5
-vCPU / 1 GiB ARM64 Fargate task plus its assigned public IPv4 address raises
-that baseline to about $66.32 before traffic, logs, image storage, provider
-APIs, and taxes. This is why the staging environment remains demo-on-demand
-and why the $25 AWS Budget is treated as an alert rather than a spending cap.
-
-MCP now has a repository-owned official-SDK server and a real Streamable HTTP
-integration, while third-party organization MCP endpoints remain optional.
-PostgreSQL remains the durable source of truth, while
-Redis stores temporary cache and coordination state. The current background
-runner uses PostgreSQL ownership, heartbeat renewal, startup discovery, and
-official node-level checkpoint resume. A separate queue service could improve
-dispatch throughput, but it is no longer required for correctness after an API
-process restart.

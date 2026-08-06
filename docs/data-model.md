@@ -28,7 +28,7 @@ erDiagram
 | `research_checkpoints` | Application-level node-boundary state snapshots, ordered by `sequence` | Phase 14 (durability) |
 | `research_audit_events` | Append-only operational events (`event_type`, `actor_type`, `details` JSONB) — worker ownership *and* `human_review_requested` events from the MCP tool | Phase 14; extended this session |
 | `research_worker_leases` | One active lease per run, with heartbeat/expiry, for crash-safe background execution | Phase 14 |
-| `research_agent_steps` | Per-agent-role trace (`agent_role`, `status`, `sequence`) for the eight-agent workflow — schema and repository shipped, **not yet written to by the live execution path** | Added this session |
+| `research_agent_steps` | Per-agent-role started/completed/failed trace (`agent_role`, `status`, `sequence`) for the eight-agent workflow, written live via `LangGraphResearchWorkflow`'s `astream` reconstruction | Added this session |
 | `knowledge_documents` | Private-document upload/indexing lifecycle metadata | Phase 7 |
 
 LangGraph's official `AsyncPostgresSaver` also owns four of its own tables
