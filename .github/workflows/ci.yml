@@ -37,7 +37,7 @@ jobs:
         run: python -m ruff check .
 
       - name: Type-check backend
-        run: python -m mypy app tests alembic/env.py alembic/versions
+        run: python -m mypy app tests scripts alembic/env.py alembic/versions
 
       - name: Test backend
         run: python -m pytest -q

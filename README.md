@@ -56,7 +56,7 @@ Implemented and tested: GET /research-runs (list) and GET /research-runs/{resear
 Implemented and live verified: real authentication replacing the pre-authentication X-Tenant-ID/X-User-ID headers — Argon2id password hashing, a durable sessions table (the charter's data-model item, previously deliberately deferred), httpOnly session cookies, self-service tenant signup, and matching Login/Register views with router guards on the frontend
 Implemented and live verified: research_agent_steps wired into live execution via LangGraph's astream(stream_mode=["tasks", "values"]), tracing every canonical agent step as a real run executes, confirmed against the real production graph and a real Ollama call
 Implemented and tested: exponential backoff with full jitter (app/core/retry.py), wired around the actual connectivity-level failures of Ollama, Tavily, and Milvus search -- deliberately not Anthropic, whose SDK already retries internally, and deliberately layered outside the circuit breaker rather than inside it
-Next: a reproducible evaluation harness over demo_profiles/engineering/evaluation_cases.jsonl
+Implemented and tested: scripts/run_evaluation.py, a reproducible evaluation harness over evaluation_cases.jsonl (routing accuracy, source coverage, private-knowledge accuracy, report-section coverage, completion rate, human-review trigger rate, latency); scoring/loading unit tested and the harness itself smoke-tested end-to-end locally, but no run against a real provider has been published
 ```
 
 See [docs/workflow.md](docs/workflow.md) for the deep-research agent path
@@ -170,6 +170,7 @@ this log used to spell out inline.
 | Authentication | Email+password registration and login, Argon2id password hashing, a durable sessions table, httpOnly session-cookie middleware, and self-service tenant signup, replacing the pre-authentication X-Tenant-ID/X-User-ID headers; unit, live-Postgres, and Vue/Playwright tested |
 | PostgreSQL/Redis CI integration gate | The Postgres/Redis-only subset of integration tests run against postgres:17-alpine and redis:8-alpine service containers on every pull request and push to main |
 | Architecture documentation | docs/PROJECT_CHARTER.md and eight supporting documents, cross-referencing actual code paths and explicitly separating implemented from planned |
+| Evaluation harness | scripts/run_evaluation.py scores routing accuracy, source coverage, private-knowledge accuracy, report-section coverage, completion rate, human-review trigger rate, and latency against evaluation_cases.jsonl; scoring/loading unit tested against the real fixture file and a mocked HTTP transport, harness smoke-tested end-to-end locally; no run against a real provider published |
 | Open-source contribution | Planned |
 
 There are no published evaluation metrics or deployed application environments
@@ -397,7 +398,7 @@ Run the default quality checks:
 
 ```bash
 ruff check .
-mypy app tests alembic/env.py
+mypy app tests scripts alembic/env.py alembic/versions
 pytest -q
 ```
 

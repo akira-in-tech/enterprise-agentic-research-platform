@@ -35,6 +35,10 @@ dist/
 *.log
 logs/
 data/
+
+# scripts/run_evaluation.py report output (reproducible run artifacts,
+# not source -- regenerate via scripts/run_evaluation.py)
+eval_runs/
 uploads/
 
 # Terraform local state, caches, plans, and variable secrets
