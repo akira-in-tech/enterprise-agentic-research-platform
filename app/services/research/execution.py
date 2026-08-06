@@ -3,9 +3,11 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from itertools import count
 from typing import Protocol, cast
 from uuid import UUID
 
+from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from app.agents.local_scout import LocalScoutAgent
@@ -20,10 +22,16 @@ from app.services.llm.factory import (
 )
 from app.services.mcp import MCPReferenceScout
 from app.workflow.graph import (
+    AGENT_STEP_NODE_NAMES,
     ResearchGraph,
     build_research_graph_for_client,
 )
 from app.workflow.state import ResearchState
+
+AgentStepRecorder = Callable[
+    [str, str, str | None],
+    Awaitable[None],
+]
 
 logger = logging.getLogger(__name__)
 
@@ -56,6 +64,7 @@ class LangGraphResearchWorkflow:
         self._close_callback = close_callback
         self._thread_id: str | None = None
         self._resume = False
+        self._step_recorder: AgentStepRecorder | None = None
 
     def configure_durable_execution(
         self,
@@ -68,10 +77,21 @@ class LangGraphResearchWorkflow:
         self._thread_id = thread_id
         self._resume = resume
 
+    def configure_step_recording(
+        self,
+        recorder: AgentStepRecorder | None,
+    ) -> None:
+        """Record a durable trace row for each canonical agent step."""
+
+        self._step_recorder = recorder
+
     async def ainvoke(
         self,
         state: ResearchState,
     ) -> ResearchState:
+        if self._step_recorder is not None:
+            return await self._ainvoke_with_step_recording(state)
+
         if self._thread_id is None:
             result = await self._graph.ainvoke(state)
         else:
@@ -85,6 +105,77 @@ class LangGraphResearchWorkflow:
             ResearchState,
             result,
         )
+
+    async def _ainvoke_with_step_recording(
+        self,
+        state: ResearchState,
+    ) -> ResearchState:
+        """Stream the run so each canonical agent step gets a trace row."""
+
+        recorder = self._step_recorder
+        assert recorder is not None
+
+        config: RunnableConfig | None
+
+        if self._thread_id is None:
+            graph_input: ResearchState | None = state
+            config = None
+        else:
+            graph_input = None if self._resume else state
+            config = {"configurable": {"thread_id": self._thread_id}}
+
+        last_values: ResearchState = state
+        # LangGraph only yields a "tasks" finish event for a failed node when
+        # another task in the same superstep is still in flight; a lone
+        # failing node's exception propagates with no finish event at all.
+        # Tracking still-in-flight steps lets the except-block below record
+        # those as failed either way.
+        in_flight: set[str] = set()
+
+        try:
+            async for mode, chunk in self._graph.astream(
+                graph_input,
+                config=config,
+                stream_mode=["tasks", "values"],
+            ):
+                if mode == "values":
+                    last_values = cast(ResearchState, chunk)
+                else:
+                    await self._record_task_event(
+                        cast(dict[str, object], chunk),
+                        in_flight,
+                    )
+        except Exception as error:
+            for name in in_flight:
+                await recorder(name, "failed", str(error)[:1000])
+            raise
+
+        return last_values
+
+    async def _record_task_event(
+        self,
+        event: dict[str, object],
+        in_flight: set[str],
+    ) -> None:
+        assert self._step_recorder is not None
+
+        name = event.get("name")
+
+        if not isinstance(name, str) or name not in AGENT_STEP_NODE_NAMES:
+            return
+
+        if "result" not in event:
+            in_flight.add(name)
+            await self._step_recorder(name, "started", None)
+            return
+
+        in_flight.discard(name)
+        error = event.get("error")
+
+        if error is None:
+            await self._step_recorder(name, "completed", None)
+        else:
+            await self._step_recorder(name, "failed", str(error)[:1000])
 
     async def close(self) -> None:
         """Release workflow-owned resources."""
@@ -175,6 +266,22 @@ class ResearchProgressPublisher(Protocol):
         """Publish the latest lifecycle snapshot."""
 
 
+class ResearchAgentStepStore(Protocol):
+    """Represent optional durable per-agent-step trace recording."""
+
+    async def append(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        sequence: int,
+        agent_role: str,
+        status: str,
+        summary: str | None = None,
+    ) -> None:
+        """Append one step without overwriting prior history."""
+
+
 WorkflowFactory = Callable[
     [CanonicalLLMProvider],
     ResearchWorkflow,
@@ -244,10 +351,12 @@ class ResearchExecutionService:
         *,
         result_cache: ResearchResultCache | None = None,
         progress_store: ResearchProgressPublisher | None = None,
+        agent_step_store: ResearchAgentStepStore | None = None,
     ) -> None:
         self._store = store
         self._workflow_factory = workflow_factory
         self._result_cache = result_cache
+        self._agent_step_store = agent_step_store
         self._progress_store = progress_store
 
     async def execute(
@@ -381,6 +490,13 @@ class ResearchExecutionService:
                         thread_id=f"{tenant_id}:{research_run_id}",
                         resume=queued.resume,
                     )
+                    if self._agent_step_store is not None:
+                        workflow.configure_step_recording(
+                            self._build_step_recorder(
+                                tenant_id=tenant_id,
+                                research_run_id=research_run_id,
+                            )
+                        )
                 initial_state: ResearchState = {
                     "query": normalized_query,
                     "tenant_id": tenant_id,
@@ -443,6 +559,44 @@ class ResearchExecutionService:
             state=final_state,
             cache_hit=cache_hit,
         )
+
+    def _build_step_recorder(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> AgentStepRecorder:
+        """Build a per-run recorder that assigns a monotonic sequence."""
+
+        agent_step_store = self._agent_step_store
+        assert agent_step_store is not None
+        sequence = count(1)
+
+        async def record(
+            agent_role: str,
+            status: str,
+            summary: str | None,
+        ) -> None:
+            try:
+                await agent_step_store.append(
+                    tenant_id=tenant_id,
+                    research_run_id=research_run_id,
+                    sequence=next(sequence),
+                    agent_role=agent_role,
+                    status=status,
+                    summary=summary,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to record agent step for tenant %s run %s (role=%s, status=%s).",
+                    tenant_id,
+                    research_run_id,
+                    agent_role,
+                    status,
+                    exc_info=True,
+                )
+
+        return record
 
     async def _publish_progress(
         self,

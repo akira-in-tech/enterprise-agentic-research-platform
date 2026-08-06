@@ -43,6 +43,7 @@ from app.services.research.idempotency import (
 )
 from app.services.research.jobs import ResearchJobManager
 from app.services.research.postgres import (
+    PostgresResearchAgentStepStore,
     PostgresResearchDurabilityStore,
     PostgresResearchRunStore,
 )
@@ -157,6 +158,7 @@ async def lifespan(
             workflow_factory,
             result_cache=result_cache,
             progress_store=progress_store,
+            agent_step_store=PostgresResearchAgentStepStore(session_factory),
         )
         research_job_manager = ResearchJobManager(
             execution_service,

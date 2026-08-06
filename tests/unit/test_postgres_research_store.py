@@ -8,14 +8,16 @@ from uuid import uuid4
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import ResearchCheckpoint, ResearchRun, ResearchWorkerLease
+from app.db.models import ResearchAgentStep, ResearchCheckpoint, ResearchRun, ResearchWorkerLease
 from app.db.repositories import (
+    ResearchAgentStepRepository,
     ResearchDurabilityRepository,
     ResearchReportRepository,
     ResearchRunRepository,
     ResearchRunTransitionError,
 )
 from app.services.research.postgres import (
+    PostgresResearchAgentStepStore,
     PostgresResearchDurabilityStore,
     PostgresResearchRunStore,
 )
@@ -478,4 +480,46 @@ async def test_durability_store_renews_releases_and_audits() -> None:
         actor_type="worker",
         actor_id="worker-1",
         details={"lease_token": str(lease_token)},
+    )
+
+
+@pytest.mark.anyio
+async def test_agent_step_store_appends_in_one_transaction() -> None:
+    session_mock = AsyncMock(spec=AsyncSession)
+    session = cast(AsyncSession, session_mock)
+    session_factory = RecordingSessionFactory(session)
+    repository_mock = AsyncMock(spec=ResearchAgentStepRepository)
+    repository = cast(ResearchAgentStepRepository, repository_mock)
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    repository_mock.append.return_value = ResearchAgentStep(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        sequence=1,
+        agent_role="intent_router",
+        status="completed",
+        summary=None,
+    )
+    store = PostgresResearchAgentStepStore(
+        session_factory,
+        lambda _: repository,
+    )
+
+    await store.append(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        sequence=1,
+        agent_role="intent_router",
+        status="completed",
+    )
+
+    assert session_factory.begin_calls == 1
+    repository_mock.append.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        sequence=1,
+        agent_role="intent_router",
+        status="completed",
+        summary=None,
     )

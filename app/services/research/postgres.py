@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import ResearchCheckpoint, ResearchRun, ResearchWorkerLease
 from app.db.repositories import (
+    ResearchAgentStepRepository,
     ResearchDurabilityRepository,
     ResearchReportRepository,
     ResearchRunRepository,
@@ -39,6 +40,10 @@ ReportRepositoryFactory = Callable[[AsyncSession], ResearchReportRepository]
 DurabilityRepositoryFactory = Callable[
     [AsyncSession],
     ResearchDurabilityRepository,
+]
+AgentStepRepositoryFactory = Callable[
+    [AsyncSession],
+    ResearchAgentStepRepository,
 ]
 
 
@@ -360,3 +365,35 @@ class PostgresResearchDurabilityStore:
             state=dict(checkpoint.state),
             created_at=checkpoint.created_at,
         )
+
+
+class PostgresResearchAgentStepStore:
+    """Append one durable per-agent-step trace row per short transaction."""
+
+    def __init__(
+        self,
+        session_factory: TransactionalSessionFactory,
+        repository_factory: AgentStepRepositoryFactory = ResearchAgentStepRepository,
+    ) -> None:
+        self._session_factory = session_factory
+        self._repository_factory = repository_factory
+
+    async def append(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        sequence: int,
+        agent_role: str,
+        status: str,
+        summary: str | None = None,
+    ) -> None:
+        async with self._session_factory.begin() as session:
+            await self._repository_factory(session).append(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                sequence=sequence,
+                agent_role=agent_role,
+                status=status,
+                summary=summary,
+            )

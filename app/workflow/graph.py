@@ -835,6 +835,25 @@ def build_eight_agent_writer_node(
     return writer_node
 
 
+# Node names in build_eight_agent_research_graph that correspond to a real
+# agent step worth a durable research_agent_steps trace row -- matches the
+# agent_role CHECK constraint exactly. Excludes "initialize" (setup only)
+# and "research_dispatch" (a no-op routing passthrough).
+AGENT_STEP_NODE_NAMES: frozenset[str] = frozenset(
+    {
+        "intent_router",
+        "direct_answer",
+        "planner",
+        "web_scout",
+        "local_scout",
+        "evidence_judge",
+        "analyst",
+        "reflect",
+        "writer",
+    }
+)
+
+
 def build_eight_agent_research_graph(
     classifier: IntentClassifier,
     create_plan: PlanCreator,

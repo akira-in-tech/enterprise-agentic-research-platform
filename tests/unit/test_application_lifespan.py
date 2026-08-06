@@ -72,6 +72,7 @@ async def test_lifespan_wires_and_closes_application_resources(
     database_session_factory = object()
     research_store = object()
     durability_store = object()
+    agent_step_store = object()
     result_cache = object()
     idempotency_store = object()
     execution_service = object()
@@ -109,6 +110,9 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_durability_store = Mock(
         return_value=durability_store,
+    )
+    create_agent_step_store = Mock(
+        return_value=agent_step_store,
     )
     redis_connection_type = Mock()
     redis_connection_type.from_url.return_value = redis_connection
@@ -199,6 +203,11 @@ async def test_lifespan_wires_and_closes_application_resources(
         main_module,
         "PostgresResearchDurabilityStore",
         create_durability_store,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "PostgresResearchAgentStepStore",
+        create_agent_step_store,
     )
     monkeypatch.setattr(
         main_module,
@@ -363,6 +372,9 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_durability_store.assert_called_once_with(
         database_session_factory,
     )
+    create_agent_step_store.assert_called_once_with(
+        database_session_factory,
+    )
     redis_connection_type.from_url.assert_called_once_with()
     create_cache.assert_called_once_with(
         redis_connection,
@@ -422,4 +434,5 @@ async def test_lifespan_wires_and_closes_application_resources(
     assert execution_call.kwargs == {
         "result_cache": result_cache,
         "progress_store": progress_store,
+        "agent_step_store": agent_step_store,
     }
