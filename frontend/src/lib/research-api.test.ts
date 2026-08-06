@@ -38,10 +38,10 @@ describe("research cancellation API", () => {
   it("cancels one run using the session cookie", async () => {
     const researchRunId = "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589";
     const fetchMock = vi.fn().mockResolvedValue(
-      new Response(
-        JSON.stringify({ research_run_id: researchRunId, status: "cancelled" }),
-        { status: 200, headers: { "Content-Type": "application/json" } },
-      ),
+      new Response(JSON.stringify({ research_run_id: researchRunId, status: "cancelled" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
     );
     vi.stubGlobal("fetch", fetchMock);
 

@@ -19,8 +19,5 @@ export function loadResearchHistory(): RecentResearchRun[] {
 }
 
 export function saveResearchHistory(history: RecentResearchRun[]): void {
-  localStorage.setItem(
-    STORAGE_KEY,
-    JSON.stringify(history.slice(0, MAX_HISTORY_ITEMS)),
-  );
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(history.slice(0, MAX_HISTORY_ITEMS)));
 }

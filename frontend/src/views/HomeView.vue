@@ -31,12 +31,18 @@ function selectRun(run: RecentResearchRun): void {
     <section class="hero-section" aria-labelledby="hero-title">
       <div class="hero-intro">
         <p class="hero-eyebrow">Trusted research workspace</p>
-        <h1 id="hero-title">A <em>research</em><br />workspace for<br />answers that<br />hold up.</h1>
+        <h1 id="hero-title">
+          A <em>research</em><br />workspace for<br />answers that<br />hold up.
+        </h1>
         <span class="hero-rule" aria-hidden="true"></span>
-        <p class="hero-copy">Plan the work. Inspect the evidence.<br />Share a report with every source attached.</p>
+        <p class="hero-copy">
+          Plan the work. Inspect the evidence.<br />Share a report with every source attached.
+        </p>
         <ul class="trust-list" aria-label="Research guarantees">
           <li><PhShieldCheck :size="21" /> Sources remain inspectable</li>
-          <li><PhLockKey :size="21" /> Your data stays tenant-scoped and is never used for training.</li>
+          <li>
+            <PhLockKey :size="21" /> Your data stays tenant-scoped and is never used for training.
+          </li>
         </ul>
       </div>
 

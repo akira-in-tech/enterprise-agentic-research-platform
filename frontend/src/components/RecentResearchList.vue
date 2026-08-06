@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-  PhArrowRight,
-  PhCheck,
-  PhCircleNotch,
-  PhFileText,
-  PhWarning,
-} from "@phosphor-icons/vue";
+import { PhArrowRight, PhCheck, PhCircleNotch, PhFileText, PhWarning } from "@phosphor-icons/vue";
 import { computed } from "vue";
 
 import type { RecentResearchRun } from "../types/research";
@@ -55,7 +49,9 @@ function statusLabel(run: RecentResearchRun): string {
 
     <div v-else class="research-table-wrap">
       <table class="research-table">
-        <caption class="sr-only">Recent research runs</caption>
+        <caption class="sr-only">
+          Recent research runs
+        </caption>
         <thead>
           <tr>
             <th scope="col">Status</th>
@@ -72,7 +68,11 @@ function statusLabel(run: RecentResearchRun): string {
             <td data-label="Status">
               <span class="table-status">
                 <span class="table-status-icon" aria-hidden="true">
-                  <PhCircleNotch v-if="run.status === 'queued' || run.status === 'running'" class="spin" :size="15" />
+                  <PhCircleNotch
+                    v-if="run.status === 'queued' || run.status === 'running'"
+                    class="spin"
+                    :size="15"
+                  />
                   <PhCheck v-else-if="run.status === 'completed'" :size="14" weight="bold" />
                   <PhWarning v-else :size="15" weight="fill" />
                 </span>
@@ -95,10 +95,17 @@ function statusLabel(run: RecentResearchRun): string {
               </span>
               <span v-else>—</span>
             </td>
-            <td data-label="Provider">{{ run.provider === "qwen" ? "Qwen Local" : "Claude Cloud" }}</td>
+            <td data-label="Provider">
+              {{ run.provider === "qwen" ? "Qwen Local" : "Claude Cloud" }}
+            </td>
             <td data-label="Updated">{{ relativeTime(run.updatedAt) }}</td>
             <td>
-              <button class="open-run-button" type="button" :aria-label="`Open research: ${run.query}`" @click="emit('select', run)">
+              <button
+                class="open-run-button"
+                type="button"
+                :aria-label="`Open research: ${run.query}`"
+                @click="emit('select', run)"
+              >
                 <PhArrowRight :size="17" />
               </button>
             </td>

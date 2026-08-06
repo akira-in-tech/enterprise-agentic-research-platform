@@ -427,6 +427,7 @@ first if `npm test` fails oddly):
 cd frontend
 npm install
 npm run lint
+npm run format:check
 npm run typecheck
 npm test
 npm run build

@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-  PhCaretDown,
-  PhCheck,
-  PhCloud,
-  PhCpu,
-  PhShieldCheck,
-} from "@phosphor-icons/vue";
+import { PhCaretDown, PhCheck, PhCloud, PhCpu, PhShieldCheck } from "@phosphor-icons/vue";
 import { computed, nextTick, ref } from "vue";
 
 import type { UserFacingProvider } from "../types/research";
@@ -124,7 +118,9 @@ function onMenuKeydown(event: KeyboardEvent): void {
           :aria-selected="modelValue === 'qwen'"
           @click="select('qwen')"
         >
-          <span class="provider-icon provider-icon-local"><PhCpu :size="19" weight="duotone" /></span>
+          <span class="provider-icon provider-icon-local"
+            ><PhCpu :size="19" weight="duotone"
+          /></span>
           <span class="provider-copy">
             <strong>Qwen Local</strong>
             <small><PhShieldCheck :size="13" /> Private, no usage cost</small>
@@ -140,14 +136,18 @@ function onMenuKeydown(event: KeyboardEvent): void {
           :aria-selected="modelValue === 'claude'"
           @click="select('claude')"
         >
-          <span class="provider-icon provider-icon-cloud"><PhCloud :size="19" weight="duotone" /></span>
+          <span class="provider-icon provider-icon-cloud"
+            ><PhCloud :size="19" weight="duotone"
+          /></span>
           <span class="provider-copy">
             <strong>Claude Cloud</strong>
             <small>Stronger synthesis, usage billed</small>
           </span>
           <PhCheck v-if="modelValue === 'claude'" class="provider-check" :size="17" weight="bold" />
         </button>
-        <p class="provider-note">The selected provider is recorded with every durable research run.</p>
+        <p class="provider-note">
+          The selected provider is recorded with every durable research run.
+        </p>
       </div>
     </Transition>
   </div>

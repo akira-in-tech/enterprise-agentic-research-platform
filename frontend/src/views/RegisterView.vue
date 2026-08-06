@@ -66,7 +66,9 @@ async function submit(): Promise<void> {
           {{ submitting ? "Creating workspace..." : "Create workspace" }}
         </button>
       </form>
-      <p class="auth-switch">Already have an account? <router-link to="/login">Sign in</router-link></p>
+      <p class="auth-switch">
+        Already have an account? <router-link to="/login">Sign in</router-link>
+      </p>
     </section>
   </main>
 </template>

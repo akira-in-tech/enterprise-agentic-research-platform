@@ -39,7 +39,12 @@ const agents = [
 ] as const;
 
 const activeIndex = computed(() =>
-  props.completed ? agents.length : Math.max(0, agents.findIndex((agent) => agent.id === props.activeAgent)),
+  props.completed
+    ? agents.length
+    : Math.max(
+        0,
+        agents.findIndex((agent) => agent.id === props.activeAgent),
+      ),
 );
 
 function stateFor(index: number): "complete" | "active" | "pending" {
@@ -50,13 +55,19 @@ function stateFor(index: number): "complete" | "active" | "pending" {
 </script>
 
 <template>
-  <section class="agent-workflow" :class="{ 'agent-workflow-compact': compact }" aria-labelledby="agent-flow-title">
+  <section
+    class="agent-workflow"
+    :class="{ 'agent-workflow-compact': compact }"
+    aria-labelledby="agent-flow-title"
+  >
     <div class="agent-workflow-heading">
       <div>
         <span class="live-dot" aria-hidden="true"></span>
         <h2 id="agent-flow-title">8-agent research flow</h2>
       </div>
-      <p>{{ completed ? "Completed with a traceable report" : "Agents share one evidence trail" }}</p>
+      <p>
+        {{ completed ? "Completed with a traceable report" : "Agents share one evidence trail" }}
+      </p>
     </div>
 
     <ol class="agent-track" aria-label="Research agents">

@@ -1,5 +1,6 @@
 import pluginVue from "eslint-plugin-vue";
 import { withVueTs, vueTsConfigs } from "@vue/eslint-config-typescript";
+import eslintConfigPrettier from "eslint-config-prettier";
 import globals from "globals";
 
 export default withVueTs(
@@ -16,4 +17,5 @@ export default withVueTs(
       },
     },
   },
+  eslintConfigPrettier,
 );

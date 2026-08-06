@@ -52,18 +52,24 @@ watch(
 const displayStatus = computed(() => props.progress?.status ?? props.run.status);
 const displayMessage = computed(() => props.progress?.message ?? props.run.message);
 const citationCoverage = computed(() => Math.round((props.report?.citation_coverage ?? 0) * 100));
-const citedSources = computed(() => props.report?.sources.filter((source) => source.cited).length ?? 0);
+const citedSources = computed(
+  () => props.report?.sources.filter((source) => source.cited).length ?? 0,
+);
 const reportApproved = computed(
   () => props.report?.citation_valid === true && props.report.reflection_status === "approved",
 );
 
 const activeAgent = computed<ResearchAgentId>(() => {
   const state = props.progress?.workflow_status?.toLowerCase() ?? "";
-  if (state.includes("intent") || state.includes("rout") || state.includes("classif")) return "intent_router";
+  if (state.includes("intent") || state.includes("rout") || state.includes("classif"))
+    return "intent_router";
   if (state.includes("plan")) return "planner";
-  if (state.includes("private") || state.includes("local") || state.includes("rag")) return "local_scout";
-  if (state.includes("web") || state.includes("retriev") || state.includes("search")) return "web_scout";
-  if (state.includes("evidence") || state.includes("judg") || state.includes("verif")) return "evidence_judge";
+  if (state.includes("private") || state.includes("local") || state.includes("rag"))
+    return "local_scout";
+  if (state.includes("web") || state.includes("retriev") || state.includes("search"))
+    return "web_scout";
+  if (state.includes("evidence") || state.includes("judg") || state.includes("verif"))
+    return "evidence_judge";
   if (state.includes("reflect") || state.includes("revision")) return "reflect";
   if (state.includes("report") || state.includes("writ")) return "writer";
   return "analyst";
@@ -91,7 +97,9 @@ function sourceScore(source: ResearchReportSource): string {
         <p class="eyebrow">Research run</p>
         <h1>{{ run.query }}</h1>
       </div>
-      <span class="detail-provider">{{ run.provider === "qwen" ? "Qwen Local" : "Claude Cloud" }}</span>
+      <span class="detail-provider">{{
+        run.provider === "qwen" ? "Qwen Local" : "Claude Cloud"
+      }}</span>
     </header>
 
     <OperationalNotice
@@ -123,10 +131,17 @@ function sourceScore(source: ResearchReportSource): string {
             }}
           </p>
           <h2>{{ displayMessage }}</h2>
-          <p v-if="progress?.workflow_status" class="workflow-state">Current state: {{ progress.workflow_status }}</p>
+          <p v-if="progress?.workflow_status" class="workflow-state">
+            Current state: {{ progress.workflow_status }}
+          </p>
           <p v-if="progress?.error_message" class="error-detail">{{ progress.error_message }}</p>
         </div>
-        <button v-if="displayStatus === 'failed'" class="secondary-button" type="button" @click="emit('retry')">
+        <button
+          v-if="displayStatus === 'failed'"
+          class="secondary-button"
+          type="button"
+          @click="emit('retry')"
+        >
           Try again
         </button>
         <button
@@ -196,7 +211,12 @@ function sourceScore(source: ResearchReportSource): string {
       </section>
 
       <Transition name="evidence">
-        <aside v-if="evidenceOpen" id="evidence-panel" class="evidence-panel" aria-labelledby="evidence-heading">
+        <aside
+          v-if="evidenceOpen"
+          id="evidence-panel"
+          class="evidence-panel"
+          aria-labelledby="evidence-heading"
+        >
           <div class="evidence-heading-row">
             <div>
               <p class="eyebrow">Traceability</p>

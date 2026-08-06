@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import {
-  PhBookOpen,
-  PhBriefcase,
-  PhMoon,
-  PhSun,
-} from "@phosphor-icons/vue";
+import { PhBookOpen, PhBriefcase, PhMoon, PhSun } from "@phosphor-icons/vue";
 import { computed } from "vue";
 
 import evidentMark from "../assets/evident-mark.png";
@@ -70,7 +65,13 @@ const userInitials = computed(() => {
     <nav class="header-actions" aria-label="Primary navigation">
       <span class="api-status" :class="`api-${apiStatus}`" role="status">
         <span class="api-status-dot" aria-hidden="true"></span>
-        {{ apiStatus === "online" ? "API connected" : apiStatus === "offline" ? "API unavailable" : "Checking API" }}
+        {{
+          apiStatus === "online"
+            ? "API connected"
+            : apiStatus === "offline"
+              ? "API unavailable"
+              : "Checking API"
+        }}
       </span>
       <span class="header-divider" aria-hidden="true"></span>
       <button
@@ -86,7 +87,13 @@ const userInitials = computed(() => {
         <PhBriefcase :size="16" />
         <span>{{ tenantName }}</span>
       </span>
-      <button class="avatar-button" type="button" aria-label="Log out" title="Log out" @click="emit('logout')">
+      <button
+        class="avatar-button"
+        type="button"
+        aria-label="Log out"
+        title="Log out"
+        @click="emit('logout')"
+      >
         {{ userInitials }}
       </button>
     </nav>

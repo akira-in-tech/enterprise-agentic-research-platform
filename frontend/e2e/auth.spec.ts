@@ -23,7 +23,11 @@ test.describe("authentication", () => {
   test("registering a new workspace signs the user in and redirects home", async ({ page }) => {
     await mockUnauthenticated(page);
     await page.route("**/api/auth/register", (route) =>
-      route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(IDENTITY) }),
+      route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify(IDENTITY),
+      }),
     );
 
     await page.goto("/register");
@@ -40,7 +44,11 @@ test.describe("authentication", () => {
   test("logging in redirects back to the originally requested page", async ({ page }) => {
     await mockUnauthenticated(page);
     await page.route("**/api/auth/login", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(IDENTITY) }),
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(IDENTITY),
+      }),
     );
 
     await page.goto("/knowledge");
@@ -74,7 +82,11 @@ test.describe("authentication", () => {
 
   test("signed-in users can submit research and then log out", async ({ page }) => {
     await page.route("**/api/auth/me", (route) =>
-      route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(IDENTITY) }),
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(IDENTITY),
+      }),
     );
     await page.route("**/api/research-runs/jobs", (route) =>
       route.fulfill({

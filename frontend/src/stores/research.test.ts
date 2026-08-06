@@ -6,8 +6,16 @@ import { useAuthStore } from "./auth";
 import { useResearchStore } from "./research";
 
 const identity = {
-  user: { id: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d", email: "engineer@acme.example", display_name: "ACME Engineer" },
-  tenant: { id: "5b376e3d-3983-44f0-b9ad-17917bb2e901", name: "ACME Platform", slug: "acme-platform-a1b2c3d4" },
+  user: {
+    id: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
+    email: "engineer@acme.example",
+    display_name: "ACME Engineer",
+  },
+  tenant: {
+    id: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
+    name: "ACME Platform",
+    slug: "acme-platform-a1b2c3d4",
+  },
 };
 
 beforeEach(() => {
@@ -88,9 +96,9 @@ describe("submitResearch", () => {
     store.query = "Compare HTTP/2 and HTTP/3.";
     vi.stubGlobal(
       "fetch",
-      vi.fn().mockResolvedValue(
-        jsonResponse({ detail: "Research rate limiting is unavailable." }, 503),
-      ),
+      vi
+        .fn()
+        .mockResolvedValue(jsonResponse({ detail: "Research rate limiting is unavailable." }, 503)),
     );
 
     const run = await store.submitResearch();

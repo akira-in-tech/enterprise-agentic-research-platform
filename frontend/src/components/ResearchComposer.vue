@@ -1,11 +1,5 @@
 <script setup lang="ts">
-import {
-  PhArrowRight,
-  PhClock,
-  PhInfo,
-  PhLockKey,
-  PhSpinnerGap,
-} from "@phosphor-icons/vue";
+import { PhArrowRight, PhClock, PhInfo, PhLockKey, PhSpinnerGap } from "@phosphor-icons/vue";
 import { computed } from "vue";
 
 import type { UserFacingProvider } from "../types/research";

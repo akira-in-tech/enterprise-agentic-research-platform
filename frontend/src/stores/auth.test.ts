@@ -30,10 +30,7 @@ describe("useAuthStore", () => {
   });
 
   it("bootstraps into authenticated state when a session cookie is valid", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(identity)),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(identity)));
     const store = useAuthStore();
 
     await store.bootstrap();
@@ -44,10 +41,7 @@ describe("useAuthStore", () => {
   });
 
   it("bootstraps into unauthenticated state when there is no valid session", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(new Response(null, { status: 401 })),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
     const store = useAuthStore();
 
     await store.bootstrap();
@@ -67,10 +61,7 @@ describe("useAuthStore", () => {
   });
 
   it("registers and stores the returned identity", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(identity, 201)),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(identity, 201)));
     const store = useAuthStore();
 
     const success = await store.register({
@@ -103,10 +94,7 @@ describe("useAuthStore", () => {
   });
 
   it("logs in and stores the returned identity", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(identity)),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(identity)));
     const store = useAuthStore();
 
     const success = await store.login({
@@ -136,10 +124,7 @@ describe("useAuthStore", () => {
   });
 
   it("clears identity on logout", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue(jsonResponse(identity)),
-    );
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(identity)));
     const store = useAuthStore();
     await store.login({ email: identity.user.email, password: "correct-horse-battery" });
 

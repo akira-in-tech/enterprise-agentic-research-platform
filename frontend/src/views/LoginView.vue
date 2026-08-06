@@ -50,7 +50,9 @@ async function submit(): Promise<void> {
           {{ submitting ? "Signing in..." : "Sign in" }}
         </button>
       </form>
-      <p class="auth-switch">Don't have an account? <router-link to="/register">Create one</router-link></p>
+      <p class="auth-switch">
+        Don't have an account? <router-link to="/register">Create one</router-link>
+      </p>
     </section>
   </main>
 </template>

@@ -36,7 +36,9 @@ const emit = defineEmits<{
         :checked="modelValue === 'qwen'"
         @change="emit('update:modelValue', 'qwen')"
       />
-      <span class="provider-row-icon provider-icon-local"><PhCpu :size="19" weight="duotone" /></span>
+      <span class="provider-row-icon provider-icon-local"
+        ><PhCpu :size="19" weight="duotone"
+      /></span>
       <span class="provider-identity">
         <strong>Qwen Local</strong>
         <small>Private · no usage data leaves your environment</small>
@@ -62,7 +64,9 @@ const emit = defineEmits<{
         :checked="modelValue === 'claude'"
         @change="emit('update:modelValue', 'claude')"
       />
-      <span class="provider-row-icon provider-icon-cloud"><PhCloud :size="19" weight="duotone" /></span>
+      <span class="provider-row-icon provider-icon-cloud"
+        ><PhCloud :size="19" weight="duotone"
+      /></span>
       <span class="provider-identity">
         <strong>Claude Cloud</strong>
         <small>Stronger synthesis · usage billed</small>

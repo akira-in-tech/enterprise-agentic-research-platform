@@ -15,7 +15,11 @@ const researchStore = useResearchStore();
 
 const localRun = computed(() => researchStore.getRunById(props.id));
 
-const { data: fetchedRun, isFetching: hydrating, isError: hydrationFailed } = useQuery({
+const {
+  data: fetchedRun,
+  isFetching: hydrating,
+  isError: hydrationFailed,
+} = useQuery({
   queryKey: ["research-run", () => props.id],
   queryFn: () => getResearchRun(props.id),
   enabled: computed(() => !localRun.value),

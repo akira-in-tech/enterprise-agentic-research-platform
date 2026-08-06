@@ -163,7 +163,8 @@ async function confirmDelete(document: KnowledgeDocument): Promise<void> {
         <p class="hero-eyebrow">Private Knowledge</p>
         <h1 id="knowledge-title">Bring your own evidence.</h1>
         <p>
-          Add source documents once, then let the Local Scout retrieve tenant-scoped evidence in every deep-research run.
+          Add source documents once, then let the Local Scout retrieve tenant-scoped evidence in
+          every deep-research run.
         </p>
       </div>
       <div class="knowledge-trust-note">
@@ -230,12 +231,19 @@ async function confirmDelete(document: KnowledgeDocument): Promise<void> {
           <span class="document-icon" aria-hidden="true"><PhFileText :size="20" /></span>
           <div class="document-primary">
             <strong>{{ document.filename }}</strong>
-            <span>{{ readableBytes(document.byte_size) }} · Added {{ readableDate(document.created_at) }}</span>
+            <span
+              >{{ readableBytes(document.byte_size) }} · Added
+              {{ readableDate(document.created_at) }}</span
+            >
             <p v-if="document.error_message">{{ document.error_message }}</p>
           </div>
           <span class="document-status" :class="`document-status-${document.status}`">
             <PhCheckCircle v-if="document.status === 'ready'" :size="15" aria-hidden="true" />
-            <PhWarningCircle v-else-if="document.status === 'failed'" :size="15" aria-hidden="true" />
+            <PhWarningCircle
+              v-else-if="document.status === 'failed'"
+              :size="15"
+              aria-hidden="true"
+            />
             {{ statusLabel(document.status) }}
           </span>
           <div class="document-actions">
@@ -256,7 +264,13 @@ async function confirmDelete(document: KnowledgeDocument): Promise<void> {
               @click="confirmDelete(document)"
             >
               <PhTrash :size="16" aria-hidden="true" />
-              {{ deletingId === document.id ? "Deleting…" : pendingDeleteId === document.id ? "Confirm" : "Delete" }}
+              {{
+                deletingId === document.id
+                  ? "Deleting…"
+                  : pendingDeleteId === document.id
+                    ? "Confirm"
+                    : "Delete"
+              }}
             </button>
           </div>
         </li>

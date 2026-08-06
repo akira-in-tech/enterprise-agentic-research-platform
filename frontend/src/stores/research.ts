@@ -74,21 +74,24 @@ export const useResearchStore = defineStore("research", () => {
       operationalIssue.value = {
         kind: "redis_unavailable",
         title: "Redis is temporarily unavailable",
-        message: "The request was not started, so there is no duplicate job. Reconnect Redis and try again.",
+        message:
+          "The request was not started, so there is no duplicate job. Reconnect Redis and try again.",
         actionLabel: "Try again",
       };
     } else if (designPreviewState === "sse") {
       operationalIssue.value = {
         kind: "sse_disconnected",
         title: "Live updates disconnected",
-        message: "The durable job may still be running. Reconnect to resume progress without starting another job.",
+        message:
+          "The durable job may still be running. Reconnect to resume progress without starting another job.",
         actionLabel: "Reconnect",
       };
     } else if (designPreviewState === "failed") {
       operationalIssue.value = {
         kind: "job_failed",
         title: "Research job failed",
-        message: "The provider stopped before a report was produced. Your previous results remain available.",
+        message:
+          "The provider stopped before a report was produced. Your previous results remain available.",
         actionLabel: "Try again",
       };
     }
@@ -151,13 +154,17 @@ export const useResearchStore = defineStore("research", () => {
       void observeRun(run);
       return run;
     } catch (error) {
-      const message = error instanceof ResearchApiError ? error.message : "The research request could not be started.";
+      const message =
+        error instanceof ResearchApiError
+          ? error.message
+          : "The research request could not be started.";
       const redisUnavailable = /redis|rate limit|cache/i.test(message);
       operationalIssue.value = redisUnavailable
         ? {
             kind: "redis_unavailable",
             title: "Redis is temporarily unavailable",
-            message: "The request was not started, so there is no duplicate job. Reconnect Redis and try again.",
+            message:
+              "The request was not started, so there is no duplicate job. Reconnect Redis and try again.",
             actionLabel: "Try again",
           }
         : {
@@ -215,7 +222,8 @@ export const useResearchStore = defineStore("research", () => {
       operationalIssue.value = {
         kind: "sse_disconnected",
         title: "Live updates disconnected",
-        message: "The durable job may still be running. Reconnect to resume progress without starting another job.",
+        message:
+          "The durable job may still be running. Reconnect to resume progress without starting another job.",
         actionLabel: "Reconnect",
       };
       announcement.value = "Live progress disconnected. The durable job may still be running.";
@@ -240,7 +248,8 @@ export const useResearchStore = defineStore("research", () => {
         operationalIssue.value = {
           kind: "citation_revision_required",
           title: "Citation revision required",
-          message: "The answer is available, but one or more claims need stronger source coverage before approval.",
+          message:
+            "The answer is available, but one or more claims need stronger source coverage before approval.",
           actionLabel: "Review evidence",
         };
         announcement.value = "Research report requires citation revision.";
@@ -252,7 +261,8 @@ export const useResearchStore = defineStore("research", () => {
       operationalIssue.value = {
         kind: "report_unavailable",
         title: "Report is temporarily unavailable",
-        message: "The completed job is safe. Retry loading the report without rerunning the research.",
+        message:
+          "The completed job is safe. Retry loading the report without rerunning the research.",
         actionLabel: "Load report",
       };
       announcement.value = message;
@@ -285,7 +295,8 @@ export const useResearchStore = defineStore("research", () => {
       });
       announcement.value = "Research cancelled.";
     } catch (error) {
-      announcement.value = error instanceof Error ? error.message : "Research could not be cancelled.";
+      announcement.value =
+        error instanceof Error ? error.message : "Research could not be cancelled.";
     }
   }
 
@@ -303,7 +314,8 @@ export const useResearchStore = defineStore("research", () => {
       operationalIssue.value = {
         kind: "citation_revision_required",
         title: "Citation revision required",
-        message: "The answer is available, but one claim needs stronger source coverage before approval.",
+        message:
+          "The answer is available, but one claim needs stronger source coverage before approval.",
         actionLabel: "Review evidence",
       };
     } else if (designPreviewState === "report") {
@@ -311,7 +323,8 @@ export const useResearchStore = defineStore("research", () => {
       operationalIssue.value = {
         kind: "report_unavailable",
         title: "Report is temporarily unavailable",
-        message: "The completed job is safe. Retry loading the report without rerunning the research.",
+        message:
+          "The completed job is safe. Retry loading the report without rerunning the research.",
         actionLabel: "Load report",
       };
     }
