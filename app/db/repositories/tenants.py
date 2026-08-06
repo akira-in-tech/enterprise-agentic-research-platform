@@ -58,6 +58,19 @@ class TenantRepository:
 
         return tenant
 
+    async def get(
+        self,
+        *,
+        tenant_id: UUID,
+    ) -> Tenant | None:
+        """Return the tenant with this ID, if any."""
+
+        statement = select(Tenant).where(Tenant.id == tenant_id)
+
+        result = await self._session.scalar(statement)
+
+        return result
+
 
 class UserRepository:
     """Persist users within an enterprise tenant."""
@@ -114,6 +127,19 @@ class UserRepository:
         normalized_email = email.strip().lower()
 
         statement = select(User).where(User.email == normalized_email)
+
+        result = await self._session.scalar(statement)
+
+        return result
+
+    async def get(
+        self,
+        *,
+        user_id: UUID,
+    ) -> User | None:
+        """Return the user with this ID, if any."""
+
+        statement = select(User).where(User.id == user_id)
 
         result = await self._session.scalar(statement)
 
