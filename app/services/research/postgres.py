@@ -1,12 +1,25 @@
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from contextlib import AbstractAsyncContextManager
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import UUID
 
+from pydantic_core import to_jsonable_python
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.repositories import ResearchReportRepository, ResearchRunRepository
+from app.db.models import ResearchCheckpoint, ResearchRun, ResearchWorkerLease
+from app.db.repositories import (
+    ResearchAgentStepRepository,
+    ResearchDurabilityRepository,
+    ResearchReportRepository,
+    ResearchRunRepository,
+    ResearchRunTransitionError,
+)
 from app.services.llm.factory import CanonicalLLMProvider
+from app.services.research.durability import (
+    RecoverableResearchRunRecord,
+    ResearchCheckpointRecord,
+    ResearchWorkerLeaseRecord,
+)
 from app.workflow.state import ResearchState
 
 
@@ -24,6 +37,14 @@ RepositoryFactory = Callable[
     ResearchRunRepository,
 ]
 ReportRepositoryFactory = Callable[[AsyncSession], ResearchReportRepository]
+DurabilityRepositoryFactory = Callable[
+    [AsyncSession],
+    ResearchDurabilityRepository,
+]
+AgentStepRepositoryFactory = Callable[
+    [AsyncSession],
+    ResearchAgentStepRepository,
+]
 
 
 class PostgresResearchRunStore:
@@ -63,6 +84,34 @@ class PostgresResearchRunStore:
             )
 
             return research_run.id
+
+    async def get(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> ResearchRun | None:
+        """Return one tenant-scoped research run's current state."""
+
+        async with self._session_factory.begin() as session:
+            return await self._repository_factory(session).get_for_tenant(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+            )
+
+    async def list_recent(
+        self,
+        *,
+        tenant_id: UUID,
+        limit: int = 20,
+    ) -> list[ResearchRun]:
+        """Return one tenant's most recent research runs, newest first."""
+
+        async with self._session_factory.begin() as session:
+            return await self._repository_factory(session).list_recent_for_tenant(
+                tenant_id=tenant_id,
+                limit=limit,
+            )
 
     async def mark_running(
         self,
@@ -124,4 +173,227 @@ class PostgresResearchRunStore:
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
                 error_message=error_message,
+            )
+
+    async def mark_cancelled(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        """Commit the transition from an active state to cancelled."""
+
+        async with self._session_factory.begin() as session:
+            try:
+                await self._repository_factory(session).mark_cancelled(
+                    tenant_id=tenant_id,
+                    research_run_id=research_run_id,
+                )
+            except ResearchRunTransitionError:
+                return False
+            return True
+
+
+class PostgresResearchDurabilityStore:
+    """Run each durability operation in one short database transaction."""
+
+    def __init__(
+        self,
+        session_factory: TransactionalSessionFactory,
+        repository_factory: DurabilityRepositoryFactory = ResearchDurabilityRepository,
+    ) -> None:
+        self._session_factory = session_factory
+        self._repository_factory = repository_factory
+
+    async def claim_lease(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        worker_id: str,
+        ttl_seconds: int,
+    ) -> ResearchWorkerLeaseRecord | None:
+        async with self._session_factory.begin() as session:
+            lease = await self._repository_factory(session).claim_lease(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                worker_id=worker_id,
+                ttl_seconds=ttl_seconds,
+            )
+            return self._lease_record(lease)
+
+    async def renew_lease(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        worker_id: str,
+        lease_token: UUID,
+        ttl_seconds: int,
+    ) -> ResearchWorkerLeaseRecord | None:
+        async with self._session_factory.begin() as session:
+            lease = await self._repository_factory(session).renew_lease(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                worker_id=worker_id,
+                lease_token=lease_token,
+                ttl_seconds=ttl_seconds,
+            )
+            return self._lease_record(lease)
+
+    async def release_lease(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        worker_id: str,
+        lease_token: UUID,
+    ) -> bool:
+        async with self._session_factory.begin() as session:
+            return await self._repository_factory(session).release_lease(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                worker_id=worker_id,
+                lease_token=lease_token,
+            )
+
+    async def append_checkpoint(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        sequence: int,
+        node_name: str,
+        state: Mapping[str, object],
+    ) -> ResearchCheckpointRecord:
+        normalized_state = cast(
+            dict[str, object],
+            to_jsonable_python(dict(state), fallback=str),
+        )
+        async with self._session_factory.begin() as session:
+            checkpoint = await self._repository_factory(session).append_checkpoint(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                sequence=sequence,
+                node_name=node_name,
+                state=normalized_state,
+            )
+            return self._checkpoint_record(checkpoint)
+
+    async def get_latest_checkpoint(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> ResearchCheckpointRecord | None:
+        async with self._session_factory.begin() as session:
+            checkpoint = await self._repository_factory(session).get_latest_checkpoint(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+            )
+            if checkpoint is None:
+                return None
+            return self._checkpoint_record(checkpoint)
+
+    async def append_audit_event(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        event_type: str,
+        actor_type: str,
+        actor_id: str | None = None,
+        details: Mapping[str, object] | None = None,
+    ) -> None:
+        normalized_details = cast(
+            dict[str, object],
+            to_jsonable_python(dict(details or {}), fallback=str),
+        )
+        async with self._session_factory.begin() as session:
+            await self._repository_factory(session).append_audit_event(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                event_type=event_type,
+                actor_type=actor_type,
+                actor_id=actor_id,
+                details=normalized_details,
+            )
+
+    async def list_recoverable_runs(
+        self,
+        *,
+        limit: int = 100,
+    ) -> list[RecoverableResearchRunRecord]:
+        async with self._session_factory.begin() as session:
+            runs = await self._repository_factory(session).list_recoverable_runs(
+                limit=limit,
+            )
+            return [
+                RecoverableResearchRunRecord(
+                    research_run_id=run.id,
+                    tenant_id=run.tenant_id,
+                    requested_by_user_id=run.requested_by_user_id,
+                    query=run.query,
+                    llm_provider=run.llm_provider,
+                    status=run.status,
+                )
+                for run in runs
+            ]
+
+    @staticmethod
+    def _lease_record(
+        lease: ResearchWorkerLease | None,
+    ) -> ResearchWorkerLeaseRecord | None:
+        if lease is None:
+            return None
+        return ResearchWorkerLeaseRecord(
+            tenant_id=lease.tenant_id,
+            research_run_id=lease.research_run_id,
+            worker_id=lease.worker_id,
+            lease_token=lease.lease_token,
+            attempt=lease.attempt,
+            acquired_at=lease.acquired_at,
+            heartbeat_at=lease.heartbeat_at,
+            expires_at=lease.expires_at,
+        )
+
+    @staticmethod
+    def _checkpoint_record(checkpoint: ResearchCheckpoint) -> ResearchCheckpointRecord:
+        return ResearchCheckpointRecord(
+            sequence=checkpoint.sequence,
+            node_name=checkpoint.node_name,
+            state=dict(checkpoint.state),
+            created_at=checkpoint.created_at,
+        )
+
+
+class PostgresResearchAgentStepStore:
+    """Append one durable per-agent-step trace row per short transaction."""
+
+    def __init__(
+        self,
+        session_factory: TransactionalSessionFactory,
+        repository_factory: AgentStepRepositoryFactory = ResearchAgentStepRepository,
+    ) -> None:
+        self._session_factory = session_factory
+        self._repository_factory = repository_factory
+
+    async def append(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        sequence: int,
+        agent_role: str,
+        status: str,
+        summary: str | None = None,
+    ) -> None:
+        async with self._session_factory.begin() as session:
+            await self._repository_factory(session).append(
+                tenant_id=tenant_id,
+                research_run_id=research_run_id,
+                sequence=sequence,
+                agent_role=agent_role,
+                status=status,
+                summary=summary,
             )

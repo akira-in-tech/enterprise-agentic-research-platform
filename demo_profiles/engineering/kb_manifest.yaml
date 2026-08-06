@@ -1,0 +1,32 @@
+# Suggested private-knowledge documents for demonstrating the private-RAG
+# path (POST /documents -> indexing -> tenant-scoped retrieval) using the
+# engineering demo profile.
+#
+# These documents are not shipped in this repository. They are a manifest
+# of the kind of content someone running the demo can upload locally with
+# their own tenant ID to exercise Local Scout and PRIVATE-* citations
+# end to end. Any TXT, Markdown, or PDF technical document works; the list
+# below is illustrative, not a fixed requirement.
+
+profile: engineering
+suggested_documents:
+  - title: Internal onboarding runbook
+    format: markdown
+    description: >
+      A short internal runbook (real or fabricated for the demo) so a
+      private-knowledge query has a document to retrieve from.
+  - title: Architecture decision record
+    format: markdown
+    description: >
+      A design-decision writeup (e.g. why a queue or database was chosen)
+      to demonstrate retrieval of reasoning that only exists internally.
+  - title: Incident postmortem
+    format: markdown
+    description: >
+      A postmortem-style document to demonstrate retrieval of
+      operational knowledge not available on the public web.
+  - title: Vendor evaluation notes
+    format: pdf
+    description: >
+      Notes comparing two vendors or tools, to demonstrate the platform
+      merging private evaluation notes with public web evidence.

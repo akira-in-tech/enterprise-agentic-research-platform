@@ -1,9 +1,11 @@
 import type {
+  CancelResearchRunResponse,
   CreateResearchJobResponse,
+  KnowledgeDocument,
   ResearchProgressRecord,
   ResearchReport,
+  ResearchRun,
   UserFacingProvider,
-  WorkspaceContext,
 } from "../types/research";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -29,19 +31,6 @@ export class ResearchApiError extends Error {
   }
 }
 
-function requestHeaders(workspace: WorkspaceContext): HeadersInit {
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "X-Tenant-ID": workspace.tenantId,
-  };
-
-  if (workspace.userId) {
-    headers["X-User-ID"] = workspace.userId;
-  }
-
-  return headers;
-}
-
 async function errorMessage(response: Response): Promise<string> {
   try {
     const body = (await response.json()) as { detail?: string };
@@ -54,11 +43,11 @@ async function errorMessage(response: Response): Promise<string> {
 export async function createResearchJob(
   query: string,
   provider: UserFacingProvider,
-  workspace: WorkspaceContext,
 ): Promise<CreateResearchJobResponse> {
   const response = await fetch(`${API_BASE_URL}/research-runs/jobs`, {
     method: "POST",
-    headers: requestHeaders(workspace),
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query, llm_provider: provider }),
   });
 
@@ -67,6 +56,31 @@ export async function createResearchJob(
   }
 
   return (await response.json()) as CreateResearchJobResponse;
+}
+
+export async function getResearchRun(researchRunId: string): Promise<ResearchRun> {
+  const response = await fetch(`${API_BASE_URL}/research-runs/${researchRunId}`, {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new ResearchApiError(await errorMessage(response), response.status);
+  }
+
+  return (await response.json()) as ResearchRun;
+}
+
+export async function cancelResearchJob(researchRunId: string): Promise<CancelResearchRunResponse> {
+  const response = await fetch(`${API_BASE_URL}/research-runs/${researchRunId}/cancel`, {
+    method: "POST",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new ResearchApiError(await errorMessage(response), response.status);
+  }
+
+  return (await response.json()) as CancelResearchRunResponse;
 }
 
 export function parseSseFrames(buffer: string): {
@@ -96,12 +110,11 @@ export function parseSseFrames(buffer: string): {
 
 export async function streamResearchProgress(
   eventsUrl: string,
-  workspace: WorkspaceContext,
   onProgress: (progress: ResearchProgressRecord) => void,
   signal?: AbortSignal,
 ): Promise<void> {
   const response = await fetch(`${API_BASE_URL}${eventsUrl}`, {
-    headers: requestHeaders(workspace),
+    credentials: "include",
     signal,
   });
 
@@ -134,12 +147,9 @@ export async function streamResearchProgress(
   }
 }
 
-export async function getResearchReport(
-  reportUrl: string,
-  workspace: WorkspaceContext,
-): Promise<ResearchReport> {
+export async function getResearchReport(reportUrl: string): Promise<ResearchReport> {
   const response = await fetch(`${API_BASE_URL}${reportUrl}`, {
-    headers: requestHeaders(workspace),
+    credentials: "include",
   });
 
   if (!response.ok) {
@@ -147,4 +157,43 @@ export async function getResearchReport(
   }
 
   return (await response.json()) as ResearchReport;
+}
+
+export async function listKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
+  const response = await fetch(`${API_BASE_URL}/documents`, {
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new ResearchApiError(await errorMessage(response), response.status);
+  }
+
+  return (await response.json()) as KnowledgeDocument[];
+}
+
+export async function uploadKnowledgeDocument(file: File): Promise<KnowledgeDocument> {
+  const body = new FormData();
+  body.append("file", file);
+  const response = await fetch(`${API_BASE_URL}/documents`, {
+    method: "POST",
+    credentials: "include",
+    body,
+  });
+
+  if (!response.ok) {
+    throw new ResearchApiError(await errorMessage(response), response.status);
+  }
+
+  return (await response.json()) as KnowledgeDocument;
+}
+
+export async function deleteKnowledgeDocument(documentId: string): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/documents/${documentId}`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+
+  if (!response.ok) {
+    throw new ResearchApiError(await errorMessage(response), response.status);
+  }
 }

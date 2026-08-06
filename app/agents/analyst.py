@@ -1,15 +1,62 @@
 from collections.abc import Sequence
 
+from app.agents.prompting import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted_content
 from app.schemas.evidence import EvidenceScore, EvidenceSource, ReflectionDecision
 from app.schemas.planner import ResearchPlan
+from app.schemas.workflow import ResearchAnalysis
 from app.services.llm.base import LLMClient
 
 
 class AnalystAgent:
-    """Generate an evidence-backed report with canonical source citations."""
+    """Produce evidence-backed analysis before final report writing."""
 
     def __init__(self, llm_client: LLMClient) -> None:
         self._llm_client = llm_client
+
+    async def analyze(
+        self,
+        *,
+        query: str,
+        sources: Sequence[EvidenceSource],
+        scores: Sequence[EvidenceScore],
+    ) -> ResearchAnalysis:
+        """Generate structured findings constrained to the supplied evidence."""
+
+        score_by_source = {score.source_id: score.model_dump() for score in scores}
+        evidence = [
+            {
+                **source.model_dump(),
+                "content": wrap_untrusted_content(source.content),
+                "quality": score_by_source.get(source.source_id),
+            }
+            for source in sources
+        ]
+        prompt = (
+            "You are the Analyst in an evidence-backed research workflow. "
+            "Produce structured conclusions, not a final report. Every finding must "
+            "reference one or more supplied source IDs. Mark needs_more_research when "
+            "material questions remain unresolved. Never invent facts or source IDs.\n\n"
+            f"{UNTRUSTED_CONTENT_NOTICE}\n\n"
+            f"Research question: {query}\n"
+            f"Evidence: {evidence}"
+        )
+        analysis = await self._llm_client.generate_structured(
+            prompt,
+            ResearchAnalysis,
+            max_tokens=1_500,
+        )
+        known_source_ids = {source.source_id for source in sources}
+        cited_source_ids = {
+            source_id for finding in analysis.findings for source_id in finding.source_ids
+        }
+        unknown_source_ids = cited_source_ids - known_source_ids
+
+        if unknown_source_ids:
+            raise RuntimeError(
+                f"Analyst referenced unknown source IDs: {sorted(unknown_source_ids)}"
+            )
+
+        return analysis
 
     async def write_report(
         self,
@@ -21,7 +68,7 @@ class AnalystAgent:
         previous_report: str | None = None,
         revision_feedback: ReflectionDecision | None = None,
     ) -> str:
-        """Generate one report constrained to the supplied evidence."""
+        """Generate a legacy report while callers migrate to WriterAgent."""
 
         score_by_source = {score.source_id: score for score in scores}
         evidence_blocks = []
@@ -36,7 +83,7 @@ class AnalystAgent:
                         f"TITLE: {source.title}",
                         f"LOCATOR: {source.locator}",
                         f"QUALITY_SCORE: {overall:.4f}",
-                        f"CONTENT: {source.content[:4_000]}",
+                        f"CONTENT: {wrap_untrusted_content(source.content[:4_000])}",
                     ]
                 )
             )
@@ -61,6 +108,7 @@ class AnalystAgent:
 
         prompt = (
             "You are the analyst in an evidence-backed research system.\n"
+            f"{UNTRUSTED_CONTENT_NOTICE}\n\n"
             f"Research question: {query}\n\n"
             f"Required outline:\n{outline}\n\n"
             f"Evidence:\n{evidence}\n\n"

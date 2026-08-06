@@ -1,7 +1,7 @@
 import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Annotated
+from typing import Annotated, cast
 from uuid import UUID
 
 from fastapi import (
@@ -9,25 +9,40 @@ from fastapi import (
     Depends,
     Header,
     HTTPException,
+    Query,
     Response,
     status,
 )
 from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import (
+    get_current_session,
     get_research_execution_service,
     get_research_job_manager,
     get_research_progress_store,
     get_research_rate_limiter,
+    get_research_report_export_service,
     get_research_report_store,
+    get_research_run_store,
 )
+from app.db.models import ResearchRun
+from app.schemas.intent import ResearchRoute
 from app.schemas.progress import ResearchProgressRecord
-from app.schemas.report import ResearchReportResponse
+from app.schemas.report import (
+    ResearchReportExportResponse,
+    ResearchReportResponse,
+    ResearchReportSourceResponse,
+)
 from app.schemas.research import (
+    CancelResearchRunResponse,
     CreateResearchJobResponse,
     CreateResearchRunRequest,
     CreateResearchRunResponse,
+    PersistedLLMProvider,
+    ResearchRunResponse,
+    ResearchRunStatus,
 )
+from app.services.auth import ResolvedSession
 from app.services.cache import (
     MAX_RESEARCH_IDEMPOTENCY_KEY_LENGTH,
     CacheUnavailableError,
@@ -36,6 +51,7 @@ from app.services.cache import (
     ResearchRateLimitDecision,
     ResearchRateLimitUnavailableError,
 )
+from app.services.research.exports import ResearchReportExportService
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
     ResearchIdempotencyConflictError,
@@ -43,7 +59,9 @@ from app.services.research.idempotency import (
     ResearchIdempotencyUnavailableError,
 )
 from app.services.research.jobs import ResearchJobManager
+from app.services.research.postgres import PostgresResearchRunStore
 from app.services.research.reports import PostgresResearchReportStore
+from app.services.storage import DocumentNotFoundError, DocumentStorageError
 
 router = APIRouter(
     prefix="/research-runs",
@@ -51,6 +69,71 @@ router = APIRouter(
         "research",
     ],
 )
+
+
+def _to_run_response(run: ResearchRun) -> ResearchRunResponse:
+    return ResearchRunResponse(
+        research_run_id=run.id,
+        llm_provider=cast(PersistedLLMProvider, run.llm_provider),
+        status=cast(ResearchRunStatus, run.status),
+        query=run.query,
+        route=cast("ResearchRoute | None", run.route),
+        route_reason=run.route_reason,
+        error_message=run.error_message,
+        created_at=run.created_at,
+        started_at=run.started_at,
+        completed_at=run.completed_at,
+    )
+
+
+@router.get(
+    "",
+    response_model=list[ResearchRunResponse],
+)
+async def list_research_runs(
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
+    run_store: Annotated[
+        PostgresResearchRunStore,
+        Depends(get_research_run_store),
+    ],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> list[ResearchRunResponse]:
+    """Return one tenant's most recent research runs, newest first."""
+
+    runs = await run_store.list_recent(
+        tenant_id=current_session.tenant_id,
+        limit=limit,
+    )
+
+    return [_to_run_response(run) for run in runs]
+
+
+@router.get(
+    "/{research_run_id}",
+    response_model=ResearchRunResponse,
+)
+async def get_research_run(
+    research_run_id: UUID,
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
+    run_store: Annotated[
+        PostgresResearchRunStore,
+        Depends(get_research_run_store),
+    ],
+) -> ResearchRunResponse:
+    """Return one durable research run's current lifecycle state."""
+
+    run = await run_store.get(
+        tenant_id=current_session.tenant_id,
+        research_run_id=research_run_id,
+    )
+
+    if run is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research run was not found.",
+        )
+
+    return _to_run_response(run)
 
 
 async def _research_progress_events(
@@ -92,7 +175,7 @@ async def _research_progress_events(
             yield f"event: progress\ndata: {payload}\n\n"
             previous_payload = payload
 
-        if record.status in {"completed", "failed"}:
+        if record.status in {"completed", "failed", "cancelled"}:
             return
 
         await asyncio.sleep(poll_interval_seconds)
@@ -104,10 +187,7 @@ async def _research_progress_events(
 )
 async def get_research_run_progress(
     research_run_id: UUID,
-    tenant_id: Annotated[
-        UUID,
-        Header(alias="X-Tenant-ID"),
-    ],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     progress_store: Annotated[
         RedisResearchProgressStore,
         Depends(get_research_progress_store),
@@ -117,7 +197,7 @@ async def get_research_run_progress(
 
     try:
         record = await progress_store.get(
-            tenant_id=tenant_id,
+            tenant_id=current_session.tenant_id,
             research_run_id=research_run_id,
         )
     except CacheUnavailableError as error:
@@ -141,7 +221,7 @@ async def get_research_run_progress(
 )
 async def stream_research_run_progress(
     research_run_id: UUID,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     progress_store: Annotated[
         RedisResearchProgressStore,
         Depends(get_research_progress_store),
@@ -151,7 +231,7 @@ async def stream_research_run_progress(
 
     return StreamingResponse(
         _research_progress_events(
-            tenant_id=tenant_id,
+            tenant_id=current_session.tenant_id,
             research_run_id=research_run_id,
             progress_store=progress_store,
         ),
@@ -169,7 +249,7 @@ async def stream_research_run_progress(
 )
 async def get_research_run_report(
     research_run_id: UUID,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     report_store: Annotated[
         PostgresResearchReportStore,
         Depends(get_research_report_store),
@@ -178,7 +258,7 @@ async def get_research_run_report(
     """Return one durable report only within its tenant boundary."""
 
     report = await report_store.get(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         research_run_id=research_run_id,
     )
 
@@ -189,6 +269,142 @@ async def get_research_run_report(
         )
 
     return report
+
+
+@router.post(
+    "/{research_run_id}/report/export",
+    response_model=ResearchReportExportResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def export_research_run_report(
+    research_run_id: UUID,
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
+    report_store: Annotated[
+        PostgresResearchReportStore,
+        Depends(get_research_report_store),
+    ],
+    export_service: Annotated[
+        ResearchReportExportService,
+        Depends(get_research_report_export_service),
+    ],
+) -> ResearchReportExportResponse:
+    """Store an immutable object-storage snapshot of one durable report."""
+
+    report = await report_store.get(
+        tenant_id=current_session.tenant_id,
+        research_run_id=research_run_id,
+    )
+
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research report was not found.",
+        )
+
+    try:
+        storage_key = await export_service.export(
+            tenant_id=current_session.tenant_id,
+            research_run_id=research_run_id,
+            content=report.content,
+        )
+    except DocumentStorageError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Report export storage is temporarily unavailable.",
+        ) from error
+
+    return ResearchReportExportResponse(storage_key=storage_key)
+
+
+@router.get("/{research_run_id}/report/export")
+async def download_research_run_report_export(
+    research_run_id: UUID,
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
+    export_service: Annotated[
+        ResearchReportExportService,
+        Depends(get_research_report_export_service),
+    ],
+) -> Response:
+    """Download one previously exported report snapshot as Markdown."""
+
+    try:
+        content = await export_service.retrieve(
+            tenant_id=current_session.tenant_id,
+            research_run_id=research_run_id,
+        )
+    except DocumentNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Report export was not found.",
+        ) from error
+    except DocumentStorageError as error:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Report export storage is temporarily unavailable.",
+        ) from error
+
+    return Response(
+        content=content,
+        media_type="text/markdown; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="report-{research_run_id}.md"',
+        },
+    )
+
+
+@router.get(
+    "/{research_run_id}/sources",
+    response_model=list[ResearchReportSourceResponse],
+)
+async def list_research_run_sources(
+    research_run_id: UUID,
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
+    report_store: Annotated[
+        PostgresResearchReportStore,
+        Depends(get_research_report_store),
+    ],
+) -> list[ResearchReportSourceResponse]:
+    """Return scored evidence only within the report's tenant boundary."""
+
+    sources = await report_store.list_sources(
+        tenant_id=current_session.tenant_id,
+        research_run_id=research_run_id,
+    )
+    if sources is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Research sources were not found.",
+        )
+    return sources
+
+
+@router.post(
+    "/{research_run_id}/cancel",
+    response_model=CancelResearchRunResponse,
+)
+async def cancel_research_run(
+    research_run_id: UUID,
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
+    job_manager: Annotated[
+        ResearchJobManager,
+        Depends(get_research_job_manager),
+    ],
+) -> CancelResearchRunResponse:
+    """Cancel one queued or running research job within its tenant boundary."""
+
+    cancelled = await job_manager.cancel(
+        tenant_id=current_session.tenant_id,
+        research_run_id=research_run_id,
+    )
+    if not cancelled:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Research run is not active or was not found.",
+        )
+    return CancelResearchRunResponse(
+        research_run_id=research_run_id,
+        status="cancelled",
+    )
 
 
 def _rate_limit_headers(
@@ -243,7 +459,7 @@ async def _enforce_rate_limit(
 )
 async def create_research_job(
     payload: CreateResearchRunRequest,
-    tenant_id: Annotated[UUID, Header(alias="X-Tenant-ID")],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     job_manager: Annotated[
         ResearchJobManager,
         Depends(get_research_job_manager),
@@ -253,21 +469,17 @@ async def create_research_job(
         Depends(get_research_rate_limiter),
     ],
     response: Response,
-    requested_by_user_id: Annotated[
-        UUID | None,
-        Header(alias="X-User-ID"),
-    ] = None,
 ) -> CreateResearchJobResponse:
     """Persist and accept one research run for background execution."""
 
     await _enforce_rate_limit(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         rate_limiter=rate_limiter,
         response=response,
     )
     research_run_id = await job_manager.submit(
-        tenant_id=tenant_id,
-        requested_by_user_id=requested_by_user_id,
+        tenant_id=current_session.tenant_id,
+        requested_by_user_id=current_session.user_id,
         query=payload.query,
         llm_provider=payload.llm_provider,
     )
@@ -288,10 +500,7 @@ async def create_research_job(
 )
 async def create_research_run(
     payload: CreateResearchRunRequest,
-    tenant_id: Annotated[
-        UUID,
-        Header(alias="X-Tenant-ID"),
-    ],
+    current_session: Annotated[ResolvedSession, Depends(get_current_session)],
     service: Annotated[
         IdempotentResearchExecutionService,
         Depends(get_research_execution_service),
@@ -310,23 +519,19 @@ async def create_research_run(
             pattern=r".*\S.*",
         ),
     ] = None,
-    requested_by_user_id: Annotated[
-        UUID | None,
-        Header(alias="X-User-ID"),
-    ] = None,
 ) -> CreateResearchRunResponse:
     """Execute one tenant-scoped research request."""
 
     await _enforce_rate_limit(
-        tenant_id=tenant_id,
+        tenant_id=current_session.tenant_id,
         rate_limiter=rate_limiter,
         response=response,
     )
 
     try:
         result = await service.execute(
-            tenant_id=tenant_id,
-            requested_by_user_id=requested_by_user_id,
+            tenant_id=current_session.tenant_id,
+            requested_by_user_id=current_session.user_id,
             query=payload.query,
             llm_provider=payload.llm_provider,
             idempotency_key=idempotency_key,
@@ -377,5 +582,15 @@ async def create_research_run(
         ),
         reflection_reasons=(
             result.state["reflection"].reasons if "reflection" in result.state else []
+        ),
+        human_review_required=(
+            result.state["reflection"].human_review_required
+            if "reflection" in result.state
+            else False
+        ),
+        human_review_reason=(
+            result.state["reflection"].human_review_reason
+            if "reflection" in result.state
+            else None
         ),
     )

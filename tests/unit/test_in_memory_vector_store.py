@@ -42,12 +42,12 @@ def test_search_ranks_results_by_cosine_similarity() -> None:
         dimensions=2,
     )
     postgres_chunk = create_test_chunk(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="postgresql.md",
         content="PostgreSQL B-tree indexing strategies.",
     )
     redis_chunk = create_test_chunk(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="redis.md",
         content="Redis append-only file persistence.",
     )
@@ -69,7 +69,7 @@ def test_search_ranks_results_by_cosine_similarity() -> None:
 
     matches = asyncio.run(
         store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=(1.0, 0.0),
             limit=2,
         )
@@ -130,7 +130,7 @@ def test_upsert_replaces_existing_record() -> None:
         dimensions=2,
     )
     chunk = create_test_chunk(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="linux.md",
         content="Linux epoll readiness notification.",
     )
@@ -158,7 +158,7 @@ def test_upsert_replaces_existing_record() -> None:
 
     matches = asyncio.run(
         store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=(0.0, 1.0),
         )
     )
@@ -172,12 +172,12 @@ def test_upsert_validates_batch_before_mutation() -> None:
         dimensions=2,
     )
     valid_chunk = create_test_chunk(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="valid.md",
         content="Valid distributed systems notes.",
     )
     invalid_chunk = create_test_chunk(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="invalid.md",
         content="Invalid vector dimensions.",
     )
@@ -203,7 +203,7 @@ def test_upsert_validates_batch_before_mutation() -> None:
 
     matches = asyncio.run(
         store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=(1.0, 0.0),
         )
     )
@@ -282,7 +282,7 @@ def test_empty_store_returns_no_matches() -> None:
 
     matches = asyncio.run(
         store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=(1.0, 0.0),
         )
     )
@@ -334,7 +334,7 @@ def test_upsert_rejects_invalid_embedding(
         dimensions=2,
     )
     chunk = create_test_chunk(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="invalid-vector.md",
         content="Invalid vector validation.",
     )
@@ -386,7 +386,7 @@ def test_search_rejects_invalid_query_vector(
     ):
         asyncio.run(
             store.search(
-                tenant_id="tenant-hennge",
+                tenant_id="tenant-acme",
                 query_vector=query_vector,
             )
         )
@@ -412,7 +412,7 @@ def test_search_rejects_invalid_limit(
     ):
         asyncio.run(
             store.search(
-                tenant_id="tenant-hennge",
+                tenant_id="tenant-acme",
                 query_vector=(1.0, 0.0),
                 limit=limit,
             )

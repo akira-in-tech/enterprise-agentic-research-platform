@@ -35,4 +35,24 @@ dist/
 *.log
 logs/
 data/
+
+# scripts/run_evaluation.py report output (reproducible run artifacts,
+# not source -- regenerate via scripts/run_evaluation.py)
+eval_runs/
 uploads/
+
+# Terraform local state, caches, plans, and variable secrets
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.auto.tfvars
+!*.auto.tfvars.example
+infra/terraform/bootstrap/backend.hcl
+infra/terraform/identity/backend.hcl
+infra/terraform/staging/terraform.tfvars
+crash.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

@@ -20,5 +20,4 @@ class SearchClient(Protocol):
         query: str,
         *,
         max_results: int = 5,
-    ) -> list[SearchResult]:
-        ...
+    ) -> list[SearchResult]: ...

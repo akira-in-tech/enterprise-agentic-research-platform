@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID, uuid4
 
 import pytest
@@ -123,12 +124,17 @@ class RecordingIdempotencyLockManager:
         acquired: bool = True,
         acquire_error: CacheUnavailableError | None = None,
         release_error: CacheUnavailableError | None = None,
+        renewed: bool = True,
+        renew_error: CacheUnavailableError | None = None,
     ) -> None:
         self.acquired = acquired
         self.acquire_error = acquire_error
         self.release_error = release_error
+        self.renewed = renewed
+        self.renew_error = renew_error
         self.acquire_calls: list[tuple[UUID, str]] = []
         self.release_calls: list[ResearchIdempotencyLockLease] = []
+        self.renew_calls: list[ResearchIdempotencyLockLease] = []
 
     async def acquire(
         self,
@@ -166,6 +172,19 @@ class RecordingIdempotencyLockManager:
             raise self.release_error
 
         return True
+
+    async def renew(
+        self,
+        lease: ResearchIdempotencyLockLease,
+    ) -> bool:
+        self.renew_calls.append(
+            lease,
+        )
+
+        if self.renew_error is not None:
+            raise self.renew_error
+
+        return self.renewed
 
 
 def create_execution_result() -> ResearchExecutionResult:
@@ -521,3 +540,83 @@ async def test_executor_failure_still_releases_lock() -> None:
     assert store.set_calls == []
     assert len(lock_manager.acquire_calls) == 1
     assert len(lock_manager.release_calls) == 1
+
+
+class SlowExecutor:
+    """Execute for long enough that a short renew interval fires at least once."""
+
+    def __init__(
+        self,
+        result: ResearchExecutionResult,
+        *,
+        delay_seconds: float = 0.05,
+    ) -> None:
+        self.result = result
+        self.delay_seconds = delay_seconds
+        self.cancelled = False
+
+    async def execute(
+        self,
+        *,
+        tenant_id: UUID,
+        query: str,
+        llm_provider: str,
+        requested_by_user_id: UUID | None = None,
+    ) -> ResearchExecutionResult:
+        try:
+            await asyncio.sleep(self.delay_seconds)
+        except asyncio.CancelledError:
+            self.cancelled = True
+            raise
+
+        return self.result
+
+
+@pytest.mark.anyio
+async def test_execute_renews_the_lock_during_a_long_running_execution() -> None:
+    executor = SlowExecutor(create_execution_result(), delay_seconds=0.05)
+    store = RecordingIdempotencyStore()
+    lock_manager = RecordingIdempotencyLockManager()
+    service = IdempotentResearchExecutionService(
+        executor,
+        store,
+        lock_manager,
+        renew_interval_seconds=0.01,
+    )
+
+    result = await service.execute(
+        tenant_id=uuid4(),
+        query="Compare HTTP/2 and HTTP/3.",
+        llm_provider="qwen",
+        idempotency_key="request-123",
+    )
+
+    assert result is executor.result
+    assert len(lock_manager.renew_calls) >= 1
+    assert len(lock_manager.release_calls) == 1
+
+
+@pytest.mark.anyio
+async def test_execute_cancels_the_execution_when_the_lease_is_lost() -> None:
+    executor = SlowExecutor(create_execution_result(), delay_seconds=1.0)
+    store = RecordingIdempotencyStore()
+    lock_manager = RecordingIdempotencyLockManager(renewed=False)
+    service = IdempotentResearchExecutionService(
+        executor,
+        store,
+        lock_manager,
+        renew_interval_seconds=0.01,
+    )
+
+    with pytest.raises(asyncio.CancelledError):
+        await service.execute(
+            tenant_id=uuid4(),
+            query="Compare HTTP/2 and HTTP/3.",
+            llm_provider="qwen",
+            idempotency_key="request-123",
+        )
+
+    assert executor.cancelled is True
+    # The lease was already lost, so no completed record was ever written --
+    # avoiding a race with whatever process now holds the lock.
+    assert store.set_calls == []

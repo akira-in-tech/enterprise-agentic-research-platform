@@ -48,6 +48,15 @@ class AtomicLockClient(Protocol):
     ) -> bool:
         """Atomically delete a lock owned by the expected value."""
 
+    async def extend_if_value(
+        self,
+        *,
+        key: str,
+        expected_value: str,
+        ttl_seconds: int,
+    ) -> bool:
+        """Atomically extend a lock's TTL only when still owned by the expected value."""
+
 
 class RateLimitCounterClient(Protocol):
     """Atomic counter operation required by rate-limit services."""

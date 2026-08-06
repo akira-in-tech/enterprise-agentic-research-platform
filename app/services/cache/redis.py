@@ -14,6 +14,13 @@ end
 return 0
 """.strip()
 
+_COMPARE_AND_EXTEND_SCRIPT = """
+if redis.call("GET", KEYS[1]) == ARGV[1] then
+    return redis.call("EXPIRE", KEYS[1], ARGV[2])
+end
+return 0
+""".strip()
+
 _INCREMENT_WITH_TTL_SCRIPT = """
 local current = redis.call("INCR", KEYS[1])
 if current == 1 then
@@ -298,6 +305,44 @@ class RedisConnection:
             raise RedisUnavailableError("Redis compare-and-delete returned an invalid response.")
 
         return raw_deleted_count > 0
+
+    async def extend_if_value(
+        self,
+        *,
+        key: str,
+        expected_value: str,
+        ttl_seconds: int,
+    ) -> bool:
+        """Atomically extend a key's TTL only when its value still matches."""
+
+        validated_key = _validate_key(
+            key,
+        )
+
+        if not expected_value.strip():
+            raise ValueError("Redis expected_value must not be empty.")
+
+        if ttl_seconds < 1:
+            raise ValueError("Redis ttl_seconds must be at least 1.")
+
+        try:
+            raw_extended = await self._client.eval(
+                _COMPARE_AND_EXTEND_SCRIPT,
+                1,
+                validated_key,
+                expected_value,
+                str(ttl_seconds),
+            )
+        except RedisError as error:
+            raise RedisUnavailableError("Redis compare-and-extend failed.") from error
+
+        if not isinstance(
+            raw_extended,
+            int,
+        ):
+            raise RedisUnavailableError("Redis compare-and-extend returned an invalid response.")
+
+        return raw_extended > 0
 
     async def increment_with_ttl(
         self,

@@ -42,8 +42,8 @@ async def test_postgres_repositories_live_round_trip() -> None:
                 unique_suffix = uuid4().hex[:12]
 
                 tenant_a = await tenant_repository.create(
-                    slug=f"hennge-platform-{unique_suffix}",
-                    name="HENNGE Platform Engineering",
+                    slug=f"acme-platform-{unique_suffix}",
+                    name="ACME Platform Engineering",
                 )
                 tenant_b = await tenant_repository.create(
                     slug=f"cloud-platform-{unique_suffix}",
@@ -59,12 +59,14 @@ async def test_postgres_repositories_live_round_trip() -> None:
 
                 user_a = await user_repository.create(
                     tenant_id=tenant_a.id,
-                    email="engineer@hennge.example",
-                    display_name="HENNGE Engineer",
+                    email="engineer@acme.example",
+                    password_hash="test-password-hash",
+                    display_name="ACME Engineer",
                 )
                 user_b = await user_repository.create(
                     tenant_id=tenant_b.id,
                     email="engineer@cloud.example",
+                    password_hash="test-password-hash",
                     display_name="Cloud Engineer",
                 )
 

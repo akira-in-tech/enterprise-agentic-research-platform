@@ -76,6 +76,16 @@ class RecordingResearchRunStore:
         self.events.append("failed")
         self.error_message = error_message
 
+    async def mark_cancelled(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        assert research_run_id == self.research_run_id
+        self.events.append("cancelled")
+        return True
+
 
 class RecordingWorkflow:
     def __init__(
@@ -358,8 +368,9 @@ async def test_execution_normalizes_provider_and_completes(
         create_workflow,
     )
 
+    tenant_id = uuid4()
     result = await service.execute(
-        tenant_id=uuid4(),
+        tenant_id=tenant_id,
         query="  Explain Linux epoll.  ",
         llm_provider=provider,
     )
@@ -382,6 +393,7 @@ async def test_execution_normalizes_provider_and_completes(
     assert workflow.inputs == [
         {
             "query": "Explain Linux epoll.",
+            "tenant_id": tenant_id,
         }
     ]
 
@@ -629,6 +641,7 @@ async def test_execution_runs_workflow_after_cache_miss() -> None:
     assert workflow.inputs == [
         {
             "query": "Explain Linux epoll.",
+            "tenant_id": tenant_id,
         }
     ]
     assert workflow.close_calls == 1
@@ -738,3 +751,20 @@ async def test_execution_fails_open_when_cache_write_is_unavailable() -> None:
             ),
         )
     ]
+
+
+@pytest.mark.anyio
+async def test_execution_cancels_durable_run_and_publishes_progress() -> None:
+    store = RecordingResearchRunStore()
+    progress_store = RecordingResearchProgressStore()
+    service = ResearchExecutionService(store, progress_store=progress_store)
+    tenant_id = uuid4()
+
+    cancelled = await service.cancel(
+        tenant_id=tenant_id,
+        research_run_id=store.research_run_id,
+    )
+
+    assert cancelled is True
+    assert store.events == ["cancelled"]
+    assert [record.status for _, record in progress_store.calls] == ["cancelled"]

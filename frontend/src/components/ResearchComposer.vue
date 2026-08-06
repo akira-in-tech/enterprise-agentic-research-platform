@@ -14,6 +14,7 @@ import ProviderMenu from "./ProviderMenu.vue";
 const props = defineProps<{
   query: string;
   provider: UserFacingProvider;
+  enabledProviders?: readonly UserFacingProvider[];
   submitting: boolean;
 }>();
 
@@ -51,6 +52,7 @@ function handleKeydown(event: KeyboardEvent): void {
       <div class="composer-options">
         <ProviderMenu
           :model-value="provider"
+          :enabled-providers="enabledProviders"
           :disabled="submitting"
           @update:model-value="emit('update:provider', $event)"
         />
@@ -74,14 +76,14 @@ function handleKeydown(event: KeyboardEvent): void {
       <button class="submit-button" type="submit" :disabled="!canSubmit">
         <PhSpinnerGap v-if="submitting" class="spin" :size="17" weight="bold" />
         <template v-else>
-          <span>Research</span>
+          <span>Start research</span>
           <PhArrowRight :size="16" weight="bold" />
         </template>
       </button>
     </div>
 
     <div class="composer-footnote">
-      <span><PhClock :size="14" /> Runs in the background · You can leave this page</span>
+      <span><PhClock :size="14" /> Durable background job · Safe to leave this page</span>
       <span class="shortcut-hint"><PhInfo :size="14" /> {{ queryLength }}/4000 · ⌘ Enter</span>
     </div>
   </form>

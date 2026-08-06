@@ -4,10 +4,12 @@ from app.services.mcp.http import (
     MCPProtocolError,
     StreamableHTTPMCPClient,
 )
+from app.services.mcp.scout import MCPReferenceScout
 
 __all__ = [
     "MCPClientError",
     "MCPProtocolError",
     "MCPToolClient",
+    "MCPReferenceScout",
     "StreamableHTTPMCPClient",
 ]

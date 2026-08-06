@@ -32,9 +32,7 @@ class TavilySearchClient:
             raise ValueError("Search query must not be empty.")
 
         if not 1 <= max_results <= 20:
-            raise ValueError(
-                "max_results must be between 1 and 20."
-            )
+            raise ValueError("max_results must be between 1 and 20.")
 
         response = cast(
             dict[str, Any],
@@ -56,9 +54,7 @@ class TavilySearchClient:
         results: list[SearchResult] = []
 
         for item in raw_results:
-            raw_url = str(
-                item.get("url") or ""
-            ).strip()
+            raw_url = str(item.get("url") or "").strip()
 
             try:
                 url = normalize_url(raw_url)
@@ -67,13 +63,9 @@ class TavilySearchClient:
 
             results.append(
                 SearchResult(
-                    title=str(
-                        item.get("title") or "Untitled"
-                    ).strip(),
+                    title=str(item.get("title") or "Untitled").strip(),
                     url=url,
-                    content=str(
-                        item.get("content") or ""
-                    ).strip(),
+                    content=str(item.get("content") or "").strip(),
                     source="tavily",
                 )
             )

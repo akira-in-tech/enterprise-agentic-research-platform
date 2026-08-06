@@ -55,6 +55,14 @@ class LiveResearchRunStore:
     ) -> None:
         return None
 
+    async def mark_cancelled(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        return True
+
 
 class BlockingWorkflow:
     def __init__(self) -> None:

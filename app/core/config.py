@@ -1,7 +1,22 @@
 from functools import lru_cache
+from typing import Literal
 
 from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def parse_cors_allowed_origins(value: str) -> list[str]:
+    """Parse a comma-separated CORS allowlist, dropping blanks and duplicates."""
+
+    origins: list[str] = []
+
+    for origin in value.split(","):
+        normalized = origin.strip()
+
+        if normalized and normalized not in origins:
+            origins.append(normalized)
+
+    return origins
 
 
 class Settings(BaseSettings):
@@ -15,6 +30,23 @@ class Settings(BaseSettings):
 
     api_host: str = "127.0.0.1"
     api_port: int = 8000
+    cors_allowed_origins: str = ""
+
+    session_cookie_name: str = "session_token"
+    session_ttl_seconds: int = Field(
+        default=60 * 60 * 24 * 7,
+        ge=60,
+        le=60 * 60 * 24 * 90,
+    )
+
+    document_storage_root: str = "uploads"
+    document_storage_provider: Literal["local", "s3"] = "local"
+    document_s3_bucket: str = ""
+    document_max_upload_bytes: int = Field(
+        default=10_000_000,
+        ge=1,
+        le=100_000_000,
+    )
 
     anthropic_model: str = ""
     anthropic_api_key: SecretStr = SecretStr("")
@@ -27,6 +59,15 @@ class Settings(BaseSettings):
     ollama_model: str = "qwen3:8b"
     ollama_embedding_model: str = "qwen3-embedding:0.6b"
     ollama_embedding_dimensions: int = 1024
+    embedding_provider: Literal["ollama", "bedrock"] = "ollama"
+    aws_region: str = "us-west-2"
+    bedrock_embedding_model: str = "amazon.titan-embed-text-v2:0"
+    bedrock_embedding_dimensions: Literal[256, 512, 1024] = 1024
+
+    mcp_endpoint: str = ""
+    mcp_server_name: str = "evident-reference"
+    mcp_server_host: str = "127.0.0.1"
+    mcp_server_port: int = Field(default=8001, ge=1, le=65_535)
 
     milvus_uri: str = "http://localhost:19530"
     milvus_token: SecretStr = SecretStr("")
@@ -43,6 +84,16 @@ class Settings(BaseSettings):
         "postgresql+asyncpg://research_user:change_me@localhost:5432/research_platform"
     )
     database_echo: bool = False
+    research_worker_lease_ttl_seconds: int = Field(
+        default=30,
+        ge=5,
+        le=3600,
+    )
+    research_worker_heartbeat_seconds: float = Field(
+        default=10.0,
+        gt=0,
+        le=120,
+    )
 
     redis_url: SecretStr = SecretStr(
         "redis://localhost:6379/0",
@@ -79,6 +130,11 @@ class Settings(BaseSettings):
         default=300,
         ge=1,
         le=3600,
+    )
+    redis_research_idempotency_lock_renew_interval_seconds: float = Field(
+        default=100.0,
+        gt=0,
+        le=1200,
     )
     redis_research_rate_limit_requests: int = Field(
         default=20,

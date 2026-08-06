@@ -1,9 +1,12 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from unittest.mock import Mock
 
 import pytest
 from fastapi import FastAPI
 
 from app import main as main_module
+from app.core.config import settings
 
 
 class RecordingEngine:
@@ -25,6 +28,36 @@ class RecordingRedisConnection:
 class RecordingJobManager:
     def __init__(self) -> None:
         self.closed = False
+        self.started = False
+
+    async def start(self) -> int:
+        self.started = True
+        return 0
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class RecordingEmbeddingClient:
+    def __init__(self) -> None:
+        self.closed = False
+        self.dimensions = 1024
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class RecordingVectorStore:
+    def __init__(self) -> None:
+        self.closed = False
+
+    async def close(self) -> None:
+        self.closed = True
+
+
+class RecordingDocumentStorage:
+    def __init__(self) -> None:
+        self.closed = False
 
     async def close(self) -> None:
         self.closed = True
@@ -38,6 +71,8 @@ async def test_lifespan_wires_and_closes_application_resources(
     redis_connection = RecordingRedisConnection()
     database_session_factory = object()
     research_store = object()
+    durability_store = object()
+    agent_step_store = object()
     result_cache = object()
     idempotency_store = object()
     execution_service = object()
@@ -47,6 +82,22 @@ async def test_lifespan_wires_and_closes_application_resources(
     progress_store = object()
     report_store = object()
     job_manager = RecordingJobManager()
+    embedding_client = RecordingEmbeddingClient()
+    vector_store = RecordingVectorStore()
+    knowledge_document_store = object()
+    document_storage = RecordingDocumentStorage()
+    knowledge_indexer = object()
+    knowledge_document_service = object()
+    private_retriever = object()
+    local_scout = object()
+    mcp_scout = object()
+    expected_workflow = object()
+    checkpointer = object()
+    readiness_service = object()
+
+    @asynccontextmanager
+    async def open_checkpointer(_: object) -> AsyncIterator[object]:
+        yield checkpointer
 
     create_engine = Mock(
         return_value=engine,
@@ -56,6 +107,12 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_store = Mock(
         return_value=research_store,
+    )
+    create_durability_store = Mock(
+        return_value=durability_store,
+    )
+    create_agent_step_store = Mock(
+        return_value=agent_step_store,
     )
     redis_connection_type = Mock()
     redis_connection_type.from_url.return_value = redis_connection
@@ -86,6 +143,37 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_job_manager = Mock(
         return_value=job_manager,
     )
+    create_embedding_client = Mock(
+        return_value=embedding_client,
+    )
+    create_vector_store = Mock(
+        return_value=vector_store,
+    )
+    create_knowledge_document_store = Mock(
+        return_value=knowledge_document_store,
+    )
+    create_document_storage = Mock(
+        return_value=document_storage,
+    )
+    create_knowledge_indexer = Mock(
+        return_value=knowledge_indexer,
+    )
+    create_knowledge_document_service = Mock(
+        return_value=knowledge_document_service,
+    )
+    create_private_retriever = Mock(
+        return_value=private_retriever,
+    )
+    create_local_scout = Mock(
+        return_value=local_scout,
+    )
+    create_mcp_scout = Mock(
+        return_value=mcp_scout,
+    )
+    create_workflow = Mock(
+        return_value=expected_workflow,
+    )
+    create_readiness_service = Mock(return_value=readiness_service)
     monkeypatch.setattr(
         main_module,
         "RedisResearchIdempotencyStore",
@@ -110,6 +198,16 @@ async def test_lifespan_wires_and_closes_application_resources(
         main_module,
         "PostgresResearchRunStore",
         create_store,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "PostgresResearchDurabilityStore",
+        create_durability_store,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "PostgresResearchAgentStepStore",
+        create_agent_step_store,
     )
     monkeypatch.setattr(
         main_module,
@@ -151,6 +249,76 @@ async def test_lifespan_wires_and_closes_application_resources(
         "ResearchJobManager",
         create_job_manager,
     )
+    monkeypatch.setattr(
+        main_module,
+        "create_embedding_client",
+        create_embedding_client,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "create_vector_store",
+        create_vector_store,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "PostgresKnowledgeDocumentStore",
+        create_knowledge_document_store,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "create_document_storage",
+        create_document_storage,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "KnowledgeIndexer",
+        create_knowledge_indexer,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "KnowledgeDocumentService",
+        create_knowledge_document_service,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "PrivateKnowledgeRetriever",
+        create_private_retriever,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "LocalScoutAgent",
+        create_local_scout,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "MCPReferenceScout",
+        create_mcp_scout,
+    )
+    monkeypatch.setattr(
+        settings,
+        "mcp_endpoint",
+        "http://mcp.test/mcp",
+    )
+    monkeypatch.setattr(
+        settings,
+        "mcp_server_name",
+        "test-reference",
+    )
+    monkeypatch.setattr(
+        main_module,
+        "create_default_workflow",
+        create_workflow,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "open_langgraph_checkpointer",
+        open_checkpointer,
+    )
+    monkeypatch.setattr(
+        main_module,
+        "ApplicationReadinessService",
+        create_readiness_service,
+    )
 
     application = FastAPI()
 
@@ -162,13 +330,22 @@ async def test_lifespan_wires_and_closes_application_resources(
         assert application.state.research_progress_store is progress_store
         assert application.state.research_report_store is report_store
         assert application.state.research_job_manager is job_manager
+        assert application.state.readiness_service is readiness_service
+        assert application.state.knowledge_document_service is knowledge_document_service
         assert engine.disposed is False
         assert redis_connection.closed is False
         assert job_manager.closed is False
+        assert job_manager.started is True
+        assert embedding_client.closed is False
+        assert vector_store.closed is False
+        assert document_storage.closed is False
 
     assert redis_connection.closed is True
     assert engine.disposed is True
     assert job_manager.closed is True
+    assert embedding_client.closed is True
+    assert vector_store.closed is True
+    assert document_storage.closed is True
 
     create_idempotency_store.assert_called_once_with(
         redis_connection,
@@ -188,7 +365,14 @@ async def test_lifespan_wires_and_closes_application_resources(
     create_sessions.assert_called_once_with(
         engine,
     )
+    create_readiness_service.assert_called_once_with(engine, redis_connection)
     create_store.assert_called_once_with(
+        database_session_factory,
+    )
+    create_durability_store.assert_called_once_with(
+        database_session_factory,
+    )
+    create_agent_step_store.assert_called_once_with(
         database_session_factory,
     )
     redis_connection_type.from_url.assert_called_once_with()
@@ -203,9 +387,52 @@ async def test_lifespan_wires_and_closes_application_resources(
     )
     create_job_manager.assert_called_once_with(
         execution_service,
+        durability_store,
+        lease_ttl_seconds=settings.research_worker_lease_ttl_seconds,
+        heartbeat_seconds=settings.research_worker_heartbeat_seconds,
     )
-    create_execution_service.assert_called_once_with(
-        research_store,
-        result_cache=result_cache,
-        progress_store=progress_store,
+    create_embedding_client.assert_called_once_with()
+    create_vector_store.assert_called_once_with(
+        dimensions=embedding_client.dimensions,
     )
+    create_knowledge_document_store.assert_called_once_with(
+        database_session_factory,
+    )
+    create_document_storage.assert_called_once_with()
+    create_knowledge_indexer.assert_called_once_with(
+        embedding_client,
+        vector_store,
+    )
+    create_knowledge_document_service.assert_called_once_with(
+        knowledge_document_store,
+        document_storage,
+        knowledge_indexer,
+        vector_store,
+        max_upload_bytes=main_module.settings.document_max_upload_bytes,
+    )
+    create_private_retriever.assert_called_once_with(
+        embedding_client,
+        vector_store,
+    )
+    create_local_scout.assert_called_once_with(
+        private_retriever,
+    )
+    create_mcp_scout.assert_called_once_with(
+        "http://mcp.test/mcp",
+        server_name="test-reference",
+    )
+    execution_call = create_execution_service.call_args
+    assert execution_call.args[0] is research_store
+    workflow_factory = execution_call.args[1]
+    assert workflow_factory("ollama") is expected_workflow
+    create_workflow.assert_called_once_with(
+        "ollama",
+        local_scout=local_scout,
+        mcp_scout=mcp_scout,
+        checkpointer=checkpointer,
+    )
+    assert execution_call.kwargs == {
+        "result_cache": result_cache,
+        "progress_store": progress_store,
+        "agent_step_store": agent_step_store,
+    }

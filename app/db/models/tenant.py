@@ -78,6 +78,10 @@ class User(Base):
             "email",
             name="uq_users_tenant_id_email",
         ),
+        UniqueConstraint(
+            "email",
+            name="uq_users_email",
+        ),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -103,6 +107,11 @@ class User(Base):
     display_name: Mapped[str | None] = mapped_column(
         String(200),
         nullable=True,
+    )
+
+    password_hash: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
     )
 
     is_active: Mapped[bool] = mapped_column(

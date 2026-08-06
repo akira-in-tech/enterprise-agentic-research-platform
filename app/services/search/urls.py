@@ -18,10 +18,7 @@ def _is_tracking_parameter(name: str) -> bool:
 
     normalized_name = name.casefold()
 
-    return (
-        normalized_name.startswith("utm_")
-        or normalized_name in TRACKING_QUERY_KEYS
-    )
+    return normalized_name.startswith("utm_") or normalized_name in TRACKING_QUERY_KEYS
 
 
 def normalize_url(value: str) -> str:
@@ -36,9 +33,7 @@ def normalize_url(value: str) -> str:
     scheme = parsed.scheme.casefold()
 
     if scheme not in {"http", "https"}:
-        raise ValueError(
-            "URL scheme must be HTTP or HTTPS."
-        )
+        raise ValueError("URL scheme must be HTTP or HTTPS.")
 
     hostname = parsed.hostname
 
@@ -46,29 +41,19 @@ def normalize_url(value: str) -> str:
         raise ValueError("URL must include a hostname.")
 
     if parsed.username is not None or parsed.password is not None:
-        raise ValueError(
-            "URL must not include credentials."
-        )
+        raise ValueError("URL must not include credentials.")
 
     try:
         port = parsed.port
     except ValueError as error:
-        raise ValueError(
-            "URL contains an invalid port."
-        ) from error
+        raise ValueError("URL contains an invalid port.") from error
 
     normalized_hostname = hostname.casefold().rstrip(".")
     netloc_hostname = (
-        f"[{normalized_hostname}]"
-        if ":" in normalized_hostname
-        else normalized_hostname
+        f"[{normalized_hostname}]" if ":" in normalized_hostname else normalized_hostname
     )
 
-    is_default_port = (
-        scheme == "http" and port == 80
-    ) or (
-        scheme == "https" and port == 443
-    )
+    is_default_port = (scheme == "http" and port == 80) or (scheme == "https" and port == 443)
 
     if port is not None and not is_default_port:
         netloc = f"{netloc_hostname}:{port}"

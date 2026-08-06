@@ -1,35 +1,48 @@
 import logging
+from collections.abc import Awaitable, Callable
 from typing import TypeVar
 
 from anthropic import AsyncAnthropic
-from anthropic.types import TextBlock
+from anthropic.types import Message, TextBlock
+from anthropic.types.parsed_message import ParsedMessage
 from pydantic import BaseModel
 
+from app.core.circuit_breaker import CircuitBreaker
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
+ResponseT = TypeVar("ResponseT")
 
 
 class AnthropicClient:
     """Provide a small application-facing wrapper around the Anthropic SDK."""
 
-    def __init__(self) -> None:
-        api_key = settings.anthropic_api_key.get_secret_value().strip()
-        model = settings.anthropic_model.strip()
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        model: str | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
+    ) -> None:
+        configured_api_key = (
+            settings.anthropic_api_key.get_secret_value() if api_key is None else api_key
+        ).strip()
+        configured_model = (settings.anthropic_model if model is None else model).strip()
 
-        if not api_key:
+        if not configured_api_key:
             raise ValueError("ANTHROPIC_API_KEY is not configured.")
 
-        if not model:
+        if not configured_model:
             raise ValueError("ANTHROPIC_MODEL is not configured.")
 
-        self._model = model
+        self._model = configured_model
         self._client = AsyncAnthropic(
-            api_key=api_key,
+            api_key=configured_api_key,
             timeout=30.0,
             max_retries=2,
         )
+        self._circuit_breaker = circuit_breaker
 
     async def generate_text(
         self,
@@ -50,16 +63,19 @@ class AnthropicClient:
             max_tokens,
         )
 
-        message = await self._client.messages.create(
-            model=self._model,
-            max_tokens=max_tokens,
-            messages=[
-                {
-                    "role": "user",
-                    "content": normalized_prompt,
-                }
-            ],
-        )
+        async def call_claude() -> Message:
+            return await self._client.messages.create(
+                model=self._model,
+                max_tokens=max_tokens,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": normalized_prompt,
+                    }
+                ],
+            )
+
+        message = await self._call(call_claude)
 
         text_parts = [block.text for block in message.content if isinstance(block, TextBlock)]
 
@@ -96,17 +112,20 @@ class AnthropicClient:
             output_model.__name__,
         )
 
-        message = await self._client.messages.parse(
-            model=self._model,
-            max_tokens=max_tokens,
-            messages=[
-                {
-                    "role": "user",
-                    "content": normalized_prompt,
-                }
-            ],
-            output_format=output_model,
-        )
+        async def call_claude() -> ParsedMessage[StructuredModel]:
+            return await self._client.messages.parse(
+                model=self._model,
+                max_tokens=max_tokens,
+                messages=[
+                    {
+                        "role": "user",
+                        "content": normalized_prompt,
+                    }
+                ],
+                output_format=output_model,
+            )
+
+        message = await self._call(call_claude)
 
         parsed_output = message.parsed_output
 
@@ -119,6 +138,17 @@ class AnthropicClient:
         )
 
         return parsed_output
+
+    async def _call(
+        self,
+        func: Callable[[], Awaitable[ResponseT]],
+    ) -> ResponseT:
+        """Run one Anthropic SDK call, through the circuit breaker if configured."""
+
+        if self._circuit_breaker is None:
+            return await func()
+
+        return await self._circuit_breaker.call(func)
 
     async def close(self) -> None:
         """Close the underlying Anthropic client."""

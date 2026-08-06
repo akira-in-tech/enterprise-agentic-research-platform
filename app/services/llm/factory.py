@@ -1,5 +1,6 @@
 from typing import Literal
 
+from app.core.circuit_breaker import CircuitBreaker
 from app.core.config import settings
 from app.services.llm.anthropic import AnthropicClient
 from app.services.llm.base import ClosableLLMClient
@@ -49,6 +50,6 @@ def create_llm_client(
     selected_provider = normalize_llm_provider(provider)
 
     if selected_provider == "anthropic":
-        return AnthropicClient()
+        return AnthropicClient(circuit_breaker=CircuitBreaker())
 
     return OllamaClient()

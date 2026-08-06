@@ -3,9 +3,14 @@ import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from itertools import count
 from typing import Protocol, cast
 from uuid import UUID
 
+from langchain_core.runnables import RunnableConfig
+from langgraph.checkpoint.base import BaseCheckpointSaver
+
+from app.agents.local_scout import LocalScoutAgent
 from app.schemas.cache import CachedResearchResult
 from app.schemas.progress import ResearchProgressRecord, ResearchProgressStatus
 from app.services.cache import CacheUnavailableError
@@ -15,11 +20,18 @@ from app.services.llm.factory import (
     create_llm_client,
     normalize_llm_provider,
 )
+from app.services.mcp import MCPReferenceScout
 from app.workflow.graph import (
+    AGENT_STEP_NODE_NAMES,
     ResearchGraph,
     build_research_graph_for_client,
 )
 from app.workflow.state import ResearchState
+
+AgentStepRecorder = Callable[
+    [str, str, str | None],
+    Awaitable[None],
+]
 
 logger = logging.getLogger(__name__)
 
@@ -50,19 +62,120 @@ class LangGraphResearchWorkflow:
     ) -> None:
         self._graph = graph
         self._close_callback = close_callback
+        self._thread_id: str | None = None
+        self._resume = False
+        self._step_recorder: AgentStepRecorder | None = None
+
+    def configure_durable_execution(
+        self,
+        *,
+        thread_id: str,
+        resume: bool,
+    ) -> None:
+        """Select the durable LangGraph thread and invocation mode."""
+
+        self._thread_id = thread_id
+        self._resume = resume
+
+    def configure_step_recording(
+        self,
+        recorder: AgentStepRecorder | None,
+    ) -> None:
+        """Record a durable trace row for each canonical agent step."""
+
+        self._step_recorder = recorder
 
     async def ainvoke(
         self,
         state: ResearchState,
     ) -> ResearchState:
-        result = await self._graph.ainvoke(
-            state,
-        )
+        if self._step_recorder is not None:
+            return await self._ainvoke_with_step_recording(state)
+
+        if self._thread_id is None:
+            result = await self._graph.ainvoke(state)
+        else:
+            graph_input = None if self._resume else state
+            result = await self._graph.ainvoke(
+                graph_input,
+                config={"configurable": {"thread_id": self._thread_id}},
+            )
 
         return cast(
             ResearchState,
             result,
         )
+
+    async def _ainvoke_with_step_recording(
+        self,
+        state: ResearchState,
+    ) -> ResearchState:
+        """Stream the run so each canonical agent step gets a trace row."""
+
+        recorder = self._step_recorder
+        assert recorder is not None
+
+        config: RunnableConfig | None
+
+        if self._thread_id is None:
+            graph_input: ResearchState | None = state
+            config = None
+        else:
+            graph_input = None if self._resume else state
+            config = {"configurable": {"thread_id": self._thread_id}}
+
+        last_values: ResearchState = state
+        # LangGraph only yields a "tasks" finish event for a failed node when
+        # another task in the same superstep is still in flight; a lone
+        # failing node's exception propagates with no finish event at all.
+        # Tracking still-in-flight steps lets the except-block below record
+        # those as failed either way.
+        in_flight: set[str] = set()
+
+        try:
+            async for mode, chunk in self._graph.astream(
+                graph_input,
+                config=config,
+                stream_mode=["tasks", "values"],
+            ):
+                if mode == "values":
+                    last_values = cast(ResearchState, chunk)
+                else:
+                    await self._record_task_event(
+                        cast(dict[str, object], chunk),
+                        in_flight,
+                    )
+        except Exception as error:
+            for name in in_flight:
+                await recorder(name, "failed", str(error)[:1000])
+            raise
+
+        return last_values
+
+    async def _record_task_event(
+        self,
+        event: dict[str, object],
+        in_flight: set[str],
+    ) -> None:
+        assert self._step_recorder is not None
+
+        name = event.get("name")
+
+        if not isinstance(name, str) or name not in AGENT_STEP_NODE_NAMES:
+            return
+
+        if "result" not in event:
+            in_flight.add(name)
+            await self._step_recorder(name, "started", None)
+            return
+
+        in_flight.discard(name)
+        error = event.get("error")
+
+        if error is None:
+            await self._step_recorder(name, "completed", None)
+        else:
+            await self._step_recorder(name, "failed", str(error)[:1000])
 
     async def close(self) -> None:
         """Release workflow-owned resources."""
@@ -110,6 +223,14 @@ class ResearchRunStore(Protocol):
     ) -> None:
         """Commit the transition from an active state to failed."""
 
+    async def mark_cancelled(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        """Commit the transition from an active state to cancelled."""
+
 
 class ResearchResultCache(Protocol):
     """Represent optional research-result cache operations."""
@@ -145,6 +266,22 @@ class ResearchProgressPublisher(Protocol):
         """Publish the latest lifecycle snapshot."""
 
 
+class ResearchAgentStepStore(Protocol):
+    """Represent optional durable per-agent-step trace recording."""
+
+    async def append(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+        sequence: int,
+        agent_role: str,
+        status: str,
+        summary: str | None = None,
+    ) -> None:
+        """Append one step without overwriting prior history."""
+
+
 WorkflowFactory = Callable[
     [CanonicalLLMProvider],
     ResearchWorkflow,
@@ -153,6 +290,10 @@ WorkflowFactory = Callable[
 
 def create_default_workflow(
     provider: CanonicalLLMProvider,
+    *,
+    local_scout: LocalScoutAgent | None = None,
+    mcp_scout: MCPReferenceScout | None = None,
+    checkpointer: BaseCheckpointSaver[str] | None = None,
 ) -> ResearchWorkflow:
     """Build one managed production workflow."""
 
@@ -163,6 +304,9 @@ def create_default_workflow(
     return LangGraphResearchWorkflow(
         build_research_graph_for_client(
             llm_client,
+            local_scout=local_scout,
+            mcp_scout=mcp_scout,
+            checkpointer=checkpointer,
         ),
         llm_client.close,
     )
@@ -194,6 +338,7 @@ class QueuedResearchExecution:
     requested_by_user_id: UUID | None
     query: str
     llm_provider: CanonicalLLMProvider
+    resume: bool = False
 
 
 class ResearchExecutionService:
@@ -206,10 +351,12 @@ class ResearchExecutionService:
         *,
         result_cache: ResearchResultCache | None = None,
         progress_store: ResearchProgressPublisher | None = None,
+        agent_step_store: ResearchAgentStepStore | None = None,
     ) -> None:
         self._store = store
         self._workflow_factory = workflow_factory
         self._result_cache = result_cache
+        self._agent_step_store = agent_step_store
         self._progress_store = progress_store
 
     async def execute(
@@ -232,6 +379,28 @@ class ResearchExecutionService:
         )
 
         return await self.execute_queued(queued)
+
+    async def cancel(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> bool:
+        """Durably cancel one queued or running research run."""
+
+        cancelled = await self._store.mark_cancelled(
+            tenant_id=tenant_id,
+            research_run_id=research_run_id,
+        )
+        if not cancelled:
+            return False
+        await self._publish_progress(
+            tenant_id=tenant_id,
+            research_run_id=research_run_id,
+            status="cancelled",
+            message="Research workflow was cancelled.",
+        )
+        return True
 
     async def queue(
         self,
@@ -287,10 +456,11 @@ class ResearchExecutionService:
         canonical_provider = queued.llm_provider
 
         try:
-            await self._store.mark_running(
-                tenant_id=tenant_id,
-                research_run_id=research_run_id,
-            )
+            if not queued.resume:
+                await self._store.mark_running(
+                    tenant_id=tenant_id,
+                    research_run_id=research_run_id,
+                )
             await self._publish_progress(
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
@@ -315,8 +485,21 @@ class ResearchExecutionService:
                 workflow = self._workflow_factory(
                     canonical_provider,
                 )
+                if isinstance(workflow, LangGraphResearchWorkflow):
+                    workflow.configure_durable_execution(
+                        thread_id=f"{tenant_id}:{research_run_id}",
+                        resume=queued.resume,
+                    )
+                    if self._agent_step_store is not None:
+                        workflow.configure_step_recording(
+                            self._build_step_recorder(
+                                tenant_id=tenant_id,
+                                research_run_id=research_run_id,
+                            )
+                        )
                 initial_state: ResearchState = {
                     "query": normalized_query,
+                    "tenant_id": tenant_id,
                 }
 
                 try:
@@ -342,19 +525,9 @@ class ResearchExecutionService:
             )
 
         except asyncio.CancelledError:
-            error_message = "Research execution was cancelled during application shutdown."
-            await self._store.mark_failed(
-                tenant_id=tenant_id,
-                research_run_id=research_run_id,
-                error_message=error_message,
-            )
-            await self._publish_progress(
-                tenant_id=tenant_id,
-                research_run_id=research_run_id,
-                status="failed",
-                message="Research workflow was cancelled.",
-                error_message=error_message,
-            )
+            # User cancellation is persisted before the task is interrupted.
+            # Shutdown and lease-loss interruption deliberately leave an active
+            # row recoverable by another worker.
             raise
         except Exception as error:
             error_message = self._format_error(error)
@@ -386,6 +559,44 @@ class ResearchExecutionService:
             state=final_state,
             cache_hit=cache_hit,
         )
+
+    def _build_step_recorder(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> AgentStepRecorder:
+        """Build a per-run recorder that assigns a monotonic sequence."""
+
+        agent_step_store = self._agent_step_store
+        assert agent_step_store is not None
+        sequence = count(1)
+
+        async def record(
+            agent_role: str,
+            status: str,
+            summary: str | None,
+        ) -> None:
+            try:
+                await agent_step_store.append(
+                    tenant_id=tenant_id,
+                    research_run_id=research_run_id,
+                    sequence=next(sequence),
+                    agent_role=agent_role,
+                    status=status,
+                    summary=summary,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to record agent step for tenant %s run %s (role=%s, status=%s).",
+                    tenant_id,
+                    research_run_id,
+                    agent_role,
+                    status,
+                    exc_info=True,
+                )
+
+        return record
 
     async def _publish_progress(
         self,

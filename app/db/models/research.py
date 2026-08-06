@@ -40,7 +40,7 @@ class ResearchRun(Base):
             name="query_not_blank",
         ),
         CheckConstraint(
-            "status IN ('queued', 'running', 'completed', 'failed')",
+            "status IN ('queued', 'running', 'completed', 'failed', 'cancelled')",
             name="status_valid",
         ),
         CheckConstraint(

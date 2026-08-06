@@ -56,3 +56,7 @@ class VectorStore(Protocol):
     ) -> int:
         """Delete one tenant's records for a document."""
         ...
+
+    async def close(self) -> None:
+        """Release vector-store resources."""
+        ...

@@ -5,8 +5,13 @@ import pytest
 from sqlalchemy import delete
 
 from app.core.config import settings
-from app.db.models import ResearchRun, Tenant, User
-from app.db.repositories import ResearchRunRepository, TenantRepository, UserRepository
+from app.db.models import ResearchRun, ResearchWorkerLease, Tenant, User
+from app.db.repositories import (
+    ResearchDurabilityRepository,
+    ResearchRunRepository,
+    TenantRepository,
+    UserRepository,
+)
 from app.db.session import create_database_engine, create_session_factory
 from app.schemas.evidence import (
     CitationAudit,
@@ -17,7 +22,10 @@ from app.schemas.evidence import (
 from app.services.cache import RedisConnection, RedisResearchProgressStore
 from app.services.research.execution import ResearchExecutionService
 from app.services.research.jobs import ResearchJobManager
-from app.services.research.postgres import PostgresResearchRunStore
+from app.services.research.postgres import (
+    PostgresResearchDurabilityStore,
+    PostgresResearchRunStore,
+)
 from app.services.research.reports import PostgresResearchReportStore
 from app.workflow.state import ResearchState
 
@@ -94,6 +102,7 @@ async def test_job_manager_delivers_progress_and_durable_report() -> None:
             user = await UserRepository(session).create(
                 tenant_id=tenant.id,
                 email=f"async-{suffix}@example.com",
+                password_hash="test-password-hash",
                 display_name="Async Integration User",
             )
             tenant_id = tenant.id
@@ -105,7 +114,11 @@ async def test_job_manager_delivers_progress_and_durable_report() -> None:
             lambda _: workflow,
             progress_store=progress_store,
         )
-        manager = ResearchJobManager(executor)
+        manager = ResearchJobManager(
+            executor,
+            PostgresResearchDurabilityStore(session_factory),
+            worker_id="integration-worker",
+        )
         research_run_id = await manager.submit(
             tenant_id=tenant_id,
             requested_by_user_id=user_id,
@@ -126,7 +139,11 @@ async def test_job_manager_delivers_progress_and_durable_report() -> None:
                 tenant_id=tenant_id,
                 research_run_id=research_run_id,
             )
-            if progress is not None and progress.status in {"completed", "failed"}:
+            if progress is not None and progress.status in {
+                "completed",
+                "failed",
+                "cancelled",
+            }:
                 break
             await asyncio.sleep(0.02)
         else:
@@ -141,6 +158,35 @@ async def test_job_manager_delivers_progress_and_durable_report() -> None:
         assert report is not None
         assert report.content == "Background report. [WEB-0123456789ABCDEF]"
         assert report.reflection_attempts == 1
+
+        for _ in range(100):
+            async with session_factory() as session:
+                durability = ResearchDurabilityRepository(session)
+                latest_checkpoint = await durability.get_latest_checkpoint(
+                    tenant_id=tenant_id,
+                    research_run_id=research_run_id,
+                )
+                audit_events = await durability.list_audit_events(
+                    tenant_id=tenant_id,
+                    research_run_id=research_run_id,
+                )
+                lease = await session.get(
+                    ResearchWorkerLease,
+                    (tenant_id, research_run_id),
+                )
+            if latest_checkpoint is not None and lease is None:
+                break
+            await asyncio.sleep(0.02)
+        else:
+            pytest.fail("Durable worker ownership was not released.")
+
+        assert latest_checkpoint is not None
+        assert latest_checkpoint.sequence == 1
+        assert latest_checkpoint.node_name == "completed"
+        assert [event.event_type for event in audit_events] == [
+            "worker.claimed",
+            "worker.completed",
+        ]
     finally:
         if manager is not None:
             await manager.close()

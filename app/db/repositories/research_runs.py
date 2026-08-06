@@ -214,3 +214,32 @@ class ResearchRunRepository:
             )
 
         return result
+
+    async def mark_cancelled(
+        self,
+        *,
+        tenant_id: UUID,
+        research_run_id: UUID,
+    ) -> ResearchRun:
+        """Atomically transition one active run to cancelled."""
+
+        statement = (
+            update(ResearchRun)
+            .where(
+                ResearchRun.id == research_run_id,
+                ResearchRun.tenant_id == tenant_id,
+                ResearchRun.status.in_(("queued", "running")),
+            )
+            .values(
+                status="cancelled",
+                completed_at=func.now(),
+                error_message=None,
+            )
+            .returning(ResearchRun)
+        )
+        result = await self._session.scalar(statement)
+        if result is None:
+            raise ResearchRunTransitionError(
+                "Research run is missing or cannot transition to cancelled."
+            )
+        return result

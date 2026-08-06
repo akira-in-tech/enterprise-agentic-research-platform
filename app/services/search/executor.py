@@ -1,11 +1,18 @@
 import asyncio
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass
 
+import httpx
+
+from app.core.circuit_breaker import CircuitBreaker
+from app.core.retry import call_with_backoff
 from app.schemas.planner import ResearchPlan, ResearchTask
 from app.services.search.base import SearchClient, SearchResult
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_RETRYABLE_ERRORS: tuple[type[Exception], ...] = (httpx.TransportError,)
 
 
 @dataclass(slots=True)
@@ -33,26 +40,24 @@ class SearchExecutor:
         max_concurrency: int = 3,
         max_results_per_task: int = 5,
         task_timeout_seconds: float = 15.0,
+        circuit_breaker: CircuitBreaker | None = None,
+        retryable_errors: tuple[type[Exception], ...] = DEFAULT_RETRYABLE_ERRORS,
     ) -> None:
         if max_concurrency < 1:
-            raise ValueError(
-                "max_concurrency must be at least 1."
-            )
+            raise ValueError("max_concurrency must be at least 1.")
 
         if not 1 <= max_results_per_task <= 20:
-            raise ValueError(
-                "max_results_per_task must be between 1 and 20."
-            )
+            raise ValueError("max_results_per_task must be between 1 and 20.")
 
         if task_timeout_seconds <= 0:
-            raise ValueError(
-                "task_timeout_seconds must be greater than 0."
-            )
+            raise ValueError("task_timeout_seconds must be greater than 0.")
 
         self._search_client = search_client
         self._max_concurrency = max_concurrency
         self._max_results_per_task = max_results_per_task
         self._task_timeout_seconds = task_timeout_seconds
+        self._circuit_breaker = circuit_breaker
+        self._retryable_errors = retryable_errors
 
     async def execute(
         self,
@@ -60,18 +65,19 @@ class SearchExecutor:
     ) -> list[ResearchTaskResult]:
         """Execute all research tasks with bounded concurrency."""
 
-        semaphore = asyncio.Semaphore(
-            self._max_concurrency
-        )
+        return await self.execute_tasks(plan.tasks)
 
-        task_coroutines = [
-            self._execute_task(task, semaphore)
-            for task in plan.tasks
-        ]
+    async def execute_tasks(
+        self,
+        tasks: Sequence[ResearchTask],
+    ) -> list[ResearchTaskResult]:
+        """Execute an explicit task batch with bounded concurrency."""
 
-        outcomes = await asyncio.gather(
-            *task_coroutines
-        )
+        semaphore = asyncio.Semaphore(self._max_concurrency)
+
+        task_coroutines = [self._execute_task(task, semaphore) for task in tasks]
+
+        outcomes = await asyncio.gather(*task_coroutines)
 
         return list(outcomes)
 
@@ -89,13 +95,23 @@ class SearchExecutor:
                 task.search_query,
             )
 
+            async def run_search() -> list[SearchResult]:
+                return await self._search_client.search(
+                    task.search_query,
+                    max_results=self._max_results_per_task,
+                )
+
+            async def run_search_with_breaker() -> list[SearchResult]:
+                if self._circuit_breaker is not None:
+                    return await self._circuit_breaker.call(run_search)
+
+                return await run_search()
+
             try:
-                async with asyncio.timeout(
-                    self._task_timeout_seconds
-                ):
-                    results = await self._search_client.search(
-                        task.search_query,
-                        max_results=self._max_results_per_task,
+                async with asyncio.timeout(self._task_timeout_seconds):
+                    results = await call_with_backoff(
+                        run_search_with_breaker,
+                        retryable=self._retryable_errors,
                     )
             except TimeoutError:
                 logger.warning(
@@ -108,8 +124,7 @@ class SearchExecutor:
                     task=task,
                     results=[],
                     error=(
-                        "TimeoutError: search exceeded "
-                        f"{self._task_timeout_seconds:g} seconds."
+                        f"TimeoutError: search exceeded {self._task_timeout_seconds:g} seconds."
                     ),
                 )
             except Exception as error:
@@ -121,9 +136,7 @@ class SearchExecutor:
                 return ResearchTaskResult(
                     task=task,
                     results=[],
-                    error=(
-                        f"{type(error).__name__}: {error}"
-                    ),
+                    error=(f"{type(error).__name__}: {error}"),
                 )
 
             logger.info(

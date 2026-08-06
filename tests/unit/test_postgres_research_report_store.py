@@ -112,3 +112,39 @@ async def test_report_store_returns_none_without_cross_tenant_fallback() -> None
 
     assert result is None
     repository_mock.list_sources_for_run.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_report_store_lists_sources_only_when_report_exists() -> None:
+    session = cast(AsyncSession, AsyncMock(spec=AsyncSession))
+    session_factory = RecordingSessionFactory(session)
+    repository_mock = AsyncMock(spec=ResearchReportRepository)
+    repository = cast(ResearchReportRepository, repository_mock)
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    repository_mock.get_for_run.return_value = ResearchReport(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        content="Report.",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        created_at=datetime.now(UTC),
+    )
+    repository_mock.list_sources_for_run.return_value = []
+    store = PostgresResearchReportStore(session_factory, lambda _: repository)
+
+    result = await store.list_sources(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )
+
+    assert result == []
+    repository_mock.list_sources_for_run.assert_awaited_once_with(
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+    )

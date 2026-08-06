@@ -75,3 +75,15 @@ class RedisResearchIdempotencyLockManager:
             key=lease.redis_key,
             expected_value=lease.owner_token,
         )
+
+    async def renew(
+        self,
+        lease: ResearchIdempotencyLockLease,
+    ) -> bool:
+        """Extend a lock's TTL only when the lease still owns it."""
+
+        return await self._client.extend_if_value(
+            key=lease.redis_key,
+            expected_value=lease.owner_token,
+            ttl_seconds=self._ttl_seconds,
+        )

@@ -1,13 +1,16 @@
 from unittest.mock import Mock
+from uuid import UUID, uuid4
 
 import pytest
 
+from app.agents.local_scout import LocalScoutResult
 from app.schemas.intent import IntentDecision
 from app.schemas.planner import (
     ReportSection,
     ResearchPlan,
     ResearchTask,
 )
+from app.schemas.source import PrivateSource
 from app.services.search.base import SearchResult
 from app.services.search.executor import ResearchTaskResult
 from app.services.search.results import create_web_source_id
@@ -98,6 +101,28 @@ async def fake_successful_search(
     return [
         create_successful_outcome(task, index) for index, task in enumerate(plan.tasks, start=1)
     ]
+
+
+async def fake_private_scout(
+    _: ResearchPlan,
+    tenant_id: UUID,
+) -> LocalScoutResult:
+    suffix = tenant_id.hex[:16].upper()
+
+    return LocalScoutResult(
+        sources=[
+            PrivateSource(
+                source_id=f"PRIVATE-{suffix}",
+                document_id=f"DOC-{suffix}",
+                chunk_id=f"CHK-{suffix}",
+                filename="internal-http.md",
+                media_type="text/markdown",
+                content="Internal HTTP deployment evidence.",
+                score=0.93,
+            )
+        ],
+        errors=[],
+    )
 
 
 async def fake_partial_search(
@@ -209,6 +234,30 @@ async def test_research_graph_searches_for_deep_research() -> None:
     ]
 
     assert all(source.provider == "fake" for source in web_sources)
+
+
+@pytest.mark.anyio
+async def test_research_graph_runs_tenant_scoped_local_scout_when_configured() -> None:
+    tenant_id = uuid4()
+    graph = build_research_graph(
+        fake_research_classifier,
+        fake_plan_creator,
+        fake_direct_answer,
+        fake_successful_search,
+        scout_private_knowledge=fake_private_scout,
+    )
+
+    result = await graph.ainvoke(
+        {
+            "query": "Compare HTTP/2 and HTTP/3 using internal evidence.",
+            "tenant_id": tenant_id,
+        }
+    )
+
+    assert result["local_scout_errors"] == []
+    assert len(result["private_sources"]) == 1
+    assert result["private_sources"][0].source_id == (f"PRIVATE-{tenant_id.hex[:16].upper()}")
+    assert result["status"] == "web_search_completed"
 
 
 @pytest.mark.anyio
@@ -325,3 +374,38 @@ def test_default_graph_forwards_request_provider(
     assert provider_calls == [
         "qwen",
     ]
+
+
+def test_client_graph_uses_canonical_eight_agent_builder_with_local_scout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    llm_client = Mock()
+    local_scout = Mock()
+    tavily_client = Mock()
+    expected_graph = Mock()
+    canonical_builder = Mock(return_value=expected_graph)
+    legacy_builder = Mock()
+    monkeypatch.setattr(
+        graph_module,
+        "TavilySearchClient",
+        Mock(return_value=tavily_client),
+    )
+    monkeypatch.setattr(
+        graph_module,
+        "build_eight_agent_research_graph",
+        canonical_builder,
+    )
+    monkeypatch.setattr(
+        graph_module,
+        "build_research_graph",
+        legacy_builder,
+    )
+
+    result = graph_module.build_research_graph_for_client(
+        llm_client,
+        local_scout=local_scout,
+    )
+
+    assert result is expected_graph
+    canonical_builder.assert_called_once()
+    legacy_builder.assert_not_called()

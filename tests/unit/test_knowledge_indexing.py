@@ -69,7 +69,7 @@ class RecordingEmbeddingClient:
 
 def create_test_document() -> PrivateDocument:
     return create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="distributed-systems.md",
         raw_content=(b"one two three four five six seven eight nine ten"),
     )
@@ -95,7 +95,7 @@ def test_index_document_batches_and_stores_all_chunks() -> None:
 
     matches = asyncio.run(
         vector_store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=(1.0, 1.0, 1.0),
             limit=100,
         )
@@ -110,7 +110,7 @@ def test_index_document_batches_and_stores_all_chunks() -> None:
 
 def test_indexed_chunk_can_be_retrieved_by_exact_embedding() -> None:
     document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="networking.md",
         raw_content=(
             b"HTTP connection reuse improves latency. DNS caching reduces repeated lookups."
@@ -146,7 +146,7 @@ def test_indexed_chunk_can_be_retrieved_by_exact_embedding() -> None:
 
     matches = asyncio.run(
         vector_store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=query_vector,
             limit=2,
         )
@@ -198,7 +198,7 @@ def test_indexing_rejects_wrong_embedding_count() -> None:
 
     matches = asyncio.run(
         vector_store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=(1.0, 1.0, 1.0),
         )
     )
@@ -254,7 +254,7 @@ def test_embedding_failure_does_not_partially_write() -> None:
 
     matches = asyncio.run(
         vector_store.search(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             query_vector=(1.0, 1.0, 1.0),
         )
     )

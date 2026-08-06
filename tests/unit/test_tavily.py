@@ -50,10 +50,7 @@ def test_search_normalizes_tavily_results(
             "results": [
                 {
                     "title": "HTTP PUT",
-                    "url": (
-                        "HTTPS://Example.COM:443/http-put/"
-                        "?utm_source=test#semantics"
-                    ),
+                    "url": ("HTTPS://Example.COM:443/http-put/?utm_source=test#semantics"),
                     "content": "PUT is an idempotent HTTP method.",
                 },
                 {
@@ -154,8 +151,6 @@ def test_search_returns_empty_list_for_empty_results(
         {"results": []},
     )
 
-    results = asyncio.run(
-        client.search("Linux epoll behavior")
-    )
+    results = asyncio.run(client.search("Linux epoll behavior"))
 
     assert results == []

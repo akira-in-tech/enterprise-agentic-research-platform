@@ -10,10 +10,16 @@ import { computed, nextTick, ref } from "vue";
 
 import type { UserFacingProvider } from "../types/research";
 
-const props = defineProps<{
-  modelValue: UserFacingProvider;
-  disabled?: boolean;
-}>();
+const props = withDefaults(
+  defineProps<{
+    modelValue: UserFacingProvider;
+    enabledProviders?: readonly UserFacingProvider[];
+    disabled?: boolean;
+  }>(),
+  {
+    enabledProviders: () => ["qwen", "claude"],
+  },
+);
 
 const emit = defineEmits<{
   "update:modelValue": [provider: UserFacingProvider];
@@ -42,6 +48,10 @@ function toggle(): void {
 }
 
 function select(provider: UserFacingProvider): void {
+  if (!props.enabledProviders.includes(provider)) {
+    return;
+  }
+
   emit("update:modelValue", provider);
   open.value = false;
   void nextTick(() => trigger.value?.focus());
@@ -106,6 +116,7 @@ function onMenuKeydown(event: KeyboardEvent): void {
           <span class="popover-caption">Per request</span>
         </div>
         <button
+          v-if="enabledProviders.includes('qwen')"
           class="provider-option"
           :class="{ selected: modelValue === 'qwen' }"
           type="button"
@@ -121,6 +132,7 @@ function onMenuKeydown(event: KeyboardEvent): void {
           <PhCheck v-if="modelValue === 'qwen'" class="provider-check" :size="17" weight="bold" />
         </button>
         <button
+          v-if="enabledProviders.includes('claude')"
           class="provider-option"
           :class="{ selected: modelValue === 'claude' }"
           type="button"

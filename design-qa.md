@@ -2,70 +2,75 @@
 
 ## Evidence
 
-- Source visual truth: `/Users/akira/.codex/generated_images/019f9916-967d-7050-842f-f0b9ee4f9d77/exec-5c32aee8-ec65-43c9-b4fe-be0d199e97dd.png`
-- Repository copy of source: `frontend/artifacts/reference.png`
-- Browser implementation screenshot: `frontend/artifacts/home-desktop-final.jpg`
-- Responsive screenshot: `frontend/artifacts/home-mobile-final.jpg`
-- Full-view comparison: `frontend/artifacts/design-comparison-final.jpg`
-- Focused comparison: `frontend/artifacts/design-comparison-focused.jpg`
-- State: light theme, provider menu open, realistic development-only run fixtures
+- Selected visual direction: `frontend/artifacts/reference-phase12.png`
+- Implemented desktop viewport: `frontend/artifacts/home-desktop-viewport-phase12.png`
+- Desktop full-page capture: `frontend/artifacts/home-desktop-phase12.png`
+- Conclusion-first report capture: `frontend/artifacts/report-desktop-phase12.png`
+- Responsive capture: `frontend/artifacts/home-mobile-phase12.png`
+- Same-input visual comparison: `frontend/artifacts/comparison-phase12.png`
+- QA URL state: development-only `?design-preview` fixtures with no backend mutation
 
 ## Capture normalization
 
-- Source pixels: 1487 x 1058, PNG.
-- Desktop implementation pixels: 1713 x 1066, JPEG, browser capture at 1x density.
-- Desktop CSS capture size: 1713 x 1066 inferred from the 1x browser capture.
-- Responsive viewport override: 390 x 844 CSS pixels.
-- Responsive full-page capture: 375 x 1372 pixels after browser scrollbar allocation.
-- The full-view comparison fits both complete screenshots into equal-width frames.
-- The focused comparison places both complete screenshots in one vertically stacked browser capture at near-native width so typography, controls, icons, and row states remain readable.
+- Source image: 1483 x 1061 pixels.
+- Desktop browser override: 1488 x 1058 CSS pixels; captured viewport is 1473 x 1047 pixels after browser chrome and scrollbar allocation.
+- Responsive browser override: 390 x 844 CSS pixels.
+- Comparison input places the selected direction and matched desktop viewport side by side at equal rendered widths.
 
 ## Required fidelity surfaces
 
-- Fonts and typography: passed. Inter Variable is self-hosted, display weights and line lengths reproduce the restrained editorial hierarchy, and small status text remains legible without relying on browser font availability.
-- Spacing and layout rhythm: passed. Header, hero, composer, provider popover, and recent-run rows now occupy the same broad proportions and first-screen rhythm as the source. Mobile content reflows without horizontal clipping.
-- Colors and visual tokens: passed. All surfaces, text levels, borders, focus rings, and semantic statuses map to shared light/dark CSS tokens. No gradient is used.
-- Image and icon fidelity: passed. The screen has no raster product imagery. All interface icons use the Phosphor Vue library; no handcrafted SVG, CSS illustration, emoji, or placeholder art is present.
-- Copy and product content: passed. Provider cost/privacy tradeoffs, background execution, browser-local history, API connectivity, tenant context, citation coverage, and failure recovery are explicit.
+- Typography: passed. The restrained editorial serif headline and Inter interface type preserve the selected visual hierarchy without reducing body or status legibility.
+- Spacing and first-screen rhythm: passed. Header, hero, composer, provider comparison, eight-agent flow, and all three recent-run states remain visible in the matched desktop viewport.
+- Colors and tokens: passed. Warm ivory surfaces, charcoal text, moss accents, semantic statuses, focus rings, dark mode, and reduced motion use shared CSS tokens.
+- Brand asset: passed. The selected charcoal rounded-square mark uses a real transparent PNG with a round eight-ray white star and green center. No copied logo, CSS drawing, inline SVG, emoji, or placeholder asset is used.
+- Information architecture: passed. Reports show the conclusion first, research quality second, and evidence only after an explicit disclosure action.
+- Product truthfulness: passed. Private knowledge stays visibly unavailable until the public request contract supports it; browser-local history is labeled as such.
+
+## Complete state design
+
+- Success: verified report with citation coverage and source count.
+- Redis unavailable: request-not-started guidance and safe retry.
+- SSE disconnected: durable-job explanation and reconnect action without implying job failure.
+- Job failed: explicit stopped state and retry path.
+- Report unavailable: completed-job preservation and report-only reload.
+- Citation revision required: answer remains visible while verification is marked for review.
+
+The development-only preview accepts `state=redis`, `state=sse`, `state=failed`, `state=report`, or `state=citation` with `design-preview` so these states can be reviewed without changing production behavior.
 
 ## Interaction and accessibility checks
 
-- Provider selector opens as a listbox, exposes `aria-selected`, supports arrow-key navigation and Escape, and returns focus to its trigger.
-- Workspace dialog opens from the header, labels tenant/user UUID fields, validates UUID syntax, and exposes a disabled save state before valid input.
-- Theme control switches between light and dark labels and tokens.
-- Submission stays disabled for blank input and supports Command/Ctrl + Enter.
-- Running, completed, and failed states use both icons and text, not color alone.
-- Private knowledge is honestly disabled with an accessible explanation because the current public request contract does not expose that selection.
-- Browser console was checked. No application warning or error was observed; two Chrome-extension message-channel errors were classified as browser-extension transport noise rather than page runtime failures.
-- Primary desktop controls and the 390-pixel responsive breakpoint were exercised in the browser.
+- Provider selection exposes native radio semantics and a visible selected state.
+- Workspace, theme, provider, submission, recent-run, retry, and evidence controls have keyboard focus treatment and at least 44-pixel primary targets.
+- Running, completed, and failed states use text and icons rather than color alone.
+- Evidence is collapsed by default to preserve report reading width, then exposed with `aria-expanded` and `aria-controls`.
+- Desktop and 390-pixel responsive layouts were exercised in Chrome.
+- The report fixture was opened from Recent research and Evidence was expanded through the real UI control.
+- Browser console check returned no warnings or errors.
+- Vue typecheck, 12 component/contract tests, and the Vite production build passed after the final visual refinement.
 
 ## Comparison history
 
 ### Pass 1
 
-- P2: The desktop hero and composer were too tall, pushing recent state below the selected visual's first-screen position.
-- P2: The first recent list was too narrow relative to the source visual.
-- P2: Mobile icon-only workspace and private-knowledge controls lost their accessible names.
-- P2: The design fixture exposed the skip link during automated capture, obscuring the intended same-state comparison.
+- P1: The desktop headline wrapped to five lines instead of four and pushed the workflow and recent research below the selected first-screen position.
+- P2: The composer and provider rows were taller than the selected direction.
 
 Fixes:
 
-- Reduced display size, copy length, hero gaps, composer height, and section padding.
-- Increased the desktop content and composer widths to match the source proportions.
-- Added stable accessible labels to responsive icon controls and increased the mobile textarea height.
-- Kept the production skip link intact while excluding it from the development-only visual fixture.
-- Re-captured desktop, mobile, full-view, and focused comparison evidence.
+- Increased the desktop editorial column width and reduced the display type maximum from 70 to 60 pixels.
+- Reduced hero gaps, composer textarea height, provider row height, and supporting-copy spacing.
+- Re-captured the desktop viewport and rebuilt the side-by-side comparison.
 
 ### Pass 2
 
-- No actionable P0, P1, or P2 mismatch remained.
-- The monochrome brand mark is an intentional refinement of the source's outlined blue mark.
-- Private knowledge remains disabled intentionally rather than implying a backend capability that is not in the current API contract.
-- Recent runs use responsive rows instead of a rigid desktop-only table while preserving equivalent running, approved, and failed information.
+- No actionable P0, P1, or P2 mismatch remains.
+- The selected charcoal eight-ray brand mark is an intentional replacement for the earlier visual-direction mark.
+- The implemented provider comparison omits a deployment column to keep the real two-provider decision scannable at the supported width.
+- The eight-agent workflow is intentionally compact: it shows orchestration progress without exposing internal state before the user asks for it.
 
 ## Follow-up polish
 
-- P3: Add a backend tenant-history endpoint so the Library view can be durable across browsers rather than explicitly browser-local.
-- P3: Replace the disabled private-knowledge control only after its selection is represented in the public request and workflow contracts.
+- P3: Connect the same tokens and components to a maintained Figma library if a collaborative design file becomes a project deliverable.
+- P3: Replace browser-local Library data after a tenant-scoped history endpoint exists.
 
 final result: passed

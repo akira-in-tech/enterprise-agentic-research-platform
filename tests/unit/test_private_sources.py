@@ -18,7 +18,7 @@ from app.services.vector_store.base import (
 
 def create_test_chunk() -> DocumentChunk:
     document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="networking.md",
         raw_content=(b"HTTP keep-alive reduces repeated connection setup overhead."),
     )
@@ -32,7 +32,7 @@ def create_test_chunk() -> DocumentChunk:
 
 def test_chunk_preserves_document_metadata() -> None:
     document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="architecture.md",
         raw_content=(b"Distributed systems architecture notes."),
     )

@@ -1,7 +1,9 @@
+import asyncio
 import logging
 from typing import Protocol
 from uuid import UUID
 
+from app.core.config import settings
 from app.schemas.idempotency import ResearchIdempotencyRecord
 from app.schemas.research import CreateResearchRunResponse
 from app.services.cache import (
@@ -70,6 +72,12 @@ class ResearchIdempotencyLockManager(Protocol):
     ) -> bool:
         """Release a currently owned lock lease."""
 
+    async def renew(
+        self,
+        lease: ResearchIdempotencyLockLease,
+    ) -> bool:
+        """Extend a currently owned lock lease's TTL."""
+
 
 class ResearchIdempotencyConflictError(ValueError):
     """Signal reuse of one key for a different request."""
@@ -91,10 +99,17 @@ class IdempotentResearchExecutionService:
         executor: ResearchExecutor,
         store: ResearchIdempotencyStore,
         lock_manager: ResearchIdempotencyLockManager,
+        *,
+        renew_interval_seconds: float | None = None,
     ) -> None:
         self._executor = executor
         self._store = store
         self._lock_manager = lock_manager
+        self._renew_interval_seconds = (
+            renew_interval_seconds
+            if renew_interval_seconds is not None
+            else settings.redis_research_idempotency_lock_renew_interval_seconds
+        )
 
     async def execute(
         self,
@@ -165,7 +180,8 @@ class IdempotentResearchExecutionService:
             if existing_result is not None:
                 return existing_result
 
-            result = await self._executor.execute(
+            result = await self._execute_with_lease_renewal(
+                lease,
                 tenant_id=tenant_id,
                 query=normalized_query,
                 llm_provider=llm_provider,
@@ -189,6 +205,70 @@ class IdempotentResearchExecutionService:
             await self._release_lock(
                 lease,
             )
+
+    async def _execute_with_lease_renewal(
+        self,
+        lease: ResearchIdempotencyLockLease,
+        *,
+        tenant_id: UUID,
+        query: str,
+        llm_provider: str,
+        requested_by_user_id: UUID | None,
+    ) -> ResearchExecutionResult:
+        """Run the executor while periodically renewing the coordination lock.
+
+        The lock's TTL is a fixed bound (default 300s); without renewal, an
+        execution that runs longer than the TTL would lose exclusivity mid-
+        flight, letting a concurrent request for the same idempotency key
+        start a second execution. If renewal ever confirms the lease was
+        lost, this cancels the execution itself rather than let two
+        processes race to write the same completed idempotency record.
+        """
+
+        owner_task = asyncio.current_task()
+        assert owner_task is not None
+
+        heartbeat = asyncio.create_task(
+            self._renew_lease_periodically(lease, owner_task),
+        )
+
+        try:
+            return await self._executor.execute(
+                tenant_id=tenant_id,
+                query=query,
+                llm_provider=llm_provider,
+                requested_by_user_id=requested_by_user_id,
+            )
+        finally:
+            heartbeat.cancel()
+            await asyncio.gather(heartbeat, return_exceptions=True)
+
+    async def _renew_lease_periodically(
+        self,
+        lease: ResearchIdempotencyLockLease,
+        owner_task: asyncio.Task[object],
+    ) -> None:
+        while True:
+            await asyncio.sleep(self._renew_interval_seconds)
+
+            try:
+                renewed = await self._lock_manager.renew(lease)
+            except CacheUnavailableError:
+                logger.warning(
+                    "Research idempotency lock could not be renewed; "
+                    "Redis is temporarily unavailable.",
+                    exc_info=True,
+                )
+                continue
+
+            if not renewed:
+                logger.error(
+                    "Research idempotency lock lease was lost before execution "
+                    "completed; cancelling the in-flight execution to avoid a "
+                    "duplicate completed record."
+                )
+                owner_task.cancel()
+                return
 
     async def _restore_existing_record(
         self,
@@ -301,6 +381,30 @@ class IdempotentResearchExecutionService:
             route=result.state.get("route"),
             route_reason=result.state.get("route_reason"),
             answer=result.state.get("answer"),
+            citation_valid=(
+                result.state["citation_audit"].valid if "citation_audit" in result.state else None
+            ),
+            citation_coverage=(
+                result.state["citation_audit"].coverage_ratio
+                if "citation_audit" in result.state
+                else None
+            ),
+            reflection_status=(
+                result.state["reflection"].status if "reflection" in result.state else None
+            ),
+            reflection_reasons=(
+                result.state["reflection"].reasons if "reflection" in result.state else []
+            ),
+            human_review_required=(
+                result.state["reflection"].human_review_required
+                if "reflection" in result.state
+                else False
+            ),
+            human_review_reason=(
+                result.state["reflection"].human_review_reason
+                if "reflection" in result.state
+                else None
+            ),
         )
 
     @staticmethod

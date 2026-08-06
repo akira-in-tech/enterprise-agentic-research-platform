@@ -1,9 +1,18 @@
+from datetime import datetime
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.intent import ResearchRoute
+
+ResearchRunStatus = Literal[
+    "queued",
+    "running",
+    "completed",
+    "failed",
+    "cancelled",
+]
 
 UserFacingLLMProvider = Literal[
     "claude",
@@ -45,6 +54,8 @@ class CreateResearchRunResponse(BaseModel):
     citation_coverage: float | None = Field(default=None, ge=0.0, le=1.0)
     reflection_status: Literal["approved", "revise"] | None = None
     reflection_reasons: list[str] = Field(default_factory=list)
+    human_review_required: bool = False
+    human_review_reason: str | None = None
 
 
 class CreateResearchJobResponse(BaseModel):
@@ -55,3 +66,25 @@ class CreateResearchJobResponse(BaseModel):
     progress_url: str
     events_url: str
     report_url: str
+
+
+class CancelResearchRunResponse(BaseModel):
+    """Confirm one durable research cancellation."""
+
+    research_run_id: UUID
+    status: Literal["cancelled"]
+
+
+class ResearchRunResponse(BaseModel):
+    """Represent one durable research run's current lifecycle state."""
+
+    research_run_id: UUID
+    llm_provider: PersistedLLMProvider
+    status: ResearchRunStatus
+    query: str
+    route: ResearchRoute | None = None
+    route_reason: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None

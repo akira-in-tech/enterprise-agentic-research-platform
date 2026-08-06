@@ -74,7 +74,7 @@ def create_test_chunk(
 
 def test_retrieve_returns_exact_indexed_chunk_first() -> None:
     document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="networking.md",
         raw_content=(
             b"HTTP connection reuse improves latency. DNS caching reduces repeated lookups."
@@ -108,7 +108,7 @@ def test_retrieve_returns_exact_indexed_chunk_first() -> None:
     sources = asyncio.run(
         retriever.retrieve(
             query=chunks[1].content,
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             limit=2,
         )
     )
@@ -173,17 +173,17 @@ def test_retrieve_enforces_tenant_isolation() -> None:
 
 def test_retrieve_preserves_ranking_and_limit() -> None:
     exact_chunk = create_test_chunk(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="exact.md",
         content="Exact PostgreSQL indexing evidence.",
     )
     related_chunk = create_test_chunk(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="related.md",
         content="Related database indexing evidence.",
     )
     unrelated_chunk = create_test_chunk(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="unrelated.md",
         content="Unrelated Redis persistence evidence.",
     )
@@ -223,7 +223,7 @@ def test_retrieve_preserves_ranking_and_limit() -> None:
     sources = asyncio.run(
         retriever.retrieve(
             query="PostgreSQL indexing",
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             limit=2,
         )
     )
@@ -251,7 +251,7 @@ def test_retrieve_from_empty_store_returns_empty_list() -> None:
     sources = asyncio.run(
         retriever.retrieve(
             query="Linux epoll",
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
         )
     )
 
@@ -299,7 +299,7 @@ def test_retrieve_rejects_wrong_embedding_count() -> None:
         asyncio.run(
             retriever.retrieve(
                 query="Explain DNS caching.",
-                tenant_id="tenant-hennge",
+                tenant_id="tenant-acme",
             )
         )
 
@@ -326,7 +326,7 @@ def test_retrieve_rejects_wrong_vector_dimensions() -> None:
         asyncio.run(
             retriever.retrieve(
                 query="Explain DNS caching.",
-                tenant_id="tenant-hennge",
+                tenant_id="tenant-acme",
             )
         )
 
@@ -341,13 +341,13 @@ def test_retrieve_rejects_wrong_vector_dimensions() -> None:
     [
         (
             "",
-            "tenant-hennge",
+            "tenant-acme",
             5,
             "query must not be empty",
         ),
         (
             "   ",
-            "tenant-hennge",
+            "tenant-acme",
             5,
             "query must not be empty",
         ),
@@ -359,13 +359,13 @@ def test_retrieve_rejects_wrong_vector_dimensions() -> None:
         ),
         (
             "Explain HTTP keep-alive.",
-            "tenant-hennge",
+            "tenant-acme",
             0,
             "limit must be between 1 and 100",
         ),
         (
             "Explain HTTP keep-alive.",
-            "tenant-hennge",
+            "tenant-acme",
             101,
             "limit must be between 1 and 100",
         ),

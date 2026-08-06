@@ -10,29 +10,19 @@ from app.services.knowledge.documents import (
 
 def test_create_text_document_is_deterministic() -> None:
     first_document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="architecture.MD",
-        raw_content=(
-            b"\xef\xbb\xbf# Architecture\r\n"
-            b"\r\nHTTP and networking notes.\r\n"
-        ),
+        raw_content=(b"\xef\xbb\xbf# Architecture\r\n\r\nHTTP and networking notes.\r\n"),
     )
     second_document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="architecture.MD",
-        raw_content=(
-            b"# Architecture\n"
-            b"\nHTTP and networking notes.\n"
-        ),
+        raw_content=(b"# Architecture\n\nHTTP and networking notes.\n"),
     )
 
     assert first_document == second_document
-    assert first_document.document_id.startswith(
-        "DOC-"
-    )
-    assert first_document.media_type == (
-        "text/markdown"
-    )
+    assert first_document.document_id.startswith("DOC-")
+    assert first_document.media_type == ("text/markdown")
     assert "\r" not in first_document.content
 
 
@@ -49,7 +39,7 @@ def test_create_text_document_rejects_invalid_filename(
 ) -> None:
     with pytest.raises(ValueError):
         create_text_document(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             filename=filename,
             raw_content=b"Valid text content.",
         )
@@ -61,7 +51,7 @@ def test_create_text_document_rejects_empty_content() -> None:
         match="Document content must not be empty",
     ):
         create_text_document(
-            tenant_id="tenant-hennge",
+            tenant_id="tenant-acme",
             filename="empty.txt",
             raw_content=b"   \n",
         )
@@ -69,12 +59,9 @@ def test_create_text_document_rejects_empty_content() -> None:
 
 def test_chunk_document_is_deterministic() -> None:
     document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="networking.md",
-        raw_content=(
-            b"one two three four five "
-            b"six seven eight nine ten"
-        ),
+        raw_content=(b"one two three four five six seven eight nine ten"),
     )
 
     first_chunks = chunk_document(
@@ -91,30 +78,19 @@ def test_chunk_document_is_deterministic() -> None:
     assert first_chunks == second_chunks
     assert len(first_chunks) == 3
 
-    assert first_chunks[0].content == (
-        "one two three four"
-    )
+    assert first_chunks[0].content == ("one two three four")
     assert first_chunks[0].word_start == 0
     assert first_chunks[0].word_end == 4
 
-    assert first_chunks[1].content == (
-        "four five six seven"
-    )
+    assert first_chunks[1].content == ("four five six seven")
     assert first_chunks[1].word_start == 3
     assert first_chunks[1].word_end == 7
 
-    assert first_chunks[2].content == (
-        "seven eight nine ten"
-    )
+    assert first_chunks[2].content == ("seven eight nine ten")
     assert first_chunks[2].word_start == 6
     assert first_chunks[2].word_end == 10
 
-    assert len(
-        {
-            chunk.chunk_id
-            for chunk in first_chunks
-        }
-    ) == 3
+    assert len({chunk.chunk_id for chunk in first_chunks}) == 3
 
 
 @pytest.mark.parametrize(
@@ -130,7 +106,7 @@ def test_chunk_document_rejects_invalid_parameters(
     overlap_words: int,
 ) -> None:
     document = create_text_document(
-        tenant_id="tenant-hennge",
+        tenant_id="tenant-acme",
         filename="networking.txt",
         raw_content=b"one two three four",
     )
