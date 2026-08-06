@@ -9,20 +9,21 @@ import {
   PhShieldCheck,
   PhSlidersHorizontal,
   PhSparkle,
+  PhWarningCircle,
 } from "@phosphor-icons/vue";
 import { computed } from "vue";
 
-import type { ResearchAgentId } from "../types/research";
+import type { ProgressStatus, ResearchAgentId } from "../types/research";
 
 const props = withDefaults(
   defineProps<{
     activeAgent?: ResearchAgentId;
-    completed?: boolean;
+    status?: ProgressStatus | "idle";
     compact?: boolean;
   }>(),
   {
-    activeAgent: "analyst",
-    completed: false,
+    activeAgent: undefined,
+    status: "idle",
     compact: false,
   },
 );
@@ -38,20 +39,31 @@ const agents = [
   { id: "writer", label: "Writer", icon: PhFileText },
 ] as const;
 
-const activeIndex = computed(() =>
-  props.completed
-    ? agents.length
-    : Math.max(
-        0,
-        agents.findIndex((agent) => agent.id === props.activeAgent),
-      ),
-);
+const isStopped = computed(() => props.status === "failed" || props.status === "cancelled");
 
-function stateFor(index: number): "complete" | "active" | "pending" {
-  if (props.completed || index < activeIndex.value) return "complete";
-  if (index === activeIndex.value) return "active";
+const activeIndex = computed(() => {
+  if (props.status === "completed") return agents.length;
+  if (props.status === "idle" || props.activeAgent === undefined) return -1;
+
+  return Math.max(
+    0,
+    agents.findIndex((agent) => agent.id === props.activeAgent),
+  );
+});
+
+function stateFor(index: number): "complete" | "active" | "failed" | "pending" {
+  if (props.status === "completed") return "complete";
+  if (activeIndex.value === -1) return "pending";
+  if (index < activeIndex.value) return "complete";
+  if (index === activeIndex.value) return isStopped.value ? "failed" : "active";
   return "pending";
 }
+
+const subtitle = computed(() => {
+  if (props.status === "completed") return "Completed with a traceable report";
+  if (isStopped.value) return "Research workflow stopped before completing";
+  return "Agents share one evidence trail";
+});
 </script>
 
 <template>
@@ -65,9 +77,7 @@ function stateFor(index: number): "complete" | "active" | "pending" {
         <span class="live-dot" aria-hidden="true"></span>
         <h2 id="agent-flow-title">8-agent research flow</h2>
       </div>
-      <p>
-        {{ completed ? "Completed with a traceable report" : "Agents share one evidence trail" }}
-      </p>
+      <p>{{ subtitle }}</p>
     </div>
 
     <ol class="agent-track" aria-label="Research agents">
@@ -80,11 +90,13 @@ function stateFor(index: number): "complete" | "active" | "pending" {
       >
         <span class="agent-icon" aria-hidden="true">
           <PhCheck v-if="stateFor(index) === 'complete'" :size="14" weight="bold" />
+          <PhWarningCircle v-else-if="stateFor(index) === 'failed'" :size="18" weight="bold" />
           <component :is="agent.icon" v-else :size="18" />
         </span>
         <span class="agent-label">
           <strong>{{ agent.label }}</strong>
           <small v-if="stateFor(index) === 'active'">Working</small>
+          <small v-else-if="stateFor(index) === 'failed'">Needs attention</small>
         </span>
       </li>
     </ol>

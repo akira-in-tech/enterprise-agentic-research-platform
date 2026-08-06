@@ -983,6 +983,20 @@ button:disabled {
   box-shadow: 0 0 0 5px var(--accent-soft);
 }
 
+.agent-failed {
+  color: var(--danger);
+}
+
+.agent-failed .agent-icon {
+  width: 50px;
+  height: 50px;
+  margin-top: -5px;
+  color: var(--danger);
+  background: var(--danger-soft);
+  border: 2px solid var(--danger);
+  box-shadow: 0 0 0 5px var(--danger-soft);
+}
+
 .agent-label {
   min-width: 0;
   display: grid;
@@ -1000,6 +1014,10 @@ button:disabled {
 .agent-label small {
   color: var(--accent);
   font-size: 9px;
+}
+
+.agent-failed .agent-label small {
+  color: var(--danger);
 }
 
 .agent-workflow-compact {

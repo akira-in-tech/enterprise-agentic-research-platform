@@ -153,7 +153,7 @@ function sourceScore(source: ResearchReportSource): string {
           Cancel research
         </button>
       </section>
-      <AgentWorkflow :active-agent="activeAgent" compact />
+      <AgentWorkflow :active-agent="activeAgent" :status="displayStatus" compact />
     </template>
 
     <section v-else-if="loadingReport" class="report-loading" aria-live="polite">

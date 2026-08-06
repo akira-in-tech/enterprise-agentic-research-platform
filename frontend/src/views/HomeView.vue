@@ -72,7 +72,7 @@ function selectRun(run: RecentResearchRun): void {
       </div>
     </section>
 
-    <AgentWorkflow />
+    <AgentWorkflow status="idle" />
 
     <RecentResearchList :runs="researchStore.recentRuns" @select="selectRun" />
   </main>
