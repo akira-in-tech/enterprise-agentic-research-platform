@@ -58,7 +58,7 @@ variable "github_repository" {
 variable "github_repository_id" {
   description = "Immutable GitHub repository identifier used in OIDC subject claims."
   type        = string
-  default     = "1319710485"
+  default     = "1325166723"
 
   validation {
     condition     = can(regex("^[0-9]+$", var.github_repository_id))
