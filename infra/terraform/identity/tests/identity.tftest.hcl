@@ -32,7 +32,7 @@ run "identity_contract" {
   assert {
     condition = (
       jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:aud"] == "sts.amazonaws.com" &&
-      jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:akira-in-tech@109833555/enterprise-agentic-research-platform@1319710485:environment:staging"
+      jsondecode(aws_iam_role.github_deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:akira-in-tech@109833555/enterprise-agentic-research-platform@1325166723:environment:staging"
     )
     error_message = "OIDC trust must match the immutable repository identity and staging environment."
   }
