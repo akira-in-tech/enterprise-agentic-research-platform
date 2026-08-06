@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import UTC, datetime, timedelta
 from uuid import UUID, uuid4
 
@@ -34,6 +34,7 @@ class RecordingBackgroundExecutor:
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
         research_run_id: UUID | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> QueuedResearchExecution:
         queued = QueuedResearchExecution(
             research_run_id=research_run_id or uuid4(),
@@ -41,6 +42,7 @@ class RecordingBackgroundExecutor:
             requested_by_user_id=requested_by_user_id,
             query=query.strip(),
             llm_provider="ollama",
+            document_ids=list(document_ids) if document_ids is not None else None,
         )
         self.queue_calls.append(
             {
@@ -48,6 +50,7 @@ class RecordingBackgroundExecutor:
                 "query": query,
                 "llm_provider": llm_provider,
                 "requested_by_user_id": requested_by_user_id,
+                "document_ids": document_ids,
             }
         )
         return queued
@@ -246,9 +249,26 @@ async def test_job_manager_persists_queue_before_returning_identity() -> None:
             "query": "  Explain epoll.  ",
             "llm_provider": "qwen",
             "requested_by_user_id": user_id,
+            "document_ids": None,
         }
     ]
     assert executor.execute_calls[0].research_run_id == research_run_id
+
+
+@pytest.mark.anyio
+async def test_job_manager_forwards_document_ids_to_queue() -> None:
+    executor = RecordingBackgroundExecutor(block=True)
+    manager = ResearchJobManager(executor)
+
+    await manager.submit(
+        tenant_id=uuid4(),
+        query="Summarize the onboarding policy.",
+        llm_provider="qwen",
+        document_ids=["DOC-0000000000000001"],
+    )
+    await executor.started.wait()
+
+    assert executor.queue_calls[0]["document_ids"] == ["DOC-0000000000000001"]
 
     executor.release.set()
     await asyncio.sleep(0)

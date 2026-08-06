@@ -1,4 +1,4 @@
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -8,6 +8,7 @@ from fastapi.testclient import TestClient
 
 from app.api.dependencies import (
     get_current_session,
+    get_knowledge_document_service,
     get_research_execution_service,
     get_research_job_manager,
     get_research_progress_store,
@@ -26,6 +27,10 @@ from app.services.cache import (
     CacheUnavailableError,
     ResearchRateLimitDecision,
     ResearchRateLimitUnavailableError,
+)
+from app.services.knowledge import (
+    KnowledgeDocumentNotFoundError,
+    KnowledgeDocumentNotReadyError,
 )
 from app.services.research.execution import (
     ResearchExecutionResult,
@@ -60,6 +65,7 @@ class FakeResearchExecutionService:
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
         idempotency_key: str | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> ResearchExecutionResult:
         self.calls.append(
             {
@@ -68,6 +74,7 @@ class FakeResearchExecutionService:
                 "llm_provider": llm_provider,
                 "requested_by_user_id": requested_by_user_id,
                 "idempotency_key": idempotency_key,
+                "document_ids": document_ids,
             }
         )
         if self.error is not None:
@@ -163,6 +170,7 @@ class FakeResearchJobManager:
         query: str,
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> UUID:
         self.calls.append(
             {
@@ -170,6 +178,7 @@ class FakeResearchJobManager:
                 "query": query,
                 "llm_provider": llm_provider,
                 "requested_by_user_id": requested_by_user_id,
+                "document_ids": document_ids,
             }
         )
         return self.research_run_id
@@ -285,6 +294,34 @@ class FakeResearchReportExportService:
         if self.retrieve_error is not None:
             raise self.retrieve_error
         return self.content
+
+
+class FakeKnowledgeDocumentService:
+    def __init__(
+        self,
+        *,
+        vector_document_ids: list[str] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.vector_document_ids = vector_document_ids or []
+        self.error = error
+        self.calls: list[dict[str, object]] = []
+
+    async def resolve_vector_document_ids(
+        self,
+        *,
+        tenant_id: UUID,
+        document_ids: Sequence[UUID],
+    ) -> list[str]:
+        self.calls.append(
+            {
+                "tenant_id": tenant_id,
+                "document_ids": list(document_ids),
+            }
+        )
+        if self.error is not None:
+            raise self.error
+        return self.vector_document_ids
 
 
 def override_current_session(
@@ -649,6 +686,16 @@ def research_rate_limiter() -> Iterator[FakeResearchRateLimiter]:
     app.dependency_overrides.clear()
 
 
+@pytest.fixture(autouse=True)
+def knowledge_document_service() -> Iterator[FakeKnowledgeDocumentService]:
+    service = FakeKnowledgeDocumentService()
+    app.dependency_overrides[get_knowledge_document_service] = lambda: service
+
+    yield service
+
+    app.dependency_overrides.clear()
+
+
 def test_create_research_job_returns_durable_delivery_urls(
     research_rate_limiter: FakeResearchRateLimiter,
 ) -> None:
@@ -685,9 +732,93 @@ def test_create_research_job_returns_durable_delivery_urls(
             "query": "Compare HTTP/2 and HTTP/3.",
             "llm_provider": "qwen",
             "requested_by_user_id": user_id,
+            "document_ids": None,
         }
     ]
     assert research_rate_limiter.calls == [tenant_id]
+
+
+def test_create_research_job_resolves_document_ids_before_queuing(
+    research_rate_limiter: FakeResearchRateLimiter,
+    knowledge_document_service: FakeKnowledgeDocumentService,
+) -> None:
+    del research_rate_limiter
+    tenant_id = uuid4()
+    document_id = uuid4()
+    job_manager = FakeResearchJobManager()
+    app.dependency_overrides[get_research_job_manager] = lambda: job_manager
+    knowledge_document_service.vector_document_ids = ["DOC-0000000000000001"]
+    override_current_session(tenant_id=tenant_id)
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/research-runs/jobs",
+                json={
+                    "query": "Summarize the onboarding policy.",
+                    "llm_provider": "qwen",
+                    "document_ids": [str(document_id)],
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 202
+    assert knowledge_document_service.calls == [
+        {
+            "tenant_id": tenant_id,
+            "document_ids": [document_id],
+        }
+    ]
+    assert job_manager.calls[0]["document_ids"] == ["DOC-0000000000000001"]
+
+
+def test_create_research_job_rejects_an_unknown_document(
+    knowledge_document_service: FakeKnowledgeDocumentService,
+) -> None:
+    document_id = uuid4()
+    knowledge_document_service.error = KnowledgeDocumentNotFoundError(document_id)
+    app.dependency_overrides[get_research_job_manager] = lambda: FakeResearchJobManager()
+    override_current_session()
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/research-runs/jobs",
+                json={
+                    "query": "Summarize the onboarding policy.",
+                    "llm_provider": "qwen",
+                    "document_ids": [str(document_id)],
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 404
+
+
+def test_create_research_job_rejects_a_document_still_indexing(
+    knowledge_document_service: FakeKnowledgeDocumentService,
+) -> None:
+    document_id = uuid4()
+    knowledge_document_service.error = KnowledgeDocumentNotReadyError(document_id)
+    app.dependency_overrides[get_research_job_manager] = lambda: FakeResearchJobManager()
+    override_current_session()
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/research-runs/jobs",
+                json={
+                    "query": "Summarize the onboarding policy.",
+                    "llm_provider": "qwen",
+                    "document_ids": [str(document_id)],
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
 
 
 def test_create_research_run_accepts_qwen_selection(
@@ -740,6 +871,7 @@ def test_create_research_run_accepts_qwen_selection(
             "llm_provider": "qwen",
             "requested_by_user_id": user_id,
             "idempotency_key": "request-123",
+            "document_ids": None,
         }
     ]
 

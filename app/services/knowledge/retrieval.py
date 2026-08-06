@@ -1,3 +1,5 @@
+from collections.abc import Sequence
+
 from app.schemas.source import PrivateSource
 from app.services.embeddings.base import (
     EmbeddingClient,
@@ -30,8 +32,12 @@ class PrivateKnowledgeRetriever:
         query: str,
         tenant_id: str,
         limit: int = 5,
+        document_ids: Sequence[str] | None = None,
     ) -> list[PrivateSource]:
-        """Embed a query and return ranked private sources."""
+        """Embed a query and return ranked private sources.
+
+        When document_ids is given, only those documents are eligible.
+        """
 
         normalized_query = query.strip()
         normalized_tenant_id = tenant_id.strip()
@@ -70,6 +76,7 @@ class PrivateKnowledgeRetriever:
             tenant_id=normalized_tenant_id,
             query_vector=query_vector,
             limit=limit,
+            document_ids=document_ids,
         )
 
         return build_private_source_pool(matches)

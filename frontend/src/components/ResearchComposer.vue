@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { PhArrowRight, PhClock, PhInfo, PhLockKey, PhSpinnerGap } from "@phosphor-icons/vue";
+import { PhArrowRight, PhClock, PhInfo, PhSpinnerGap } from "@phosphor-icons/vue";
 import { computed } from "vue";
 
 import type { UserFacingProvider } from "../types/research";
+import PrivateKnowledgePicker from "./PrivateKnowledgePicker.vue";
 import ProviderMenu from "./ProviderMenu.vue";
 
 const props = defineProps<{
@@ -10,11 +11,13 @@ const props = defineProps<{
   provider: UserFacingProvider;
   enabledProviders?: readonly UserFacingProvider[];
   submitting: boolean;
+  selectedDocumentIds: string[];
 }>();
 
 const emit = defineEmits<{
   "update:query": [query: string];
   "update:provider": [provider: UserFacingProvider];
+  "update:selectedDocumentIds": [documentIds: string[]];
   submit: [];
 }>();
 
@@ -51,20 +54,11 @@ function handleKeydown(event: KeyboardEvent): void {
           @update:model-value="emit('update:provider', $event)"
         />
         <span class="toolbar-divider" aria-hidden="true"></span>
-        <button
-          class="knowledge-button"
-          type="button"
-          disabled
-          aria-label="Private knowledge, coming soon"
-          aria-describedby="knowledge-help"
-        >
-          <PhLockKey :size="16" />
-          <span>Private knowledge</span>
-          <span class="preview-badge">Soon</span>
-        </button>
-        <span id="knowledge-help" class="sr-only">
-          Private knowledge selection is not yet exposed by the public research endpoint.
-        </span>
+        <PrivateKnowledgePicker
+          :model-value="selectedDocumentIds"
+          :disabled="submitting"
+          @update:model-value="emit('update:selectedDocumentIds', $event)"
+        />
       </div>
 
       <button class="submit-button" type="submit" :disabled="!canSubmit">

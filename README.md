@@ -103,6 +103,7 @@ this log used to spell out inline.
 | Milvus collection initialization | Tested |
 | Milvus vector upsert, search, and deletion | Tested with unit and live integration tests against local Milvus and managed Zilliz Cloud in AWS us-west-2 |
 | Tenant-scoped private knowledge retrieval | Tested |
+| Per-request private-document scoping | Optional `document_ids` narrows retrieval to specific tenant documents end-to-end (vector store, retriever, Local Scout, workflow state/graph, result cache key, idempotency fingerprint, execution/job services, API validation, Vue picker); unit tested at every layer plus a live deep-research run verifying isolation between two private documents |
 | Canonical private source generation | Tested |
 | Ollama-to-Milvus private RAG pipeline | Live integration tested |
 | Vector-store provider factory | Tested |

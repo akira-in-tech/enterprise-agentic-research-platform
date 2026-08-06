@@ -1,4 +1,5 @@
 import json
+from collections.abc import Sequence
 from hashlib import sha256
 from uuid import UUID
 
@@ -18,8 +19,14 @@ def create_research_request_fingerprint(
     query: str,
     llm_provider: PersistedLLMProvider,
     requested_by_user_id: UUID | None,
+    document_ids: Sequence[str] | None = None,
 ) -> str:
-    """Hash the canonical fields that define one research request."""
+    """Hash the canonical fields that define one research request.
+
+    document_ids is part of the fingerprint so reusing an idempotency key
+    with the same query but different document scoping is treated as a
+    genuine conflict rather than silently replaying the wrong scope.
+    """
 
     normalized_query = query.strip()
 
@@ -38,6 +45,11 @@ def create_research_request_fingerprint(
             "query": normalized_query,
             "requested_by_user_id": (
                 str(requested_by_user_id) if requested_by_user_id is not None else None
+            ),
+            "document_ids": (
+                sorted(document_id.strip() for document_id in document_ids)
+                if document_ids is not None
+                else None
             ),
         },
         sort_keys=True,

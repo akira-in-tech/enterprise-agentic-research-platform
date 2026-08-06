@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -36,6 +37,7 @@ class RedisResearchResultCache:
         tenant_id: UUID,
         llm_provider: PersistedLLMProvider,
         query: str,
+        document_ids: Sequence[str] | None = None,
     ) -> CachedResearchResult | None:
         """Return one validated cached result or a cache miss."""
 
@@ -43,6 +45,7 @@ class RedisResearchResultCache:
             tenant_id=tenant_id,
             llm_provider=llm_provider,
             query=query,
+            document_ids=document_ids,
         )
         raw_payload = await self._client.get_text(
             key=key,
@@ -75,6 +78,7 @@ class RedisResearchResultCache:
         tenant_id: UUID,
         query: str,
         result: CachedResearchResult,
+        document_ids: Sequence[str] | None = None,
     ) -> None:
         """Serialize and cache one research result."""
 
@@ -82,6 +86,7 @@ class RedisResearchResultCache:
             tenant_id=tenant_id,
             llm_provider=result.llm_provider,
             query=query,
+            document_ids=document_ids,
         )
 
         await self._client.set_text(
@@ -96,6 +101,7 @@ class RedisResearchResultCache:
         tenant_id: UUID,
         llm_provider: PersistedLLMProvider,
         query: str,
+        document_ids: Sequence[str] | None = None,
     ) -> bool:
         """Delete one tenant-scoped cached result."""
 
@@ -103,6 +109,7 @@ class RedisResearchResultCache:
             tenant_id=tenant_id,
             llm_provider=llm_provider,
             query=query,
+            document_ids=document_ids,
         )
 
         return await self._client.delete(

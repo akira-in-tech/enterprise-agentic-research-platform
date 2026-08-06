@@ -24,6 +24,7 @@ import { useAuthStore } from "./auth";
 export const useResearchStore = defineStore("research", () => {
   const query = ref("");
   const provider = ref<UserFacingProvider>(defaultProvider);
+  const selectedDocumentIds = ref<string[]>([]);
   const submitting = ref(false);
   const recentRuns = ref<RecentResearchRun[]>([]);
   const progress = ref<ResearchProgressRecord | null>(null);
@@ -135,7 +136,11 @@ export const useResearchStore = defineStore("research", () => {
     announcement.value = "Submitting research request.";
 
     try {
-      const job = await createResearchJob(normalizedQuery, provider.value);
+      const job = await createResearchJob(
+        normalizedQuery,
+        provider.value,
+        selectedDocumentIds.value,
+      );
       const run: RecentResearchRun = {
         id: job.research_run_id,
         query: normalizedQuery,
@@ -150,6 +155,7 @@ export const useResearchStore = defineStore("research", () => {
       progress.value = null;
       report.value = null;
       query.value = "";
+      selectedDocumentIds.value = [];
       announcement.value = "Research accepted and running in the background.";
       void observeRun(run);
       return run;
@@ -371,6 +377,7 @@ export const useResearchStore = defineStore("research", () => {
   return {
     query,
     provider,
+    selectedDocumentIds,
     submitting,
     recentRuns,
     progress,

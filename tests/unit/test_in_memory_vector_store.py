@@ -125,6 +125,79 @@ def test_search_enforces_tenant_isolation() -> None:
     assert matches[0].chunk.chunk_id == (tenant_a_chunk.chunk_id)
 
 
+def test_search_scopes_to_the_given_documents() -> None:
+    store = InMemoryVectorStore(
+        dimensions=2,
+    )
+    allowed_chunk = create_test_chunk(
+        tenant_id="tenant-acme",
+        filename="allowed.md",
+        content="Document that should be searchable.",
+    )
+    excluded_chunk = create_test_chunk(
+        tenant_id="tenant-acme",
+        filename="excluded.md",
+        content="Document that must stay out of scope.",
+    )
+
+    asyncio.run(
+        store.upsert(
+            [
+                VectorRecord(
+                    chunk=allowed_chunk,
+                    embedding=(1.0, 0.0),
+                ),
+                VectorRecord(
+                    chunk=excluded_chunk,
+                    embedding=(1.0, 0.0),
+                ),
+            ]
+        )
+    )
+
+    matches = asyncio.run(
+        store.search(
+            tenant_id="tenant-acme",
+            query_vector=(1.0, 0.0),
+            document_ids=[allowed_chunk.document_id],
+        )
+    )
+
+    assert [match.chunk.chunk_id for match in matches] == [allowed_chunk.chunk_id]
+
+
+def test_search_with_empty_document_ids_returns_no_matches() -> None:
+    store = InMemoryVectorStore(
+        dimensions=2,
+    )
+    chunk = create_test_chunk(
+        tenant_id="tenant-acme",
+        filename="notes.md",
+        content="Notes that exist but are out of scope.",
+    )
+
+    asyncio.run(
+        store.upsert(
+            [
+                VectorRecord(
+                    chunk=chunk,
+                    embedding=(1.0, 0.0),
+                )
+            ]
+        )
+    )
+
+    matches = asyncio.run(
+        store.search(
+            tenant_id="tenant-acme",
+            query_vector=(1.0, 0.0),
+            document_ids=[],
+        )
+    )
+
+    assert matches == []
+
+
 def test_upsert_replaces_existing_record() -> None:
     store = InMemoryVectorStore(
         dimensions=2,

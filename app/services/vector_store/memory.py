@@ -64,6 +64,7 @@ class InMemoryVectorStore:
         tenant_id: str,
         query_vector: Sequence[float],
         limit: int = 5,
+        document_ids: Sequence[str] | None = None,
     ) -> list[VectorSearchResult]:
         """Return deterministic cosine-similarity matches."""
 
@@ -80,6 +81,12 @@ class InMemoryVectorStore:
             field_name="Query vector",
         )
 
+        allowed_document_ids = (
+            {document_id.strip() for document_id in document_ids}
+            if document_ids is not None
+            else None
+        )
+
         matches = [
             VectorSearchResult(
                 chunk=record.chunk,
@@ -90,6 +97,7 @@ class InMemoryVectorStore:
             )
             for record in self._records.values()
             if (record.chunk.tenant_id == normalized_tenant_id)
+            and (allowed_document_ids is None or record.chunk.document_id in allowed_document_ids)
         ]
 
         return sorted(

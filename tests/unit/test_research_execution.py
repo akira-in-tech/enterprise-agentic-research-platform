@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from uuid import UUID, uuid4
 
 import pytest
@@ -148,6 +149,7 @@ class RecordingResearchResultCache:
         tenant_id: UUID,
         llm_provider: CanonicalLLMProvider,
         query: str,
+        document_ids: Sequence[str] | None = None,
     ) -> CachedResearchResult | None:
         self.get_calls.append(
             (
@@ -168,6 +170,7 @@ class RecordingResearchResultCache:
         tenant_id: UUID,
         query: str,
         result: CachedResearchResult,
+        document_ids: Sequence[str] | None = None,
     ) -> None:
         self.set_calls.append(
             (

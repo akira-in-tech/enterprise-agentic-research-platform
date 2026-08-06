@@ -67,6 +67,55 @@ def test_cache_key_preserves_meaningful_internal_whitespace() -> None:
     assert first_key != second_key
 
 
+def test_cache_key_isolates_document_scope() -> None:
+    tenant_id = uuid4()
+
+    all_documents_key = create_research_result_cache_key(
+        tenant_id=tenant_id,
+        llm_provider="ollama",
+        query="Summarize the onboarding policy.",
+    )
+    no_documents_key = create_research_result_cache_key(
+        tenant_id=tenant_id,
+        llm_provider="ollama",
+        query="Summarize the onboarding policy.",
+        document_ids=[],
+    )
+    scoped_key = create_research_result_cache_key(
+        tenant_id=tenant_id,
+        llm_provider="ollama",
+        query="Summarize the onboarding policy.",
+        document_ids=["DOC-0000000000000001"],
+    )
+    other_scoped_key = create_research_result_cache_key(
+        tenant_id=tenant_id,
+        llm_provider="ollama",
+        query="Summarize the onboarding policy.",
+        document_ids=["DOC-0000000000000002"],
+    )
+
+    assert len({all_documents_key, no_documents_key, scoped_key, other_scoped_key}) == 4
+
+
+def test_cache_key_ignores_document_id_order() -> None:
+    tenant_id = uuid4()
+
+    first_key = create_research_result_cache_key(
+        tenant_id=tenant_id,
+        llm_provider="ollama",
+        query="Summarize the onboarding policy.",
+        document_ids=["DOC-A", "DOC-B"],
+    )
+    second_key = create_research_result_cache_key(
+        tenant_id=tenant_id,
+        llm_provider="ollama",
+        query="Summarize the onboarding policy.",
+        document_ids=["DOC-B", "DOC-A"],
+    )
+
+    assert first_key == second_key
+
+
 def test_cache_key_isolates_tenants() -> None:
     first_key = create_research_result_cache_key(
         tenant_id=uuid4(),

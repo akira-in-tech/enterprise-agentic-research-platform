@@ -18,6 +18,7 @@ from fastapi.responses import StreamingResponse
 
 from app.api.dependencies import (
     get_current_session,
+    get_knowledge_document_service,
     get_research_execution_service,
     get_research_job_manager,
     get_research_progress_store,
@@ -51,6 +52,11 @@ from app.services.cache import (
     RedisResearchRateLimiter,
     ResearchRateLimitDecision,
     ResearchRateLimitUnavailableError,
+)
+from app.services.knowledge import (
+    KnowledgeDocumentNotFoundError,
+    KnowledgeDocumentNotReadyError,
+    KnowledgeDocumentService,
 )
 from app.services.research.exports import ResearchReportExportService
 from app.services.research.idempotency import (
@@ -425,6 +431,34 @@ async def cancel_research_run(
     )
 
 
+async def _resolve_document_ids(
+    *,
+    tenant_id: UUID,
+    document_ids: list[UUID] | None,
+    knowledge_service: KnowledgeDocumentService,
+) -> list[str] | None:
+    """Translate durable document IDs into vector-store document IDs."""
+
+    if document_ids is None:
+        return None
+
+    try:
+        return await knowledge_service.resolve_vector_document_ids(
+            tenant_id=tenant_id,
+            document_ids=document_ids,
+        )
+    except KnowledgeDocumentNotFoundError as error:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(error),
+        ) from error
+    except KnowledgeDocumentNotReadyError as error:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=str(error),
+        ) from error
+
+
 def _rate_limit_headers(
     decision: ResearchRateLimitDecision,
 ) -> dict[str, str]:
@@ -482,6 +516,10 @@ async def create_research_job(
         ResearchJobManager,
         Depends(get_research_job_manager),
     ],
+    knowledge_service: Annotated[
+        KnowledgeDocumentService,
+        Depends(get_knowledge_document_service),
+    ],
     rate_limiter: Annotated[
         RedisResearchRateLimiter,
         Depends(get_research_rate_limiter),
@@ -495,11 +533,17 @@ async def create_research_job(
         rate_limiter=rate_limiter,
         response=response,
     )
+    document_ids = await _resolve_document_ids(
+        tenant_id=current_session.tenant_id,
+        document_ids=payload.document_ids,
+        knowledge_service=knowledge_service,
+    )
     research_run_id = await job_manager.submit(
         tenant_id=current_session.tenant_id,
         requested_by_user_id=current_session.user_id,
         query=payload.query,
         llm_provider=payload.llm_provider,
+        document_ids=document_ids,
     )
     base_url = f"/research-runs/{research_run_id}"
 
@@ -523,6 +567,10 @@ async def create_research_run(
         IdempotentResearchExecutionService,
         Depends(get_research_execution_service),
     ],
+    knowledge_service: Annotated[
+        KnowledgeDocumentService,
+        Depends(get_knowledge_document_service),
+    ],
     rate_limiter: Annotated[
         RedisResearchRateLimiter,
         Depends(get_research_rate_limiter),
@@ -545,6 +593,11 @@ async def create_research_run(
         rate_limiter=rate_limiter,
         response=response,
     )
+    document_ids = await _resolve_document_ids(
+        tenant_id=current_session.tenant_id,
+        document_ids=payload.document_ids,
+        knowledge_service=knowledge_service,
+    )
 
     try:
         result = await service.execute(
@@ -553,6 +606,7 @@ async def create_research_run(
             query=payload.query,
             llm_provider=payload.llm_provider,
             idempotency_key=idempotency_key,
+            document_ids=document_ids,
         )
     except (
         ResearchIdempotencyConflictError,

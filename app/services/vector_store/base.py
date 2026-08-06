@@ -44,8 +44,13 @@ class VectorStore(Protocol):
         tenant_id: str,
         query_vector: Sequence[float],
         limit: int = 5,
+        document_ids: Sequence[str] | None = None,
     ) -> list[VectorSearchResult]:
-        """Search vectors belonging to one tenant."""
+        """Search vectors belonging to one tenant.
+
+        When document_ids is given, only chunks from those documents are
+        eligible, regardless of what else the tenant has indexed.
+        """
         ...
 
     async def delete_document(

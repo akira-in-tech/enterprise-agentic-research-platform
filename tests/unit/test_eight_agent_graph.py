@@ -127,6 +127,8 @@ async def test_eight_agent_graph_runs_parallel_scouts_and_writes_report() -> Non
     async def scout_local(
         tasks: Sequence[ResearchTask],
         tenant_id: UUID,
+        *,
+        document_ids: Sequence[str] | None = None,
     ) -> LocalScoutResult:
         events.append("local_scout")
         assert len(tasks) == 2
@@ -249,6 +251,8 @@ async def test_eight_agent_graph_reflects_into_one_follow_up_round() -> None:
     async def scout_local(
         tasks: Sequence[ResearchTask],
         _: UUID,
+        *,
+        document_ids: Sequence[str] | None = None,
     ) -> LocalScoutResult:
         local_queries.append([task.search_query for task in tasks])
         return LocalScoutResult(sources=[private_source()], errors=[])

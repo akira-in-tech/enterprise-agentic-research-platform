@@ -27,6 +27,7 @@ class ResearchState(TypedDict):
 
     query: str
     tenant_id: NotRequired[UUID]
+    document_ids: NotRequired[list[str]]
     status: NotRequired[str]
     active_agent: NotRequired[ResearchAgentRole]
     route: NotRequired[ResearchRoute]

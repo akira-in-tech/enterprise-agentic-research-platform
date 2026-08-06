@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from unittest.mock import Mock
 from uuid import UUID, uuid4
 
@@ -106,6 +107,8 @@ async def fake_successful_search(
 async def fake_private_scout(
     _: ResearchPlan,
     tenant_id: UUID,
+    *,
+    document_ids: Sequence[str] | None = None,
 ) -> LocalScoutResult:
     suffix = tenant_id.hex[:16].upper()
 
@@ -258,6 +261,44 @@ async def test_research_graph_runs_tenant_scoped_local_scout_when_configured() -
     assert len(result["private_sources"]) == 1
     assert result["private_sources"][0].source_id == (f"PRIVATE-{tenant_id.hex[:16].upper()}")
     assert result["status"] == "web_search_completed"
+
+
+@pytest.mark.anyio
+async def test_research_graph_forwards_document_ids_to_local_scout() -> None:
+    tenant_id = uuid4()
+    received_document_ids: list[Sequence[str] | None] = []
+
+    async def recording_private_scout(
+        _: ResearchPlan,
+        scoped_tenant_id: UUID,
+        *,
+        document_ids: Sequence[str] | None = None,
+    ) -> LocalScoutResult:
+        received_document_ids.append(document_ids)
+
+        return await fake_private_scout(
+            _,
+            scoped_tenant_id,
+            document_ids=document_ids,
+        )
+
+    graph = build_research_graph(
+        fake_research_classifier,
+        fake_plan_creator,
+        fake_direct_answer,
+        fake_successful_search,
+        scout_private_knowledge=recording_private_scout,
+    )
+
+    await graph.ainvoke(
+        {
+            "query": "Compare HTTP/2 and HTTP/3 using internal evidence.",
+            "tenant_id": tenant_id,
+            "document_ids": ["DOC-0000000000000001"],
+        }
+    )
+
+    assert received_document_ids == [["DOC-0000000000000001"]]
 
 
 @pytest.mark.anyio

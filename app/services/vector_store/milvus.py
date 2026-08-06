@@ -202,6 +202,7 @@ class MilvusVectorStore:
         tenant_id: str,
         query_vector: Sequence[float],
         limit: int = 5,
+        document_ids: Sequence[str] | None = None,
     ) -> list[VectorSearchResult]:
         """Search private-document vectors for one tenant."""
 
@@ -218,13 +219,24 @@ class MilvusVectorStore:
             field_name="Query vector",
         )
 
+        search_filter = f"tenant_id == {json.dumps(normalized_tenant_id, ensure_ascii=False)}"
+
+        if document_ids is not None:
+            normalized_document_ids = [document_id.strip() for document_id in document_ids]
+
+            if not normalized_document_ids:
+                return []
+
+            document_ids_json = json.dumps(normalized_document_ids, ensure_ascii=False)
+            search_filter += f" and document_id in {document_ids_json}"
+
         await self.initialize()
 
         async def run_search() -> list[list[dict[str, object]]]:
             return await self._client.search(
                 self._collection_name,
                 data=[list(validated_query)],
-                filter=(f"tenant_id == {json.dumps(normalized_tenant_id, ensure_ascii=False)}"),
+                filter=search_filter,
                 limit=limit,
                 output_fields=[
                     "document_id",

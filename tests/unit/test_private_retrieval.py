@@ -234,6 +234,57 @@ def test_retrieve_preserves_ranking_and_limit() -> None:
     ]
 
 
+def test_retrieve_scopes_to_the_given_documents() -> None:
+    allowed_chunk = create_test_chunk(
+        tenant_id="tenant-acme",
+        filename="allowed.md",
+        content="Allowed document content.",
+    )
+    excluded_chunk = create_test_chunk(
+        tenant_id="tenant-acme",
+        filename="excluded.md",
+        content="Excluded document content.",
+    )
+    vector_store = InMemoryVectorStore(
+        dimensions=2,
+    )
+
+    asyncio.run(
+        vector_store.upsert(
+            [
+                VectorRecord(
+                    chunk=allowed_chunk,
+                    embedding=(1.0, 0.0),
+                ),
+                VectorRecord(
+                    chunk=excluded_chunk,
+                    embedding=(1.0, 0.0),
+                ),
+            ]
+        )
+    )
+
+    embedding_client = StubEmbeddingClient(
+        [
+            [1.0, 0.0],
+        ]
+    )
+    retriever = PrivateKnowledgeRetriever(
+        embedding_client,
+        vector_store,
+    )
+
+    sources = asyncio.run(
+        retriever.retrieve(
+            query="document content",
+            tenant_id="tenant-acme",
+            document_ids=[allowed_chunk.document_id],
+        )
+    )
+
+    assert [source.chunk_id for source in sources] == [allowed_chunk.chunk_id]
+
+
 def test_retrieve_from_empty_store_returns_empty_list() -> None:
     embedding_client = StubEmbeddingClient(
         [

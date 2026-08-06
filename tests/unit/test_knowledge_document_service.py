@@ -9,6 +9,8 @@ from app.schemas.knowledge import KnowledgeDocumentRecord, KnowledgeDocumentStat
 from app.services.knowledge import (
     KnowledgeDocumentAlreadyExistsError,
     KnowledgeDocumentIndexingError,
+    KnowledgeDocumentNotFoundError,
+    KnowledgeDocumentNotReadyError,
     KnowledgeDocumentService,
 )
 from app.services.knowledge.indexing import KnowledgeIndexer
@@ -262,6 +264,143 @@ async def test_delete_cleans_vectors_source_and_metadata_for_same_tenant() -> No
     assert store.events == ["get", "deleting", "delete-metadata"]
     assert storage.events == ["delete-source"]
     assert store.record is None
+
+
+class MultiRecordStore:
+    """Hold several records at once, keyed by document ID."""
+
+    def __init__(self, records: list[KnowledgeDocumentRecord]) -> None:
+        self._records = {record.id: record for record in records}
+
+    async def get(self, *, tenant_id: UUID, document_id: UUID) -> KnowledgeDocumentRecord | None:
+        record = self._records.get(document_id)
+        if record is None or record.tenant_id != tenant_id:
+            return None
+        return record
+
+    async def find_by_content_sha256(
+        self, *, tenant_id: UUID, content_sha256: str
+    ) -> KnowledgeDocumentRecord | None:
+        raise NotImplementedError
+
+    async def create_pending(self, **values: object) -> KnowledgeDocumentRecord:
+        raise NotImplementedError
+
+    async def list(self, *, tenant_id: UUID, limit: int) -> list[KnowledgeDocumentRecord]:
+        raise NotImplementedError
+
+    async def mark_indexing(self, *, tenant_id: UUID, document_id: UUID) -> KnowledgeDocumentRecord:
+        raise NotImplementedError
+
+    async def mark_ready(self, *, tenant_id: UUID, document_id: UUID) -> KnowledgeDocumentRecord:
+        raise NotImplementedError
+
+    async def mark_failed(
+        self, *, tenant_id: UUID, document_id: UUID, error_message: str
+    ) -> KnowledgeDocumentRecord:
+        raise NotImplementedError
+
+    async def mark_deleting(self, *, tenant_id: UUID, document_id: UUID) -> KnowledgeDocumentRecord:
+        raise NotImplementedError
+
+    async def delete_marked(self, *, tenant_id: UUID, document_id: UUID) -> None:
+        raise NotImplementedError
+
+
+@pytest.mark.anyio
+async def test_resolve_vector_document_ids_returns_ready_documents_in_order() -> None:
+    tenant_id = uuid4()
+    first = create_record(
+        tenant_id=tenant_id,
+        document_id=uuid4(),
+        status="ready",
+        vector_document_id="DOC-0000000000000001",
+    )
+    second = create_record(
+        tenant_id=tenant_id,
+        document_id=uuid4(),
+        status="ready",
+        vector_document_id="DOC-0000000000000002",
+    )
+    store = MultiRecordStore([first, second])
+    service = create_service(
+        cast(RecordingStore, store),
+        RecordingStorage(),
+        RecordingIndexer(),
+        RecordingVectorStore(),
+    )
+
+    vector_document_ids = await service.resolve_vector_document_ids(
+        tenant_id=tenant_id,
+        document_ids=[first.id, second.id],
+    )
+
+    assert vector_document_ids == ["DOC-0000000000000001", "DOC-0000000000000002"]
+
+
+@pytest.mark.anyio
+async def test_resolve_vector_document_ids_rejects_unknown_document() -> None:
+    tenant_id = uuid4()
+    store = MultiRecordStore([])
+    service = create_service(
+        cast(RecordingStore, store),
+        RecordingStorage(),
+        RecordingIndexer(),
+        RecordingVectorStore(),
+    )
+
+    with pytest.raises(KnowledgeDocumentNotFoundError):
+        await service.resolve_vector_document_ids(
+            tenant_id=tenant_id,
+            document_ids=[uuid4()],
+        )
+
+
+@pytest.mark.anyio
+async def test_resolve_vector_document_ids_rejects_cross_tenant_document() -> None:
+    owner_tenant_id = uuid4()
+    other_tenant_id = uuid4()
+    record = create_record(
+        tenant_id=owner_tenant_id,
+        document_id=uuid4(),
+        status="ready",
+    )
+    store = MultiRecordStore([record])
+    service = create_service(
+        cast(RecordingStore, store),
+        RecordingStorage(),
+        RecordingIndexer(),
+        RecordingVectorStore(),
+    )
+
+    with pytest.raises(KnowledgeDocumentNotFoundError):
+        await service.resolve_vector_document_ids(
+            tenant_id=other_tenant_id,
+            document_ids=[record.id],
+        )
+
+
+@pytest.mark.anyio
+async def test_resolve_vector_document_ids_rejects_documents_still_indexing() -> None:
+    tenant_id = uuid4()
+    record = create_record(
+        tenant_id=tenant_id,
+        document_id=uuid4(),
+        status="indexing",
+    )
+    store = MultiRecordStore([record])
+    service = create_service(
+        cast(RecordingStore, store),
+        RecordingStorage(),
+        RecordingIndexer(),
+        RecordingVectorStore(),
+    )
+
+    with pytest.raises(KnowledgeDocumentNotReadyError):
+        await service.resolve_vector_document_ids(
+            tenant_id=tenant_id,
+            document_ids=[record.id],
+        )
 
 
 @pytest.mark.anyio

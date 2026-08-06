@@ -43,12 +43,17 @@ async function errorMessage(response: Response): Promise<string> {
 export async function createResearchJob(
   query: string,
   provider: UserFacingProvider,
+  documentIds?: string[],
 ): Promise<CreateResearchJobResponse> {
   const response = await fetch(`${API_BASE_URL}/research-runs/jobs`, {
     method: "POST",
     credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ query, llm_provider: provider }),
+    body: JSON.stringify({
+      query,
+      llm_provider: provider,
+      ...(documentIds && documentIds.length > 0 ? { document_ids: documentIds } : {}),
+    }),
   });
 
   if (!response.ok) {

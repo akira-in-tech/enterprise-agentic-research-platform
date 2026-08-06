@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Sequence
 from uuid import UUID, uuid4
 
 import pytest
@@ -32,10 +33,12 @@ class BlockingResearchExecutor:
         query: str,
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> ResearchExecutionResult:
         del tenant_id
         del llm_provider
         del requested_by_user_id
+        del document_ids
 
         self.calls += 1
         self.started.set()

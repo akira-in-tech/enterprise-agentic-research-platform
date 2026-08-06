@@ -211,6 +211,65 @@ def test_search_uses_cosine_metric_and_tenant_filter() -> None:
     assert matches[0].score == pytest.approx(0.93)
 
 
+def test_search_scopes_to_the_given_documents() -> None:
+    chunk = create_test_chunk()
+    client = FakeAsyncMilvusClient(
+        search_results=[
+            [
+                create_search_hit(
+                    chunk,
+                    score=0.93,
+                )
+            ]
+        ],
+    )
+    store = MilvusVectorStore(
+        dimensions=2,
+        collection_name="private_chunks_test",
+        uri="http://milvus.test:19530",
+        client=client,
+    )
+
+    matches = asyncio.run(
+        store.search(
+            tenant_id="tenant-acme",
+            query_vector=(1.0, 0.0),
+            limit=3,
+            document_ids=[chunk.document_id, "DOC-OTHER0000000000"],
+        )
+    )
+
+    assert client.search_calls[0]["filter"] == (
+        'tenant_id == "tenant-acme" and document_id in '
+        f'["{chunk.document_id}", "DOC-OTHER0000000000"]'
+    )
+    assert len(matches) == 1
+
+
+def test_search_with_empty_document_ids_returns_no_matches_without_calling_milvus() -> None:
+    client = FakeAsyncMilvusClient(
+        search_results=[[]],
+    )
+    store = MilvusVectorStore(
+        dimensions=2,
+        collection_name="private_chunks_test",
+        uri="http://milvus.test:19530",
+        client=client,
+    )
+
+    matches = asyncio.run(
+        store.search(
+            tenant_id="tenant-acme",
+            query_vector=(1.0, 0.0),
+            document_ids=[],
+        )
+    )
+
+    assert matches == []
+    assert client.search_calls == []
+    assert client.has_collection_calls == []
+
+
 def test_search_accepts_generic_id_key() -> None:
     chunk = create_test_chunk()
     hit = create_search_hit(

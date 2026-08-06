@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import socket
+from collections.abc import Sequence
 from typing import Protocol
 from uuid import UUID, uuid4
 
@@ -29,6 +30,7 @@ class BackgroundResearchExecutor(Protocol):
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
         research_run_id: UUID | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> QueuedResearchExecution:
         """Persist one queued run."""
 
@@ -110,6 +112,7 @@ class ResearchJobManager:
         query: str,
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> UUID:
         """Persist one queued run and start its background execution."""
 
@@ -121,6 +124,7 @@ class ResearchJobManager:
             query=query,
             llm_provider=llm_provider,
             requested_by_user_id=requested_by_user_id,
+            document_ids=document_ids,
         )
         self._schedule(queued)
 

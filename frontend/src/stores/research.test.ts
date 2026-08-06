@@ -91,6 +91,45 @@ describe("submitResearch", () => {
     expect(store.recentRuns[0]?.status).toBe("queued");
   });
 
+  it("scopes the request to the selected private documents and clears the selection", async () => {
+    const store = useResearchStore();
+    store.query = "Summarize the onboarding policy.";
+    store.selectedDocumentIds = ["11111111-1111-1111-1111-111111111111"];
+    let requestBody: unknown;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/events")) {
+          return new Response(
+            new ReadableStream({
+              start(controller) {
+                controller.close();
+              },
+            }),
+            { status: 200 },
+          );
+        }
+        requestBody = JSON.parse(String(init?.body));
+        return jsonResponse({
+          research_run_id: "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589",
+          status: "queued",
+          progress_url: "/research-runs/89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589/progress",
+          events_url: "/research-runs/89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589/events",
+          report_url: "/research-runs/89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589/report",
+        });
+      }),
+    );
+
+    await store.submitResearch();
+    await flushPromises();
+
+    expect(requestBody).toMatchObject({
+      document_ids: ["11111111-1111-1111-1111-111111111111"],
+    });
+    expect(store.selectedDocumentIds).toEqual([]);
+  });
+
   it("surfaces a Redis-flavored failure as a distinct operational issue", async () => {
     const store = useResearchStore();
     store.query = "Compare HTTP/2 and HTTP/3.";

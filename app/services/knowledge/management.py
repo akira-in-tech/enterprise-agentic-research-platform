@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Protocol
 from uuid import UUID, uuid4
@@ -73,6 +74,22 @@ class KnowledgeDocumentIndexingError(RuntimeError):
 
 class KnowledgeDocumentDeletionError(RuntimeError):
     """Indicate that external document cleanup did not complete."""
+
+
+class KnowledgeDocumentNotFoundError(RuntimeError):
+    """Indicate a document ID that does not belong to this tenant."""
+
+    def __init__(self, document_id: UUID) -> None:
+        super().__init__(f"Private document {document_id} was not found.")
+        self.document_id = document_id
+
+
+class KnowledgeDocumentNotReadyError(RuntimeError):
+    """Indicate a document that has not finished indexing yet."""
+
+    def __init__(self, document_id: UUID) -> None:
+        super().__init__(f"Private document {document_id} has not finished indexing.")
+        self.document_id = document_id
 
 
 class KnowledgeDocumentService:
@@ -193,6 +210,37 @@ class KnowledgeDocumentService:
             document_id=document_id,
         )
         return self._public_response(document) if document is not None else None
+
+    async def resolve_vector_document_ids(
+        self,
+        *,
+        tenant_id: UUID,
+        document_ids: Sequence[UUID],
+    ) -> list[str]:
+        """Translate durable document IDs into vector-store document IDs.
+
+        Every ID must belong to this tenant and have finished indexing, so a
+        research request can never be scoped to a document it can't actually
+        search.
+        """
+
+        vector_document_ids: list[str] = []
+
+        for document_id in document_ids:
+            document = await self._store.get(
+                tenant_id=tenant_id,
+                document_id=document_id,
+            )
+
+            if document is None:
+                raise KnowledgeDocumentNotFoundError(document_id)
+
+            if document.status != "ready" or document.vector_document_id is None:
+                raise KnowledgeDocumentNotReadyError(document_id)
+
+            vector_document_ids.append(document.vector_document_id)
+
+        return vector_document_ids
 
     async def list(
         self,

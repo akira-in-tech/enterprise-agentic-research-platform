@@ -1,4 +1,4 @@
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from uuid import uuid4
 
 import pytest
@@ -64,6 +64,7 @@ class RecordingRetriever:
         self._response_for_query = response_for_query
         self._error_query = error_query
         self.calls: list[tuple[str, str, int]] = []
+        self.document_ids_by_call: list[Sequence[str] | None] = []
 
     async def retrieve(
         self,
@@ -71,8 +72,10 @@ class RecordingRetriever:
         query: str,
         tenant_id: str,
         limit: int = 5,
+        document_ids: Sequence[str] | None = None,
     ) -> list[PrivateSource]:
         self.calls.append((query, tenant_id, limit))
+        self.document_ids_by_call.append(document_ids)
 
         if query == self._error_query:
             raise RuntimeError("private vector store unavailable")
@@ -105,6 +108,24 @@ async def test_local_scout_uses_plan_queries_and_tenant_scope() -> None:
     assert retriever.calls == [
         ("queue delivery guarantees", str(tenant_id), 4),
         ("worker failure recovery", str(tenant_id), 4),
+    ]
+
+
+@pytest.mark.anyio
+async def test_local_scout_forwards_document_ids_to_the_retriever() -> None:
+    tenant_id = uuid4()
+    retriever = RecordingRetriever(lambda _: [])
+    agent = LocalScoutAgent(retriever)
+
+    await agent.scout(
+        create_plan(),
+        tenant_id,
+        document_ids=["DOC-0000000000000001"],
+    )
+
+    assert retriever.document_ids_by_call == [
+        ["DOC-0000000000000001"],
+        ["DOC-0000000000000001"],
     ]
 
 

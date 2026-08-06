@@ -59,6 +59,7 @@ function selectRun(run: RecentResearchRun): void {
         <ResearchComposer
           v-model:query="researchStore.query"
           v-model:provider="researchStore.provider"
+          v-model:selected-document-ids="researchStore.selectedDocumentIds"
           :enabled-providers="enabledProviders"
           :submitting="researchStore.submitting"
           @submit="submitResearch"

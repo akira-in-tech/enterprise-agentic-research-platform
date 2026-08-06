@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Sequence
 from uuid import UUID, uuid4
 
 import pytest
@@ -38,6 +39,7 @@ class RecordingExecutor:
         query: str,
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> ResearchExecutionResult:
         self.calls.append(
             {
@@ -45,6 +47,7 @@ class RecordingExecutor:
                 "query": query,
                 "llm_provider": llm_provider,
                 "requested_by_user_id": requested_by_user_id,
+                "document_ids": document_ids,
             }
         )
         if self.execution_error is not None:
@@ -562,6 +565,7 @@ class SlowExecutor:
         query: str,
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> ResearchExecutionResult:
         try:
             await asyncio.sleep(self.delay_seconds)

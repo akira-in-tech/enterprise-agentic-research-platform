@@ -36,6 +36,14 @@ class CreateResearchRunRequest(BaseModel):
         min_length=1,
     )
     llm_provider: UserFacingLLMProvider
+    document_ids: list[UUID] | None = Field(
+        default=None,
+        description=(
+            "Scope private-knowledge retrieval to these documents. Omit or "
+            "pass null to search every ready tenant document; pass an empty "
+            "list to search none."
+        ),
+    )
 
 
 class CreateResearchRunResponse(BaseModel):

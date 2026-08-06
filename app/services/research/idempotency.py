@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from collections.abc import Sequence
 from typing import Protocol
 from uuid import UUID
 
@@ -30,6 +31,7 @@ class ResearchExecutor(Protocol):
         query: str,
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> ResearchExecutionResult:
         """Execute one research request."""
 
@@ -119,6 +121,7 @@ class IdempotentResearchExecutionService:
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
         idempotency_key: str | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> ResearchExecutionResult:
         """Replay or execute one sequential idempotent request."""
 
@@ -128,6 +131,7 @@ class IdempotentResearchExecutionService:
                 query=query,
                 llm_provider=llm_provider,
                 requested_by_user_id=requested_by_user_id,
+                document_ids=document_ids,
             )
 
         normalized_key = idempotency_key.strip()
@@ -147,6 +151,7 @@ class IdempotentResearchExecutionService:
             query=normalized_query,
             llm_provider=canonical_provider,
             requested_by_user_id=requested_by_user_id,
+            document_ids=document_ids,
         )
 
         existing_result = await self._restore_existing_record(
@@ -186,6 +191,7 @@ class IdempotentResearchExecutionService:
                 query=normalized_query,
                 llm_provider=llm_provider,
                 requested_by_user_id=requested_by_user_id,
+                document_ids=document_ids,
             )
             record = ResearchIdempotencyRecord(
                 request_fingerprint=request_fingerprint,
@@ -214,6 +220,7 @@ class IdempotentResearchExecutionService:
         query: str,
         llm_provider: str,
         requested_by_user_id: UUID | None,
+        document_ids: Sequence[str] | None = None,
     ) -> ResearchExecutionResult:
         """Run the executor while periodically renewing the coordination lock.
 
@@ -238,6 +245,7 @@ class IdempotentResearchExecutionService:
                 query=query,
                 llm_provider=llm_provider,
                 requested_by_user_id=requested_by_user_id,
+                document_ids=document_ids,
             )
         finally:
             heartbeat.cancel()

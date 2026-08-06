@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import count
@@ -241,6 +241,7 @@ class ResearchResultCache(Protocol):
         tenant_id: UUID,
         llm_provider: CanonicalLLMProvider,
         query: str,
+        document_ids: Sequence[str] | None = None,
     ) -> CachedResearchResult | None:
         """Return one cached result or a cache miss."""
 
@@ -250,6 +251,7 @@ class ResearchResultCache(Protocol):
         tenant_id: UUID,
         query: str,
         result: CachedResearchResult,
+        document_ids: Sequence[str] | None = None,
     ) -> None:
         """Store one completed research result."""
 
@@ -338,6 +340,7 @@ class QueuedResearchExecution:
     requested_by_user_id: UUID | None
     query: str
     llm_provider: CanonicalLLMProvider
+    document_ids: list[str] | None = None
     resume: bool = False
 
 
@@ -367,6 +370,7 @@ class ResearchExecutionService:
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
         research_run_id: UUID | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> ResearchExecutionResult:
         """Execute one durable research request."""
 
@@ -376,6 +380,7 @@ class ResearchExecutionService:
             llm_provider=llm_provider,
             requested_by_user_id=requested_by_user_id,
             research_run_id=research_run_id,
+            document_ids=document_ids,
         )
 
         return await self.execute_queued(queued)
@@ -410,6 +415,7 @@ class ResearchExecutionService:
         llm_provider: str,
         requested_by_user_id: UUID | None = None,
         research_run_id: UUID | None = None,
+        document_ids: Sequence[str] | None = None,
     ) -> QueuedResearchExecution:
         """Create one durable queued run before asynchronous delivery."""
 
@@ -442,6 +448,7 @@ class ResearchExecutionService:
             requested_by_user_id=requested_by_user_id,
             query=normalized_query,
             llm_provider=canonical_provider,
+            document_ids=list(document_ids) if document_ids is not None else None,
         )
 
     async def execute_queued(
@@ -454,6 +461,7 @@ class ResearchExecutionService:
         research_run_id = queued.research_run_id
         normalized_query = queued.query
         canonical_provider = queued.llm_provider
+        document_ids = queued.document_ids
 
         try:
             if not queued.resume:
@@ -472,6 +480,7 @@ class ResearchExecutionService:
                 tenant_id=tenant_id,
                 llm_provider=canonical_provider,
                 query=normalized_query,
+                document_ids=document_ids,
             )
 
             if cached_result is not None:
@@ -501,6 +510,9 @@ class ResearchExecutionService:
                     "query": normalized_query,
                     "tenant_id": tenant_id,
                 }
+
+                if document_ids is not None:
+                    initial_state["document_ids"] = document_ids
 
                 try:
                     final_state = await workflow.ainvoke(
@@ -551,6 +563,7 @@ class ResearchExecutionService:
                 llm_provider=canonical_provider,
                 query=normalized_query,
                 state=final_state,
+                document_ids=document_ids,
             )
 
         return ResearchExecutionResult(
@@ -661,6 +674,7 @@ class ResearchExecutionService:
         tenant_id: UUID,
         llm_provider: CanonicalLLMProvider,
         query: str,
+        document_ids: Sequence[str] | None = None,
     ) -> CachedResearchResult | None:
         """Read the optional cache without breaking research execution."""
 
@@ -672,6 +686,7 @@ class ResearchExecutionService:
                 tenant_id=tenant_id,
                 llm_provider=llm_provider,
                 query=query,
+                document_ids=document_ids,
             )
         except CacheUnavailableError:
             logger.warning(
@@ -689,6 +704,7 @@ class ResearchExecutionService:
         llm_provider: CanonicalLLMProvider,
         query: str,
         state: ResearchState,
+        document_ids: Sequence[str] | None = None,
     ) -> None:
         """Write a completed result without breaking research execution."""
 
@@ -719,6 +735,7 @@ class ResearchExecutionService:
                 tenant_id=tenant_id,
                 query=query,
                 result=result,
+                document_ids=document_ids,
             )
         except CacheUnavailableError:
             logger.warning(

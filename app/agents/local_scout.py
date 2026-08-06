@@ -20,6 +20,7 @@ class PrivateSourceRetriever(Protocol):
         query: str,
         tenant_id: str,
         limit: int = 5,
+        document_ids: Sequence[str] | None = None,
     ) -> list[PrivateSource]: ...
 
 
@@ -65,18 +66,23 @@ class LocalScoutAgent:
         self,
         plan: ResearchPlan,
         tenant_id: UUID,
+        *,
+        document_ids: Sequence[str] | None = None,
     ) -> LocalScoutResult:
         """Run the tasks in a research plan."""
 
         return await self.scout_tasks(
             plan.tasks,
             tenant_id,
+            document_ids=document_ids,
         )
 
     async def scout_tasks(
         self,
         tasks: Sequence[ResearchTask],
         tenant_id: UUID,
+        *,
+        document_ids: Sequence[str] | None = None,
     ) -> LocalScoutResult:
         """Run an explicit task batch and preserve partial successes."""
 
@@ -87,6 +93,7 @@ class LocalScoutAgent:
                     task,
                     tenant_id=tenant_id,
                     semaphore=semaphore,
+                    document_ids=document_ids,
                 )
                 for task in tasks
             )
@@ -122,6 +129,7 @@ class LocalScoutAgent:
         *,
         tenant_id: UUID,
         semaphore: asyncio.Semaphore,
+        document_ids: Sequence[str] | None = None,
     ) -> tuple[list[PrivateSource], str | None]:
         """Retrieve one task while isolating timeout and provider failures."""
 
@@ -132,6 +140,7 @@ class LocalScoutAgent:
                         query=task.search_query,
                         tenant_id=str(tenant_id),
                         limit=self._max_results_per_task,
+                        document_ids=document_ids,
                     )
             except TimeoutError:
                 message = (

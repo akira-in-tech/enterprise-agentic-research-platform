@@ -55,19 +55,33 @@ SearchPlanExecutor = Callable[
     [ResearchPlan],
     Awaitable[list[ResearchTaskResult]],
 ]
-LocalKnowledgeScout = Callable[
-    [ResearchPlan, UUID],
-    Awaitable[LocalScoutResult],
-]
 WebTaskScout = Callable[
     [Sequence[ResearchTask]],
     Awaitable[WebScoutResult],
 ]
-LocalTaskScout = Callable[
-    [Sequence[ResearchTask], UUID],
-    Awaitable[LocalScoutResult],
-]
 MCPQueryScout = Callable[[str], Awaitable[list[EvidenceSource]]]
+
+
+class LocalKnowledgeScout(Protocol):
+    async def __call__(
+        self,
+        plan: ResearchPlan,
+        tenant_id: UUID,
+        /,
+        *,
+        document_ids: Sequence[str] | None = None,
+    ) -> LocalScoutResult: ...
+
+
+class LocalTaskScout(Protocol):
+    async def __call__(
+        self,
+        tasks: Sequence[ResearchTask],
+        tenant_id: UUID,
+        /,
+        *,
+        document_ids: Sequence[str] | None = None,
+    ) -> LocalScoutResult: ...
 
 
 class EvidenceJudgeOperation(Protocol):
@@ -271,6 +285,7 @@ def build_local_scout_node(
         result = await scout_private_knowledge(
             state["plan"],
             tenant_id,
+            document_ids=state.get("document_ids"),
         )
 
         if result.errors and not result.sources:
@@ -639,7 +654,11 @@ def build_eight_agent_local_scout_node(
             raise ValueError("Local Scout requires tenant_id in ResearchState.")
 
         tasks = _research_tasks_for_state(state, source="private")
-        result = await scout_local(tasks, tenant_id)
+        result = await scout_local(
+            tasks,
+            tenant_id,
+            document_ids=state.get("document_ids"),
+        )
         sources = _merge_private_sources(
             state.get("private_sources", []),
             result.sources,
