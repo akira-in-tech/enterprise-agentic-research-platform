@@ -1,4 +1,5 @@
 # AWS Guidance
+
 - Prefer the AWS MCP Server for AWS interactions — it provides sandboxed
   execution, observability, and audit logging. If unavailable, use the
   AWS CLI directly.
@@ -14,6 +15,7 @@
   principles.
 - Do not use em dashes in AWS resource names or descriptions. Use
   hyphens instead.
+
 ## Secret Safety
 
 - MUST load the `aws-secrets-manager` skill first for any secret,
