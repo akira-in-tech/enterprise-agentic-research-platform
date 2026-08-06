@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PhArrowRight, PhLockKey, PhShieldCheck } from "@phosphor-icons/vue";
+import { PhLockKey, PhShieldCheck } from "@phosphor-icons/vue";
 import { useRouter } from "vue-router";
 
 import AgentWorkflow from "../components/AgentWorkflow.vue";
@@ -9,20 +9,12 @@ import RecentResearchList from "../components/RecentResearchList.vue";
 import ResearchComposer from "../components/ResearchComposer.vue";
 import { enabledProviders } from "../lib/provider-config";
 import { useResearchStore } from "../stores/research";
-import { useWorkspaceStore } from "../stores/workspace";
 import type { RecentResearchRun } from "../types/research";
 
 const router = useRouter();
 const researchStore = useResearchStore();
-const workspaceStore = useWorkspaceStore();
 
 async function submitResearch(): Promise<void> {
-  if (!workspaceStore.isConfigured()) {
-    researchStore.announcement = "Connect a tenant workspace before starting research.";
-    workspaceStore.openDialog();
-    return;
-  }
-
   const run = await researchStore.submitResearch();
   if (run) {
     await router.push({ name: "research-run", params: { id: run.id } });
@@ -71,16 +63,6 @@ function selectRun(run: RecentResearchRun): void {
           :enabled-providers="enabledProviders"
           :disabled="researchStore.submitting"
         />
-
-        <button
-          v-if="!workspaceStore.isConfigured()"
-          class="workspace-notice"
-          type="button"
-          @click="workspaceStore.openDialog()"
-        >
-          <span><PhLockKey :size="16" /> Connect your tenant workspace to run the real pipeline</span>
-          <PhArrowRight :size="16" />
-        </button>
       </div>
     </section>
 

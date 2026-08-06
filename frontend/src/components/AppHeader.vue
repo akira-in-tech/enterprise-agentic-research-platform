@@ -2,18 +2,18 @@
 import {
   PhBookOpen,
   PhBriefcase,
-  PhCaretDown,
   PhMoon,
   PhSun,
 } from "@phosphor-icons/vue";
+import { computed } from "vue";
 
 import evidentMark from "../assets/evident-mark.png";
 
-defineProps<{
+const props = defineProps<{
   darkMode: boolean;
   apiStatus: "checking" | "online" | "offline";
-  workspaceConfigured: boolean;
-  workspaceName?: string;
+  tenantName: string;
+  userDisplayName: string | null;
   activePage: "research" | "knowledge";
 }>();
 
@@ -22,8 +22,22 @@ const emit = defineEmits<{
   showRecent: [];
   showKnowledge: [];
   toggleTheme: [];
-  openWorkspace: [];
+  logout: [];
 }>();
+
+const userInitials = computed(() => {
+  const source = props.userDisplayName?.trim();
+  if (!source) return "?";
+
+  return (
+    source
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((part) => part[0]?.toUpperCase() ?? "")
+      .join("") || "?"
+  );
+});
 </script>
 
 <template>
@@ -68,24 +82,12 @@ const emit = defineEmits<{
         <PhSun v-if="darkMode" :size="18" />
         <PhMoon v-else :size="18" />
       </button>
-      <button
-        class="workspace-button"
-        type="button"
-        :aria-label="workspaceConfigured ? 'Configure workspace' : 'Connect workspace'"
-        @click="emit('openWorkspace')"
-      >
+      <span class="workspace-pill" aria-label="Current workspace">
         <PhBriefcase :size="16" />
-        <span>{{ workspaceConfigured ? workspaceName ?? "Acme Analytics" : "Connect workspace" }}</span>
-        <PhCaretDown :size="13" />
-      </button>
-      <button
-        class="avatar-button"
-        type="button"
-        aria-label="Open user and workspace settings"
-        title="User and workspace settings"
-        @click="emit('openWorkspace')"
-      >
-        AK
+        <span>{{ tenantName }}</span>
+      </span>
+      <button class="avatar-button" type="button" aria-label="Log out" title="Log out" @click="emit('logout')">
+        {{ userInitials }}
       </button>
     </nav>
   </header>

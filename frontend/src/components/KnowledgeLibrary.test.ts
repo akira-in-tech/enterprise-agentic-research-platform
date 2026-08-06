@@ -1,17 +1,13 @@
 import { flushPromises, mount } from "@vue/test-utils";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { createPinia, setActivePinia } from "pinia";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import KnowledgeLibrary from "./KnowledgeLibrary.vue";
 
-const workspace = {
-  tenantId: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
-  userId: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
-};
-
 const document = {
   id: "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589",
-  tenant_id: workspace.tenantId,
-  uploaded_by_user_id: workspace.userId,
+  tenant_id: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
+  uploaded_by_user_id: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
   filename: "architecture.md",
   media_type: "text/markdown",
   byte_size: 128,
@@ -23,18 +19,10 @@ const document = {
   indexed_at: "2026-08-05T12:00:00Z",
 };
 
+beforeEach(() => setActivePinia(createPinia()));
 afterEach(() => vi.unstubAllGlobals());
 
 describe("KnowledgeLibrary", () => {
-  it("asks for tenant context before exposing document controls", () => {
-    const wrapper = mount(KnowledgeLibrary, {
-      props: { workspace: { tenantId: "", userId: "" } },
-    });
-
-    expect(wrapper.text()).toContain("Connect a workspace first");
-    expect(wrapper.find('input[type="file"]').exists()).toBe(false);
-  });
-
   it("loads ready documents and uses a two-step delete confirmation", async () => {
     const fetchMock = vi
       .fn()
@@ -46,7 +34,7 @@ describe("KnowledgeLibrary", () => {
       )
       .mockResolvedValueOnce(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
-    const wrapper = mount(KnowledgeLibrary, { props: { workspace } });
+    const wrapper = mount(KnowledgeLibrary);
     await flushPromises();
 
     expect(wrapper.text()).toContain("architecture.md");
@@ -73,7 +61,7 @@ describe("KnowledgeLibrary", () => {
         }),
       ),
     );
-    const wrapper = mount(KnowledgeLibrary, { props: { workspace } });
+    const wrapper = mount(KnowledgeLibrary);
     await flushPromises();
 
     expect(wrapper.get('[role="alert"]').text()).toContain("Document storage is unavailable.");

@@ -6,21 +6,19 @@ import { useRouter } from "vue-router";
 import ResearchDetail from "../components/ResearchDetail.vue";
 import { getResearchRun } from "../lib/research-api";
 import { useResearchStore } from "../stores/research";
-import { useWorkspaceStore } from "../stores/workspace";
 import type { RecentResearchRun } from "../types/research";
 
 const props = defineProps<{ id: string }>();
 
 const router = useRouter();
 const researchStore = useResearchStore();
-const workspaceStore = useWorkspaceStore();
 
 const localRun = computed(() => researchStore.getRunById(props.id));
 
 const { data: fetchedRun, isFetching: hydrating, isError: hydrationFailed } = useQuery({
   queryKey: ["research-run", () => props.id],
-  queryFn: () => getResearchRun(props.id, workspaceStore.workspace),
-  enabled: computed(() => !localRun.value && workspaceStore.isConfigured()),
+  queryFn: () => getResearchRun(props.id),
+  enabled: computed(() => !localRun.value),
   retry: false,
 });
 

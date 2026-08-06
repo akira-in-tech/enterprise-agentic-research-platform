@@ -17,27 +17,23 @@ import {
   ResearchApiError,
   uploadKnowledgeDocument,
 } from "../lib/research-api";
-import type { KnowledgeDocument, WorkspaceContext } from "../types/research";
-
-const props = defineProps<{
-  workspace: WorkspaceContext;
-}>();
+import { useAuthStore } from "../stores/auth";
+import type { KnowledgeDocument } from "../types/research";
 
 const emit = defineEmits<{
-  openWorkspace: [];
   announce: [message: string];
 }>();
 
+const authStore = useAuthStore();
 const pendingDeleteId = ref<string | null>(null);
 const selectedFile = ref<File | null>(null);
 const errorMessage = ref("");
 const fileInput = ref<HTMLInputElement | null>(null);
 
-const workspaceConfigured = computed(() => props.workspace.tenantId.trim().length > 0);
 const acceptedTypes = ".txt,.md,.markdown,.pdf";
 
 const queryClient = useQueryClient();
-const documentsQueryKey = computed(() => ["documents", props.workspace.tenantId]);
+const documentsQueryKey = computed(() => ["documents", authStore.tenant?.id]);
 
 const {
   data: documents,
@@ -46,8 +42,7 @@ const {
   refetch: refreshDocuments,
 } = useQuery({
   queryKey: documentsQueryKey,
-  queryFn: () => listKnowledgeDocuments(props.workspace),
-  enabled: workspaceConfigured,
+  queryFn: () => listKnowledgeDocuments(),
   retry: false,
   initialData: [],
 });
@@ -62,7 +57,7 @@ watch(listError, (error) => {
 });
 
 const uploadMutation = useMutation({
-  mutationFn: (file: File) => uploadKnowledgeDocument(file, props.workspace),
+  mutationFn: (file: File) => uploadKnowledgeDocument(file),
   onSuccess: (created) => {
     queryClient.setQueryData<KnowledgeDocument[]>(documentsQueryKey.value, (current) => [
       created,
@@ -76,7 +71,7 @@ const uploadMutation = useMutation({
 const uploading = computed(() => uploadMutation.isPending.value);
 
 const deleteMutation = useMutation({
-  mutationFn: (document: KnowledgeDocument) => deleteKnowledgeDocument(document.id, props.workspace),
+  mutationFn: (document: KnowledgeDocument) => deleteKnowledgeDocument(document.id),
   onSuccess: (_result, document) => {
     queryClient.setQueryData<KnowledgeDocument[]>(documentsQueryKey.value, (current) =>
       (current ?? []).filter((item) => item.id !== document.id),
@@ -130,7 +125,7 @@ function describeError(error: unknown, fallback: string): string {
 }
 
 async function uploadSelected(): Promise<void> {
-  if (!selectedFile.value || uploading.value || !workspaceConfigured.value) return;
+  if (!selectedFile.value || uploading.value) return;
 
   errorMessage.value = "";
   try {
@@ -177,104 +172,95 @@ async function confirmDelete(document: KnowledgeDocument): Promise<void> {
       </div>
     </section>
 
-    <section v-if="!workspaceConfigured" class="knowledge-empty knowledge-connect" aria-labelledby="connect-title">
-      <PhLockKey :size="30" aria-hidden="true" />
-      <h2 id="connect-title">Connect a workspace first</h2>
-      <p>A tenant ID is required before documents can be stored, indexed, or listed.</p>
-      <button class="primary-button" type="button" @click="emit('openWorkspace')">Connect workspace</button>
+    <section class="upload-card" aria-labelledby="upload-title">
+      <div class="upload-copy">
+        <span class="upload-icon" aria-hidden="true"><PhUploadSimple :size="22" /></span>
+        <div>
+          <h2 id="upload-title">Upload a source document</h2>
+          <p>TXT, Markdown, or text-based PDF. Maximum 10 MB.</p>
+        </div>
+      </div>
+      <div class="upload-controls">
+        <label class="file-picker">
+          <input ref="fileInput" type="file" :accept="acceptedTypes" @change="selectFile" />
+          <span>{{ selectedFile?.name ?? "Choose document" }}</span>
+        </label>
+        <button
+          class="primary-button"
+          type="button"
+          :disabled="!selectedFile || uploading"
+          @click="uploadSelected"
+        >
+          <PhUploadSimple :size="17" />
+          {{ uploading ? "Validating and indexing…" : "Upload and index" }}
+        </button>
+      </div>
     </section>
 
-    <template v-else>
-      <section class="upload-card" aria-labelledby="upload-title">
-        <div class="upload-copy">
-          <span class="upload-icon" aria-hidden="true"><PhUploadSimple :size="22" /></span>
-          <div>
-            <h2 id="upload-title">Upload a source document</h2>
-            <p>TXT, Markdown, or text-based PDF. Maximum 10 MB.</p>
-          </div>
-        </div>
-        <div class="upload-controls">
-          <label class="file-picker">
-            <input ref="fileInput" type="file" :accept="acceptedTypes" @change="selectFile" />
-            <span>{{ selectedFile?.name ?? "Choose document" }}</span>
-          </label>
-          <button
-            class="primary-button"
-            type="button"
-            :disabled="!selectedFile || uploading"
-            @click="uploadSelected"
-          >
-            <PhUploadSimple :size="17" />
-            {{ uploading ? "Validating and indexing…" : "Upload and index" }}
-          </button>
-        </div>
-      </section>
+    <section v-if="errorMessage" class="knowledge-error" role="alert">
+      <PhWarningCircle :size="20" aria-hidden="true" />
+      <div>
+        <strong>Private Knowledge needs attention</strong>
+        <p>{{ errorMessage }}</p>
+      </div>
+      <button class="secondary-button" type="button" @click="retryList">
+        <PhArrowClockwise :size="15" /> Retry
+      </button>
+    </section>
 
-      <section v-if="errorMessage" class="knowledge-error" role="alert">
-        <PhWarningCircle :size="20" aria-hidden="true" />
+    <section class="document-library" aria-labelledby="library-title" :aria-busy="loading">
+      <div class="document-library-heading">
         <div>
-          <strong>Private Knowledge needs attention</strong>
-          <p>{{ errorMessage }}</p>
+          <p class="eyebrow">Evidence library</p>
+          <h2 id="library-title">Indexed documents</h2>
         </div>
-        <button class="secondary-button" type="button" @click="retryList">
-          <PhArrowClockwise :size="15" /> Retry
+        <button class="secondary-button" type="button" :disabled="loading" @click="retryList">
+          <PhArrowClockwise :size="15" /> {{ loading ? "Refreshing…" : "Refresh" }}
         </button>
-      </section>
+      </div>
 
-      <section class="document-library" aria-labelledby="library-title" :aria-busy="loading">
-        <div class="document-library-heading">
-          <div>
-            <p class="eyebrow">Evidence library</p>
-            <h2 id="library-title">Indexed documents</h2>
+      <div v-if="!loading && documents?.length === 0" class="knowledge-empty">
+        <PhFileText :size="30" aria-hidden="true" />
+        <h3>No private sources yet</h3>
+        <p>Upload the first document to give Local Scout evidence it can cite.</p>
+      </div>
+
+      <ul v-else class="document-list">
+        <li v-for="document in documents" :key="document.id" class="document-row">
+          <span class="document-icon" aria-hidden="true"><PhFileText :size="20" /></span>
+          <div class="document-primary">
+            <strong>{{ document.filename }}</strong>
+            <span>{{ readableBytes(document.byte_size) }} · Added {{ readableDate(document.created_at) }}</span>
+            <p v-if="document.error_message">{{ document.error_message }}</p>
           </div>
-          <button class="secondary-button" type="button" :disabled="loading" @click="retryList">
-            <PhArrowClockwise :size="15" /> {{ loading ? "Refreshing…" : "Refresh" }}
-          </button>
-        </div>
-
-        <div v-if="!loading && documents?.length === 0" class="knowledge-empty">
-          <PhFileText :size="30" aria-hidden="true" />
-          <h3>No private sources yet</h3>
-          <p>Upload the first document to give Local Scout evidence it can cite.</p>
-        </div>
-
-        <ul v-else class="document-list">
-          <li v-for="document in documents" :key="document.id" class="document-row">
-            <span class="document-icon" aria-hidden="true"><PhFileText :size="20" /></span>
-            <div class="document-primary">
-              <strong>{{ document.filename }}</strong>
-              <span>{{ readableBytes(document.byte_size) }} · Added {{ readableDate(document.created_at) }}</span>
-              <p v-if="document.error_message">{{ document.error_message }}</p>
-            </div>
-            <span class="document-status" :class="`document-status-${document.status}`">
-              <PhCheckCircle v-if="document.status === 'ready'" :size="15" aria-hidden="true" />
-              <PhWarningCircle v-else-if="document.status === 'failed'" :size="15" aria-hidden="true" />
-              {{ statusLabel(document.status) }}
-            </span>
-            <div class="document-actions">
-              <button
-                v-if="pendingDeleteId === document.id"
-                class="document-cancel"
-                type="button"
-                @click="pendingDeleteId = null"
-              >
-                Cancel
-              </button>
-              <button
-                class="document-delete"
-                :class="{ 'confirm-delete': pendingDeleteId === document.id }"
-                type="button"
-                :disabled="deletingId === document.id || document.status === 'deleting'"
-                :aria-label="`${pendingDeleteId === document.id ? 'Confirm deletion of' : 'Delete'} ${document.filename}`"
-                @click="confirmDelete(document)"
-              >
-                <PhTrash :size="16" aria-hidden="true" />
-                {{ deletingId === document.id ? "Deleting…" : pendingDeleteId === document.id ? "Confirm" : "Delete" }}
-              </button>
-            </div>
-          </li>
-        </ul>
-      </section>
-    </template>
+          <span class="document-status" :class="`document-status-${document.status}`">
+            <PhCheckCircle v-if="document.status === 'ready'" :size="15" aria-hidden="true" />
+            <PhWarningCircle v-else-if="document.status === 'failed'" :size="15" aria-hidden="true" />
+            {{ statusLabel(document.status) }}
+          </span>
+          <div class="document-actions">
+            <button
+              v-if="pendingDeleteId === document.id"
+              class="document-cancel"
+              type="button"
+              @click="pendingDeleteId = null"
+            >
+              Cancel
+            </button>
+            <button
+              class="document-delete"
+              :class="{ 'confirm-delete': pendingDeleteId === document.id }"
+              type="button"
+              :disabled="deletingId === document.id || document.status === 'deleting'"
+              :aria-label="`${pendingDeleteId === document.id ? 'Confirm deletion of' : 'Delete'} ${document.filename}`"
+              @click="confirmDelete(document)"
+            >
+              <PhTrash :size="16" aria-hidden="true" />
+              {{ deletingId === document.id ? "Deleting…" : pendingDeleteId === document.id ? "Confirm" : "Delete" }}
+            </button>
+          </div>
+        </li>
+      </ul>
+    </section>
   </main>
 </template>

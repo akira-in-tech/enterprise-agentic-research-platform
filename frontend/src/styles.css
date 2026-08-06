@@ -158,7 +158,7 @@ button:disabled {
 .header-actions,
 .product-nav,
 .brand,
-.workspace-button,
+.workspace-pill,
 .api-status,
 .provider-trigger,
 .knowledge-button,
@@ -270,13 +270,19 @@ button:disabled {
 }
 
 .icon-button,
-.avatar-button,
-.workspace-button {
+.avatar-button {
   min-height: 44px;
   color: var(--ink-soft);
   background: transparent;
   border: 0;
   cursor: pointer;
+}
+
+.workspace-pill {
+  min-height: 44px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
 }
 
 .icon-button,
@@ -287,16 +293,14 @@ button:disabled {
   border-radius: 50%;
 }
 
-.icon-button:hover,
-.workspace-button:hover {
+.icon-button:hover {
   color: var(--ink);
   background: var(--surface-muted);
 }
 
-.workspace-button {
+.workspace-pill {
   gap: 8px;
   padding: 0 10px;
-  color: var(--ink);
   border-radius: 10px;
   font-size: 13px;
   font-weight: 570;
@@ -1775,7 +1779,7 @@ button:disabled {
   .product-nav,
   .api-status,
   .header-divider,
-  .workspace-button span {
+  .workspace-pill span {
     display: none;
   }
 

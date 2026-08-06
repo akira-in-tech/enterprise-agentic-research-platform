@@ -1,8 +1,16 @@
 import { expect, test } from "@playwright/test";
 
-const WORKSPACE = {
-  tenantId: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
-  userId: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
+const IDENTITY = {
+  user: {
+    id: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
+    email: "engineer@acme.example",
+    display_name: "ACME Engineer",
+  },
+  tenant: {
+    id: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
+    name: "ACME Platform",
+    slug: "acme-platform-a1b2c3d4",
+  },
 };
 const RUN_ID = "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589";
 
@@ -12,9 +20,12 @@ const RUN_ID = "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589";
 // nothing, because there was previously no per-run URL to refresh at all.
 test.describe("direct navigation to a research run", () => {
   test("hydrates a completed run and its report from the API", async ({ page }) => {
-    await page.addInitScript(
-      ([key, value]) => window.localStorage.setItem(key, value),
-      ["evident.workspace.v1", JSON.stringify(WORKSPACE)],
+    await page.route("**/api/auth/me", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(IDENTITY),
+      }),
     );
 
     await page.route(`**/api/research-runs/${RUN_ID}`, (route) =>

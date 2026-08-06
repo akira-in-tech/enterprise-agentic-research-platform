@@ -35,11 +35,7 @@ describe("parseSseFrames", () => {
 });
 
 describe("research cancellation API", () => {
-  it("cancels one run with tenant-scoped headers", async () => {
-    const workspace = {
-      tenantId: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
-      userId: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
-    };
+  it("cancels one run using the session cookie", async () => {
     const researchRunId = "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589";
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
@@ -49,27 +45,19 @@ describe("research cancellation API", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(cancelResearchJob(researchRunId, workspace)).resolves.toEqual({
+    await expect(cancelResearchJob(researchRunId)).resolves.toEqual({
       research_run_id: researchRunId,
       status: "cancelled",
     });
     expect(fetchMock).toHaveBeenCalledWith(`/api/research-runs/${researchRunId}/cancel`, {
       method: "POST",
-      headers: {
-        "X-Tenant-ID": workspace.tenantId,
-        "X-User-ID": workspace.userId,
-        "Content-Type": "application/json",
-      },
+      credentials: "include",
     });
   });
 });
 
 describe("research run lookup API", () => {
-  it("fetches one run's lifecycle state with tenant-scoped headers", async () => {
-    const workspace = {
-      tenantId: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
-      userId: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
-    };
+  it("fetches one run's lifecycle state using the session cookie", async () => {
     const researchRunId = "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589";
     const run = {
       research_run_id: researchRunId,
@@ -91,17 +79,13 @@ describe("research run lookup API", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(getResearchRun(researchRunId, workspace)).resolves.toEqual(run);
+    await expect(getResearchRun(researchRunId)).resolves.toEqual(run);
     expect(fetchMock).toHaveBeenCalledWith(`/api/research-runs/${researchRunId}`, {
-      headers: {
-        "X-Tenant-ID": workspace.tenantId,
-        "X-User-ID": workspace.userId,
-      },
+      credentials: "include",
     });
   });
 
   it("surfaces a not-found run as a ResearchApiError", async () => {
-    const workspace = { tenantId: "5b376e3d-3983-44f0-b9ad-17917bb2e901", userId: "" };
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -112,7 +96,7 @@ describe("research run lookup API", () => {
       ),
     );
 
-    await expect(getResearchRun("missing-id", workspace)).rejects.toMatchObject({
+    await expect(getResearchRun("missing-id")).rejects.toMatchObject({
       message: "Research run was not found.",
       status: 404,
     });
@@ -120,14 +104,10 @@ describe("research run lookup API", () => {
 });
 
 describe("private knowledge API", () => {
-  const workspace = {
-    tenantId: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
-    userId: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
-  };
   const document = {
     id: "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589",
-    tenant_id: workspace.tenantId,
-    uploaded_by_user_id: workspace.userId,
+    tenant_id: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
+    uploaded_by_user_id: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
     filename: "architecture.md",
     media_type: "text/markdown" as const,
     byte_size: 128,
@@ -139,7 +119,7 @@ describe("private knowledge API", () => {
     indexed_at: "2026-08-05T12:00:00Z",
   };
 
-  it("lists documents with tenant and user scope", async () => {
+  it("lists documents using the session cookie", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(JSON.stringify([document]), {
         status: 200,
@@ -148,12 +128,9 @@ describe("private knowledge API", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(listKnowledgeDocuments(workspace)).resolves.toEqual([document]);
+    await expect(listKnowledgeDocuments()).resolves.toEqual([document]);
     expect(fetchMock).toHaveBeenCalledWith("/api/documents", {
-      headers: {
-        "X-Tenant-ID": workspace.tenantId,
-        "X-User-ID": workspace.userId,
-      },
+      credentials: "include",
     });
   });
 
@@ -169,14 +146,11 @@ describe("private knowledge API", () => {
       type: "text/markdown",
     });
 
-    await uploadKnowledgeDocument(file, workspace);
+    await uploadKnowledgeDocument(file);
 
     const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
     expect(request.method).toBe("POST");
-    expect(request.headers).toEqual({
-      "X-Tenant-ID": workspace.tenantId,
-      "X-User-ID": workspace.userId,
-    });
+    expect(request.credentials).toBe("include");
     expect(request.body).toBeInstanceOf(FormData);
     expect((request.body as FormData).get("file")).toBe(file);
   });
@@ -185,14 +159,11 @@ describe("private knowledge API", () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await deleteKnowledgeDocument(document.id, workspace);
+    await deleteKnowledgeDocument(document.id);
 
     expect(fetchMock).toHaveBeenCalledWith(`/api/documents/${document.id}`, {
       method: "DELETE",
-      headers: {
-        "X-Tenant-ID": workspace.tenantId,
-        "X-User-ID": workspace.userId,
-      },
+      credentials: "include",
     });
   });
 });

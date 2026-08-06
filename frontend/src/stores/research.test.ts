@@ -2,18 +2,18 @@ import { flushPromises } from "@vue/test-utils";
 import { createPinia, setActivePinia } from "pinia";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { useAuthStore } from "./auth";
 import { useResearchStore } from "./research";
-import { useWorkspaceStore } from "./workspace";
 
-const workspace = {
-  tenantId: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
-  userId: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
+const identity = {
+  user: { id: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d", email: "engineer@acme.example", display_name: "ACME Engineer" },
+  tenant: { id: "5b376e3d-3983-44f0-b9ad-17917bb2e901", name: "ACME Platform", slug: "acme-platform-a1b2c3d4" },
 };
 
 beforeEach(() => {
   setActivePinia(createPinia());
   localStorage.clear();
-  useWorkspaceStore().setForPreview(workspace);
+  useAuthStore().setForPreview(identity);
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -26,8 +26,11 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 describe("submitResearch", () => {
-  it("does nothing when the workspace is not configured", async () => {
-    useWorkspaceStore().setForPreview({ tenantId: "", userId: "" });
+  it("does nothing when not authenticated", async () => {
+    const authStore = useAuthStore();
+    authStore.user = null;
+    authStore.tenant = null;
+    authStore.status = "unauthenticated";
     const store = useResearchStore();
     store.query = "Compare HTTP/2 and HTTP/3.";
     const fetchMock = vi.fn();
@@ -37,7 +40,7 @@ describe("submitResearch", () => {
 
     expect(run).toBeNull();
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(store.announcement).toContain("Connect a tenant workspace");
+    expect(store.announcement).toContain("Sign in");
   });
 
   it("creates a job, records the run, and clears the composer", async () => {

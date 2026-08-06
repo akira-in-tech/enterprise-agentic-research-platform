@@ -19,7 +19,7 @@ import type {
   ResearchReport,
   UserFacingProvider,
 } from "../types/research";
-import { useWorkspaceStore } from "./workspace";
+import { useAuthStore } from "./auth";
 
 export const useResearchStore = defineStore("research", () => {
   const query = ref("");
@@ -49,9 +49,17 @@ export const useResearchStore = defineStore("research", () => {
       query.value =
         "Evaluate event streaming architectures for a real-time fraud detection platform handling 200K events/sec.";
       apiStatus.value = "online";
-      useWorkspaceStore().setForPreview({
-        tenantId: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
-        userId: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
+      useAuthStore().setForPreview({
+        user: {
+          id: "6e79df41-3ac0-4527-9c07-167ad4f3fa0d",
+          email: "preview@acme.example",
+          display_name: "Preview User",
+        },
+        tenant: {
+          id: "5b376e3d-3983-44f0-b9ad-17917bb2e901",
+          name: "Acme Analytics",
+          slug: "acme-analytics-preview",
+        },
       });
       return;
     }
@@ -114,9 +122,8 @@ export const useResearchStore = defineStore("research", () => {
     const normalizedQuery = query.value.trim();
     if (!normalizedQuery || submitting.value) return null;
 
-    const workspaceStore = useWorkspaceStore();
-    if (!workspaceStore.isConfigured()) {
-      announcement.value = "Connect a tenant workspace before starting research.";
+    if (!useAuthStore().isAuthenticated()) {
+      announcement.value = "Sign in before starting research.";
       return null;
     }
 
@@ -125,7 +132,7 @@ export const useResearchStore = defineStore("research", () => {
     announcement.value = "Submitting research request.";
 
     try {
-      const job = await createResearchJob(normalizedQuery, provider.value, workspaceStore.workspace);
+      const job = await createResearchJob(normalizedQuery, provider.value);
       const run: RecentResearchRun = {
         id: job.research_run_id,
         query: normalizedQuery,
@@ -171,7 +178,6 @@ export const useResearchStore = defineStore("research", () => {
     if (!eventsUrl) return;
 
     let run = initialRun;
-    const workspaceStore = useWorkspaceStore();
     progressAbortController?.abort();
     const controller = new AbortController();
     progressAbortController = controller;
@@ -179,7 +185,6 @@ export const useResearchStore = defineStore("research", () => {
     try {
       await streamResearchProgress(
         eventsUrl,
-        workspaceStore.workspace,
         (record) => {
           progress.value = record;
           const updated: RecentResearchRun = {
@@ -222,9 +227,8 @@ export const useResearchStore = defineStore("research", () => {
 
     loadingReport.value = true;
     operationalIssue.value = null;
-    const workspaceStore = useWorkspaceStore();
     try {
-      report.value = await getResearchReport(run.reportUrl, workspaceStore.workspace);
+      report.value = await getResearchReport(run.reportUrl);
       replaceRun({
         ...run,
         status: "completed",
@@ -260,9 +264,8 @@ export const useResearchStore = defineStore("research", () => {
   async function cancelRun(run: RecentResearchRun): Promise<void> {
     if (run.status !== "queued" && run.status !== "running") return;
 
-    const workspaceStore = useWorkspaceStore();
     try {
-      await cancelResearchJob(run.id, workspaceStore.workspace);
+      await cancelResearchJob(run.id);
       stopObserving();
       const updatedAt = new Date().toISOString();
       const message = "Research workflow was cancelled.";

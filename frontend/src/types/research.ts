@@ -31,11 +31,6 @@ export interface OperationalIssue {
   actionLabel?: string;
 }
 
-export interface WorkspaceContext {
-  tenantId: string;
-  userId: string;
-}
-
 export interface AuthUser {
   id: string;
   email: string;
