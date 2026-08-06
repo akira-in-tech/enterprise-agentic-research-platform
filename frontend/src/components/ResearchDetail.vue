@@ -228,12 +228,13 @@ function handleReportContentClick(event: MouseEvent): void {
             {{ reportApproved ? "Verified" : "Revision required" }}
           </span>
         </div>
-        <!-- eslint-disable-next-line vue/no-v-html -- renderedReportHtml is DOMPurify-sanitized above -->
+        <!-- eslint-disable vue/no-v-html -- renderedReportHtml is DOMPurify-sanitized above -->
         <div
           class="report-content"
           @click="handleReportContentClick"
           v-html="renderedReportHtml"
         ></div>
+        <!-- eslint-enable vue/no-v-html -->
       </article>
 
       <section class="quality-panel" aria-labelledby="quality-heading">
