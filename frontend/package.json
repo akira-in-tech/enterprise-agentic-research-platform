@@ -18,6 +18,8 @@
     "@fontsource-variable/inter": "latest",
     "@phosphor-icons/vue": "latest",
     "@tanstack/vue-query": "^5.101.4",
+    "dompurify": "^3.4.13",
+    "marked": "^18.0.9",
     "pinia": "^4.0.2",
     "vue": "latest",
     "vue-router": "^5.2.0"

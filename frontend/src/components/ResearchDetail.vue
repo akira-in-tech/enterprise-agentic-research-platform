@@ -11,7 +11,9 @@ import {
   PhPlugs,
   PhWarningCircle,
 } from "@phosphor-icons/vue";
-import { computed, ref, watch } from "vue";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
+import { computed, nextTick, ref, watch } from "vue";
 
 import type {
   OperationalIssue,
@@ -23,6 +25,8 @@ import type {
 } from "../types/research";
 import AgentWorkflow from "./AgentWorkflow.vue";
 import OperationalNotice from "./OperationalNotice.vue";
+
+const CITATION_PATTERN = /\[(WEB|PRIVATE|MCP)-([0-9A-F]{16})\]/g;
 
 const props = defineProps<{
   run: RecentResearchRun;
@@ -83,6 +87,57 @@ function sourceIcon(source: ResearchReportSource): typeof PhGlobe {
 
 function sourceScore(source: ResearchReportSource): string {
   return `${Math.round(source.overall_score * 100)}%`;
+}
+
+const sourceIndexById = computed(() => {
+  const index = new Map<string, number>();
+  for (const [position, source] of (props.report?.sources ?? []).entries()) {
+    index.set(source.source_id, position + 1);
+  }
+  return index;
+});
+
+const renderedReportHtml = computed(() => {
+  if (!props.report) return "";
+
+  const withCitationLinks = props.report.content.replace(CITATION_PATTERN, (match, origin, hex) => {
+    const sourceId = `${origin}-${hex}`;
+    const displayNumber = sourceIndexById.value.get(sourceId);
+
+    if (displayNumber === undefined) return match;
+
+    return `<sup class="citation-link"><a href="#source-${sourceId}" data-source-id="${sourceId}">${displayNumber}</a></sup>`;
+  });
+
+  return DOMPurify.sanitize(marked.parse(withCitationLinks, { async: false }) as string);
+});
+
+const highlightedSourceId = ref<string | null>(null);
+let highlightTimeout: ReturnType<typeof setTimeout> | undefined;
+
+function focusSource(sourceId: string): void {
+  evidenceOpen.value = true;
+  highlightedSourceId.value = sourceId;
+  clearTimeout(highlightTimeout);
+  highlightTimeout = setTimeout(() => {
+    highlightedSourceId.value = null;
+  }, 2000);
+
+  void nextTick(() => {
+    document
+      .getElementById(`source-${sourceId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  });
+}
+
+function handleReportContentClick(event: MouseEvent): void {
+  const link = (event.target as HTMLElement).closest<HTMLElement>("a[data-source-id]");
+  const sourceId = link?.dataset.sourceId;
+
+  if (!sourceId) return;
+
+  event.preventDefault();
+  focusSource(sourceId);
 }
 </script>
 
@@ -173,7 +228,12 @@ function sourceScore(source: ResearchReportSource): string {
             {{ reportApproved ? "Verified" : "Revision required" }}
           </span>
         </div>
-        <div class="report-content">{{ report.content }}</div>
+        <!-- eslint-disable-next-line vue/no-v-html -- renderedReportHtml is DOMPurify-sanitized above -->
+        <div
+          class="report-content"
+          @click="handleReportContentClick"
+          v-html="renderedReportHtml"
+        ></div>
       </article>
 
       <section class="quality-panel" aria-labelledby="quality-heading">
@@ -227,8 +287,10 @@ function sourceScore(source: ResearchReportSource): string {
           <div class="source-list">
             <a
               v-for="source in report.sources"
+              :id="`source-${source.source_id}`"
               :key="source.source_id"
               class="source-card"
+              :class="{ 'source-card-highlighted': source.source_id === highlightedSourceId }"
               :href="source.locator"
               target="_blank"
               rel="noreferrer"

@@ -10,6 +10,11 @@ config.global.plugins.push([
   { queryClientConfig: { defaultOptions: { queries: { retry: false } } } },
 ]);
 
+// jsdom has no layout engine, so it never implements scroll methods.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => {};
+}
+
 afterEach(() => {
   document.body.innerHTML = "";
   localStorage.clear();

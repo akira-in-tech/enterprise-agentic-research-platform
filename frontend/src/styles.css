@@ -1599,10 +1599,86 @@ button:disabled {
   max-width: 760px;
   padding-top: 30px;
   color: var(--ink);
-  white-space: pre-wrap;
   font-family: Georgia, "Times New Roman", serif;
   font-size: 18px;
   line-height: 1.82;
+}
+
+.report-content :first-child {
+  margin-top: 0;
+}
+
+.report-content :last-child {
+  margin-bottom: 0;
+}
+
+.report-content h1,
+.report-content h2,
+.report-content h3 {
+  margin: 1.6em 0 0.6em;
+  font-family: inherit;
+  line-height: 1.3;
+}
+
+.report-content h1 {
+  font-size: 1.5em;
+}
+
+.report-content h2 {
+  font-size: 1.25em;
+}
+
+.report-content h3 {
+  font-size: 1.1em;
+}
+
+.report-content p {
+  margin: 0 0 1em;
+}
+
+.report-content ul,
+.report-content ol {
+  margin: 0 0 1em;
+  padding-left: 1.4em;
+}
+
+.report-content li {
+  margin-bottom: 0.4em;
+}
+
+.report-content strong {
+  font-weight: 700;
+}
+
+.report-content blockquote {
+  margin: 0 0 1em;
+  padding-left: 1em;
+  color: var(--ink-soft);
+  border-left: 3px solid var(--line-strong);
+}
+
+.report-content code {
+  padding: 0.1em 0.35em;
+  background: var(--surface-muted);
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85em;
+}
+
+.citation-link {
+  font-size: 0.62em;
+  line-height: 1;
+}
+
+.citation-link a {
+  padding: 0 0.15em;
+  color: var(--accent-strong);
+  text-decoration: none;
+  font-weight: 700;
+}
+
+.citation-link a:hover {
+  text-decoration: underline;
 }
 
 .quality-panel {
@@ -1700,6 +1776,15 @@ button:disabled {
 .source-card:hover {
   color: var(--ink);
   border-color: var(--line-strong);
+}
+
+.source-card-highlighted {
+  color: var(--ink);
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
 }
 
 .source-copy {

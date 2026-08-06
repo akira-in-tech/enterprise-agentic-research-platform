@@ -1,7 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 
-import type { RecentResearchRun, ResearchReport } from "../types/research";
+import type { RecentResearchRun, ResearchReport, ResearchReportSource } from "../types/research";
 import ResearchDetail from "./ResearchDetail.vue";
 
 const run: RecentResearchRun = {
@@ -11,6 +11,19 @@ const run: RecentResearchRun = {
   status: "completed",
   message: "Report ready",
   updatedAt: "2026-08-01T12:00:00Z",
+};
+
+const baseSource: ResearchReportSource = {
+  source_id: "source-1",
+  origin: "web",
+  title: "Transactional outbox reference",
+  locator: "https://example.com/outbox",
+  provider: "tavily",
+  relevance: 0.98,
+  content_quality: 0.95,
+  traceability: 1,
+  overall_score: 0.97,
+  cited: true,
 };
 
 const report: ResearchReport = {
@@ -24,20 +37,7 @@ const report: ResearchReport = {
   reflection_reasons: [],
   reflection_attempts: 1,
   created_at: "2026-08-01T12:00:00Z",
-  sources: [
-    {
-      source_id: "source-1",
-      origin: "web",
-      title: "Transactional outbox reference",
-      locator: "https://example.com/outbox",
-      provider: "tavily",
-      relevance: 0.98,
-      content_quality: 0.95,
-      traceability: 1,
-      overall_score: 0.97,
-      cited: true,
-    },
-  ],
+  sources: [baseSource],
 };
 
 describe("ResearchDetail", () => {
@@ -61,6 +61,75 @@ describe("ResearchDetail", () => {
     await toggle.trigger("click");
     expect(toggle.attributes("aria-expanded")).toBe("true");
     expect(wrapper.get("#evidence-panel").text()).toContain("Transactional outbox reference");
+  });
+
+  it("renders report markdown as real HTML instead of raw source", () => {
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report: {
+          ...report,
+          content: "# Outbox pattern\n\nUse an outbox when **atomic** writes matter most.",
+        },
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    const content = wrapper.get(".report-content");
+    expect(content.find("h1").text()).toBe("Outbox pattern");
+    expect(content.find("strong").text()).toBe("atomic");
+    expect(content.html()).not.toContain("# Outbox pattern");
+  });
+
+  it("turns citation markers into numbered links that jump to their source", async () => {
+    const citedReport: ResearchReport = {
+      ...report,
+      content: "Outbox writes stay atomic [WEB-0123456789ABCDEF].",
+      sources: [{ ...baseSource, source_id: "WEB-0123456789ABCDEF" }],
+    };
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report: citedReport,
+        loadingReport: false,
+        operationalIssue: null,
+      },
+      attachTo: document.body,
+    });
+
+    const citationLink = wrapper.get('a[data-source-id="WEB-0123456789ABCDEF"]');
+    expect(citationLink.text()).toBe("1");
+
+    expect(wrapper.find("#evidence-panel").exists()).toBe(false);
+    await citationLink.trigger("click");
+
+    expect(wrapper.get("#evidence-panel").attributes("id")).toBe("evidence-panel");
+    expect(wrapper.find("#source-WEB-0123456789ABCDEF.source-card-highlighted").exists()).toBe(
+      true,
+    );
+
+    wrapper.unmount();
+  });
+
+  it("leaves an unmatched citation marker as plain text", () => {
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report: {
+          ...report,
+          content: "This claim has no matching source [WEB-FFFFFFFFFFFFFFFF].",
+        },
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    expect(wrapper.get(".report-content").text()).toContain("[WEB-FFFFFFFFFFFFFFFF]");
+    expect(wrapper.find("a[data-source-id]").exists()).toBe(false);
   });
 
   it("surfaces citation revision as a first-class report state", () => {
