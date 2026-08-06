@@ -12,7 +12,7 @@ def test_factory_creates_anthropic_provider(
     monkeypatch.setattr(
         factory,
         "AnthropicClient",
-        lambda: expected_client,
+        lambda **_: expected_client,
     )
 
     result = factory.create_llm_client("anthropic")
@@ -59,7 +59,7 @@ def test_factory_accepts_user_facing_aliases(
     monkeypatch.setattr(
         factory,
         constructor_name,
-        lambda: expected_client,
+        lambda **_: expected_client,
     )
 
     result = factory.create_llm_client(provider)

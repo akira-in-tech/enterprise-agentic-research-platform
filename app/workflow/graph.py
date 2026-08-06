@@ -15,6 +15,7 @@ from app.agents.planner import PlannerAgent
 from app.agents.reflection import ReflectionAgent
 from app.agents.web_scout import WebScoutAgent, WebScoutResult
 from app.agents.writer import WriterAgent
+from app.core.circuit_breaker import CircuitBreaker
 from app.schemas.evidence import (
     CitationAudit,
     EvidenceScore,
@@ -957,7 +958,10 @@ def build_research_graph_for_client(
     intent_router = IntentRouter(llm_client)
     direct_answer_agent = DirectAnswerAgent(llm_client)
     planner = PlannerAgent(llm_client)
-    search_executor = SearchExecutor(tavily_client)
+    search_executor = SearchExecutor(
+        tavily_client,
+        circuit_breaker=CircuitBreaker(),
+    )
     web_scout = WebScoutAgent(search_executor)
     evidence_scorer = EvidenceScorer()
     evidence_judge = EvidenceJudgeAgent(evidence_scorer, llm_client)

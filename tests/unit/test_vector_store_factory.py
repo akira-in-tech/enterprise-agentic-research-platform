@@ -41,6 +41,7 @@ def test_factory_creates_milvus_provider(
     def create_milvus_store(
         *,
         dimensions: int,
+        circuit_breaker: object = None,
     ) -> object:
         captured_dimensions.append(dimensions)
         return expected_store
@@ -73,7 +74,7 @@ def test_factory_uses_provider_from_settings(
     monkeypatch.setattr(
         factory,
         "MilvusVectorStore",
-        lambda *, dimensions: expected_store,
+        lambda *, dimensions, circuit_breaker=None: expected_store,
     )
 
     result = factory.create_vector_store(

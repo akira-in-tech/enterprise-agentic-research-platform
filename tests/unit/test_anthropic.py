@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock
 import pytest
 from anthropic.types import TextBlock
 
+from app.core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
+from app.schemas.intent import IntentDecision
 from app.services.llm.anthropic import AnthropicClient
 
 
@@ -82,6 +84,72 @@ async def test_generate_text_raises_when_no_text_is_returned(
 
     with pytest.raises(RuntimeError, match="Claude returned no text content"):
         await client.generate_text("Return a response.")
+
+
+@pytest.mark.anyio
+async def test_generate_text_opens_the_circuit_after_repeated_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    breaker = CircuitBreaker(failure_threshold=2, reset_timeout_seconds=60)
+    client = AnthropicClient(
+        api_key="test-api-key",
+        model="test-model",
+        circuit_breaker=breaker,
+    )
+    create_message = AsyncMock(side_effect=RuntimeError("Anthropic is unavailable."))
+    monkeypatch.setattr(client._client.messages, "create", create_message)
+
+    for _ in range(2):
+        with pytest.raises(RuntimeError, match="Anthropic is unavailable"):
+            await client.generate_text("Confirm the API works.")
+
+    with pytest.raises(CircuitBreakerOpenError):
+        await client.generate_text("Confirm the API works.")
+
+    # The third call was rejected locally by the breaker, not sent to Anthropic.
+    assert create_message.await_count == 2
+
+
+@pytest.mark.anyio
+async def test_generate_structured_opens_the_circuit_after_repeated_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    breaker = CircuitBreaker(failure_threshold=1, reset_timeout_seconds=60)
+    client = AnthropicClient(
+        api_key="test-api-key",
+        model="test-model",
+        circuit_breaker=breaker,
+    )
+    parse_message = AsyncMock(side_effect=RuntimeError("Anthropic is unavailable."))
+    monkeypatch.setattr(client._client.messages, "parse", parse_message)
+
+    with pytest.raises(RuntimeError, match="Anthropic is unavailable"):
+        await client.generate_structured("Classify this.", IntentDecision)
+
+    with pytest.raises(CircuitBreakerOpenError):
+        await client.generate_structured("Classify this.", IntentDecision)
+
+    assert parse_message.await_count == 1
+
+
+@pytest.mark.anyio
+async def test_generate_structured_succeeds_without_a_configured_breaker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = AnthropicClient(
+        api_key="test-api-key",
+        model="test-model",
+    )
+    decision = IntentDecision(route="direct", reason="Stable knowledge is sufficient.")
+    monkeypatch.setattr(
+        client._client.messages,
+        "parse",
+        AsyncMock(return_value=SimpleNamespace(parsed_output=decision)),
+    )
+
+    result = await client.generate_structured("Classify this.", IntentDecision)
+
+    assert result == decision
 
 
 @pytest.mark.anyio

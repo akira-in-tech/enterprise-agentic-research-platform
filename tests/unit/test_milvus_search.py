@@ -2,6 +2,7 @@ import asyncio
 
 import pytest
 
+from app.core.circuit_breaker import CircuitBreaker, CircuitBreakerOpenError
 from app.schemas.document import DocumentChunk
 from app.services.knowledge.chunking import (
     chunk_document,
@@ -21,8 +22,10 @@ class FakeAsyncMilvusClient:
         self,
         *,
         search_results: list[list[dict[str, object]]],
+        search_error: Exception | None = None,
     ) -> None:
         self.search_results = search_results
+        self.search_error = search_error
         self.has_collection_calls: list[str] = []
         self.load_collection_calls: list[str] = []
         self.search_calls: list[dict[str, object]] = []
@@ -83,6 +86,10 @@ class FakeAsyncMilvusClient:
                 "anns_field": anns_field,
             }
         )
+
+        if self.search_error is not None:
+            raise self.search_error
+
         return self.search_results
 
     async def delete(
@@ -385,3 +392,37 @@ def test_search_rejects_malformed_milvus_hit() -> None:
                 query_vector=(1.0, 0.0),
             )
         )
+
+
+def test_search_opens_the_circuit_after_repeated_failures() -> None:
+    client = FakeAsyncMilvusClient(
+        search_results=[],
+        search_error=RuntimeError("Milvus is unavailable."),
+    )
+    breaker = CircuitBreaker(failure_threshold=1, reset_timeout_seconds=60)
+    store = MilvusVectorStore(
+        dimensions=2,
+        collection_name="private_chunks_test",
+        uri="http://milvus.test:19530",
+        client=client,
+        circuit_breaker=breaker,
+    )
+
+    with pytest.raises(RuntimeError, match="Milvus is unavailable"):
+        asyncio.run(
+            store.search(
+                tenant_id="tenant-acme",
+                query_vector=(1.0, 0.0),
+            )
+        )
+
+    with pytest.raises(CircuitBreakerOpenError):
+        asyncio.run(
+            store.search(
+                tenant_id="tenant-acme",
+                query_vector=(1.0, 0.0),
+            )
+        )
+
+    # The second search never reached the client: rejected locally by the breaker.
+    assert len(client.search_calls) == 1

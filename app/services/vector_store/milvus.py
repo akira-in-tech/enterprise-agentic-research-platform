@@ -10,6 +10,7 @@ from pymilvus import (  # type: ignore[import-untyped]
     DataType,
 )
 
+from app.core.circuit_breaker import CircuitBreaker
 from app.core.config import settings
 from app.schemas.document import DocumentChunk
 from app.services.vector_store.base import (
@@ -83,6 +84,7 @@ class MilvusVectorStore:
         uri: str | None = None,
         token: str | None = None,
         client: AsyncMilvusClientProtocol | None = None,
+        circuit_breaker: CircuitBreaker | None = None,
     ) -> None:
         selected_dimensions = (
             dimensions if dimensions is not None else settings.ollama_embedding_dimensions
@@ -108,6 +110,7 @@ class MilvusVectorStore:
         self._collection_name = selected_collection
         self._initialized = False
         self._initialize_lock = asyncio.Lock()
+        self._circuit_breaker = circuit_breaker
 
         if client is None:
             raw_client = AsyncMilvusClient(
@@ -201,26 +204,33 @@ class MilvusVectorStore:
 
         await self.initialize()
 
-        search_results = await self._client.search(
-            self._collection_name,
-            data=[list(validated_query)],
-            filter=(f"tenant_id == {json.dumps(normalized_tenant_id, ensure_ascii=False)}"),
-            limit=limit,
-            output_fields=[
-                "document_id",
-                "tenant_id",
-                "filename",
-                "media_type",
-                "position",
-                "word_start",
-                "word_end",
-                "content",
-            ],
-            search_params={
-                "metric_type": "COSINE",
-                "params": {},
-            },
-            anns_field="embedding",
+        async def run_search() -> list[list[dict[str, object]]]:
+            return await self._client.search(
+                self._collection_name,
+                data=[list(validated_query)],
+                filter=(f"tenant_id == {json.dumps(normalized_tenant_id, ensure_ascii=False)}"),
+                limit=limit,
+                output_fields=[
+                    "document_id",
+                    "tenant_id",
+                    "filename",
+                    "media_type",
+                    "position",
+                    "word_start",
+                    "word_end",
+                    "content",
+                ],
+                search_params={
+                    "metric_type": "COSINE",
+                    "params": {},
+                },
+                anns_field="embedding",
+            )
+
+        search_results = (
+            await self._circuit_breaker.call(run_search)
+            if self._circuit_breaker is not None
+            else await run_search()
         )
 
         if not search_results:

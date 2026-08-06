@@ -1,3 +1,4 @@
+from app.core.circuit_breaker import CircuitBreaker
 from app.core.config import settings
 from app.services.vector_store.base import VectorStore
 from app.services.vector_store.memory import (
@@ -29,6 +30,7 @@ def create_vector_store(
     if selected_provider == "milvus":
         return MilvusVectorStore(
             dimensions=selected_dimensions,
+            circuit_breaker=CircuitBreaker(),
         )
 
     raise ValueError(
