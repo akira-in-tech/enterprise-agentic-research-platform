@@ -56,7 +56,7 @@ class RecordingLLMClient:
         max_tokens: int = 256,
     ) -> StructuredModel:
         self.prompts.append(prompt)
-        assert max_tokens in {2_000, 2_500, 4_000}
+        assert max_tokens in {2_000, 2_500, 8_000}
         return cast(StructuredModel, self.structured[output_model])
 
 
@@ -240,6 +240,47 @@ async def test_analyst_returns_source_bound_structured_findings() -> None:
     assert result == analysis
     assert "untrusted retrieved data" in llm.prompts[0]
     assert "<<<UNTRUSTED_SOURCE_CONTENT_START>>>" in llm.prompts[0]
+
+
+@pytest.mark.anyio
+async def test_analyst_falls_back_when_llm_invents_a_source_id() -> None:
+    source = EvidenceSource(
+        source_id="WEB-0123456789ABCDEF",
+        origin="web",
+        title="Queue delivery",
+        locator="https://example.com/queue",
+        content="The queue uses at-least-once delivery.",
+        provider="fixture",
+    )
+    invalid_analysis = ResearchAnalysis(
+        summary="Invented finding.",
+        findings=[
+            ResearchFinding(
+                claim="Invented claim.",
+                confidence="high",
+                source_ids=["WEB-FFFFFFFFFFFFFFFF"],
+            )
+        ],
+        needs_more_research=False,
+    )
+    llm = RecordingLLMClient(structured={ResearchAnalysis: invalid_analysis})
+
+    result = await AnalystAgent(llm).analyze(
+        query="Evaluate queue delivery",
+        sources=[source],
+        scores=[
+            EvidenceScore(
+                source_id=source.source_id,
+                relevance=1,
+                content_quality=0.5,
+                traceability=1,
+                overall=0.775,
+            )
+        ],
+    )
+
+    assert result.findings == []
+    assert result.needs_more_research is False
 
 
 @pytest.mark.anyio

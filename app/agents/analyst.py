@@ -1,4 +1,7 @@
+import logging
 from collections.abc import Sequence
+
+from pydantic import ValidationError
 
 from app.agents.prompting import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted_content
 from app.schemas.evidence import EvidenceScore, EvidenceSource, ReflectionDecision
@@ -6,6 +9,8 @@ from app.schemas.planner import ResearchPlan
 from app.schemas.workflow import ResearchAnalysis
 from app.services.evidence import select_top_evidence
 from app.services.llm.base import LLMClient
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_EVIDENCE_SOURCES = 20
 
@@ -55,23 +60,39 @@ class AnalystAgent:
             f"Research question: {query}\n"
             f"Evidence: {evidence}"
         )
-        analysis = await self._llm_client.generate_structured(
-            prompt,
-            ResearchAnalysis,
-            max_tokens=4_000,
-        )
-        known_source_ids = {source.source_id for source in sources}
-        cited_source_ids = {
-            source_id for finding in analysis.findings for source_id in finding.source_ids
-        }
-        unknown_source_ids = cited_source_ids - known_source_ids
-
-        if unknown_source_ids:
-            raise RuntimeError(
-                f"Analyst referenced unknown source IDs: {sorted(unknown_source_ids)}"
+        try:
+            analysis = await self._llm_client.generate_structured(
+                prompt,
+                ResearchAnalysis,
+                max_tokens=8_000,
             )
+            known_source_ids = {source.source_id for source in sources}
+            cited_source_ids = {
+                source_id for finding in analysis.findings for source_id in finding.source_ids
+            }
+            unknown_source_ids = cited_source_ids - known_source_ids
 
-        return analysis
+            if unknown_source_ids:
+                raise RuntimeError(
+                    f"Analyst referenced unknown source IDs: {sorted(unknown_source_ids)}"
+                )
+
+            return analysis
+        except (ValidationError, ValueError, RuntimeError):
+            logger.warning(
+                "Analyst structured analysis failed; falling back to an empty analysis "
+                "so the Writer can still work directly from the evidence pool.",
+                exc_info=True,
+            )
+            return ResearchAnalysis(
+                summary=(
+                    "Structured analysis was not available for this run; "
+                    "the report below is written directly from the evidence pool."
+                ),
+                findings=[],
+                needs_more_research=False,
+                gaps=[],
+            )
 
     async def write_report(
         self,
