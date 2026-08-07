@@ -411,7 +411,7 @@ def build_research_graph(
 ) -> ResearchGraph:
     """Build and compile the answering and research workflow."""
 
-    graph_builder = StateGraph(ResearchState)
+    graph_builder = StateGraph[ResearchState, None, ResearchState, ResearchState](ResearchState)
 
     graph_builder.add_node(  # type: ignore[call-overload]
         "initialize",
@@ -914,7 +914,7 @@ def build_eight_agent_research_graph(
             "status": "research_plan_ready",
         }
 
-    graph_builder = StateGraph(ResearchState)
+    graph_builder = StateGraph[ResearchState, None, ResearchState, ResearchState](ResearchState)
     graph_builder.add_node("initialize", initialize_node)  # type: ignore[call-overload]
     graph_builder.add_node("intent_router", build_route_node(classifier))  # type: ignore[call-overload]
     graph_builder.add_node(  # type: ignore[call-overload]
