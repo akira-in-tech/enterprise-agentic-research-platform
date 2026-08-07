@@ -56,7 +56,7 @@ class OllamaClient:
         self._model = settings.ollama_model
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
-            timeout=60.0,
+            timeout=300.0,
         )
 
     async def generate_text(
@@ -79,7 +79,7 @@ class OllamaClient:
                     "model": self._model,
                     "prompt": normalized_prompt,
                     "stream": False,
-                    "think": False,
+                    "think": True,
                     "options": {
                         "num_predict": max_tokens,
                     },
@@ -131,7 +131,7 @@ class OllamaClient:
                     "model": self._model,
                     "prompt": structured_prompt,
                     "stream": False,
-                    "think": False,
+                    "think": True,
                     "format": grammar_schema,
                     "options": {
                         "num_predict": max_tokens,

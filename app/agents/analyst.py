@@ -58,7 +58,7 @@ class AnalystAgent:
         analysis = await self._llm_client.generate_structured(
             prompt,
             ResearchAnalysis,
-            max_tokens=1_500,
+            max_tokens=4_000,
         )
         known_source_ids = {source.source_id for source in sources}
         cited_source_ids = {
@@ -143,7 +143,7 @@ class AnalystAgent:
         report = (
             await self._llm_client.generate_text(
                 prompt,
-                max_tokens=1_500,
+                max_tokens=4_000,
             )
         ).strip()
 

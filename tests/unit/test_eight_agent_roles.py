@@ -45,7 +45,7 @@ class RecordingLLMClient:
         max_tokens: int = 64,
     ) -> str:
         self.prompts.append(prompt)
-        assert max_tokens == 1_500
+        assert max_tokens == 4_500
         return self.text
 
     async def generate_structured(
@@ -56,7 +56,7 @@ class RecordingLLMClient:
         max_tokens: int = 256,
     ) -> StructuredModel:
         self.prompts.append(prompt)
-        assert max_tokens in {1_000, 1_500}
+        assert max_tokens in {2_000, 2_500, 4_000}
         return cast(StructuredModel, self.structured[output_model])
 
 

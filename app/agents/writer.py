@@ -114,7 +114,7 @@ class WriterAgent:
         report = (
             await self._llm_client.generate_text(
                 prompt,
-                max_tokens=1_500,
+                max_tokens=4_500,
             )
         ).strip()
 

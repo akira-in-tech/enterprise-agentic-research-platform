@@ -52,6 +52,58 @@ async def test_generate_text_succeeds_on_first_attempt() -> None:
 
 
 @pytest.mark.anyio
+async def test_generate_text_enables_thinking() -> None:
+    captured_bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_bodies.append(json.loads(request.content))
+        return httpx.Response(
+            200,
+            json={
+                "thinking": "epoll is a Linux syscall for scalable I/O event notification.",
+                "response": "epoll observes file descriptors.",
+            },
+        )
+
+    client = make_client(handler)
+
+    result = await client.generate_text("Explain epoll.")
+
+    assert result == "epoll observes file descriptors."
+    assert captured_bodies[0]["think"] is True
+
+
+@pytest.mark.anyio
+async def test_generate_text_raises_when_the_token_budget_is_spent_on_thinking() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={"thinking": "Still reasoning about the answer...", "response": ""},
+        )
+
+    client = make_client(handler)
+
+    with pytest.raises(RuntimeError, match="used the token budget for reasoning"):
+        await client.generate_text("Explain epoll.")
+
+
+@pytest.mark.anyio
+async def test_generate_structured_enables_thinking() -> None:
+    captured_bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"response": '{"text": "epoll"}'})
+
+    client = make_client(handler)
+
+    result = await client.generate_structured("Explain epoll.", Answer)
+
+    assert result == Answer(text="epoll")
+    assert captured_bodies[0]["think"] is True
+
+
+@pytest.mark.anyio
 async def test_generate_text_retries_a_connection_error() -> None:
     calls = 0
 

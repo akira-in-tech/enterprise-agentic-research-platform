@@ -18,7 +18,7 @@ class RecordingLLMClient:
 
     async def generate_text(self, prompt: str, *, max_tokens: int = 64) -> str:
         self.prompts.append(prompt)
-        assert max_tokens == 1_500
+        assert max_tokens == 4_000
         return self.response
 
     async def generate_structured(

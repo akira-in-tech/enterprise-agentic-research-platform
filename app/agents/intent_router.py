@@ -157,7 +157,7 @@ class IntentRouter:
             return await self._llm_client.generate_structured(
                 prompt,
                 IntentDecision,
-                max_tokens=200,
+                max_tokens=600,
             )
         except Exception:
             logger.exception("Claude intent classification failed; using rule fallback")

@@ -76,7 +76,7 @@ class EvidenceJudgeAgent:
                 candidate = await self._llm_client.generate_structured(
                     prompt,
                     EvidenceJudgment,
-                    max_tokens=1_000,
+                    max_tokens=2_500,
                 )
                 self._validate_source_references(candidate, sources)
                 judgment = candidate

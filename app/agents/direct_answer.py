@@ -40,7 +40,7 @@ class DirectAnswerAgent:
 
         response = await self._llm_client.generate_text(
             prompt,
-            max_tokens=500,
+            max_tokens=1_200,
         )
 
         answer = response.strip()

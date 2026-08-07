@@ -56,7 +56,7 @@ class PlannerAgent:
         plan = await self._llm_client.generate_structured(
             prompt,
             ResearchPlan,
-            max_tokens=1200,
+            max_tokens=2_500,
         )
 
         logger.info(

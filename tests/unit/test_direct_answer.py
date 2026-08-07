@@ -51,7 +51,7 @@ async def test_direct_answer_returns_llm_response() -> None:
 
     assert "User question: What is a mutex?" in prompt
     assert "Do not invent citations" in prompt
-    assert max_tokens == 500
+    assert max_tokens == 1_200
 
 
 @pytest.mark.anyio

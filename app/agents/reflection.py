@@ -70,7 +70,7 @@ class ReflectionAgent:
             result = await self._llm_client.generate_structured(
                 prompt,
                 ReflectionResult,
-                max_tokens=1_000,
+                max_tokens=2_000,
             )
         except Exception:
             return fallback
