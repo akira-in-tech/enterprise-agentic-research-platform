@@ -1,8 +1,5 @@
 from html import escape
 
-import markdown  # type: ignore[import-untyped]
-from weasyprint import HTML  # type: ignore[import-untyped]
-
 REPORT_PDF_CSS = """
 @page {
     size: A4;
@@ -100,7 +97,15 @@ def render_report_pdf(*, title: str, markdown_content: str) -> bytes:
     The ``footnotes`` extension is required for ``[^1]``-style footnote
     citations to be parsed into real superscript links; without it they
     would pass through as literal text.
+
+    ``markdown`` and ``weasyprint`` are imported lazily so that importing
+    this module (e.g. transitively through the API app) doesn't require
+    WeasyPrint's native libraries to be loadable unless a PDF is actually
+    being rendered.
     """
+
+    import markdown  # type: ignore[import-untyped]
+    from weasyprint import HTML  # type: ignore[import-untyped]
 
     html_body = markdown.markdown(
         markdown_content,

@@ -119,7 +119,7 @@ async def test_report_export_round_trips_a_live_postgres_report(tmp_path: Path) 
         storage_key = await export_service.export(
             tenant_id=tenant_id,
             research_run_id=result.research_run_id,
-            content=report.content,
+            content=report.content.encode("utf-8"),
         )
         retrieved_content = await export_service.retrieve(
             tenant_id=tenant_id,
@@ -127,9 +127,10 @@ async def test_report_export_round_trips_a_live_postgres_report(tmp_path: Path) 
         )
 
         assert storage_key == (
-            f"tenants/{tenant_id}/report-exports/{result.research_run_id}/report.md"
+            f"tenants/{tenant_id}/report-exports/{result.research_run_id}/report-numbered.md"
         )
-        assert retrieved_content == report.content == "HTTP report. [WEB-0123456789ABCDEF]"
+        assert retrieved_content.decode("utf-8") == report.content
+        assert report.content == "HTTP report. [WEB-0123456789ABCDEF]"
     finally:
         if tenant_id is not None:
             async with session_factory.begin() as session:

@@ -58,7 +58,11 @@ from app.services.knowledge import (
     KnowledgeDocumentNotReadyError,
     KnowledgeDocumentService,
 )
-from app.services.research.exports import ResearchReportExportService
+from app.services.research.exports import (
+    CitationStyle,
+    ExportFormat,
+    ResearchReportExportService,
+)
 from app.services.research.idempotency import (
     IdempotentResearchExecutionService,
     ResearchIdempotencyConflictError,
@@ -66,7 +70,9 @@ from app.services.research.idempotency import (
     ResearchIdempotencyUnavailableError,
 )
 from app.services.research.jobs import ResearchJobManager
+from app.services.research.pdf_rendering import render_report_pdf
 from app.services.research.postgres import PostgresResearchRunStore
+from app.services.research.report_rendering import render_report_content
 from app.services.research.reports import PostgresResearchReportStore
 from app.services.storage import DocumentNotFoundError, DocumentStorageError
 
@@ -295,6 +301,18 @@ async def get_research_run_report(
     return report
 
 
+def _report_title(*, content: str, research_run_id: UUID) -> str:
+    """Derive a document title from the report's first Markdown heading."""
+
+    for line in content.splitlines():
+        stripped = line.strip()
+
+        if stripped.startswith("# "):
+            return stripped.removeprefix("# ").strip()
+
+    return f"Research Report {research_run_id}"
+
+
 @router.post(
     "/{research_run_id}/report/export",
     response_model=ResearchReportExportResponse,
@@ -311,6 +329,8 @@ async def export_research_run_report(
         ResearchReportExportService,
         Depends(get_research_report_export_service),
     ],
+    format: ExportFormat = "markdown",
+    citation_style: CitationStyle = "numbered",
 ) -> ResearchReportExportResponse:
     """Store an immutable object-storage snapshot of one durable report."""
 
@@ -325,11 +345,27 @@ async def export_research_run_report(
             detail="Research report was not found.",
         )
 
+    rendered_content = render_report_content(
+        content=report.content,
+        sources=report.sources,
+        style=citation_style,
+    )
+
+    if format == "pdf":
+        content_bytes = render_report_pdf(
+            title=_report_title(content=report.content, research_run_id=research_run_id),
+            markdown_content=rendered_content,
+        )
+    else:
+        content_bytes = rendered_content.encode("utf-8")
+
     try:
         storage_key = await export_service.export(
             tenant_id=current_session.tenant_id,
             research_run_id=research_run_id,
-            content=report.content,
+            content=content_bytes,
+            format=format,
+            citation_style=citation_style,
         )
     except DocumentStorageError as error:
         raise HTTPException(
@@ -348,13 +384,17 @@ async def download_research_run_report_export(
         ResearchReportExportService,
         Depends(get_research_report_export_service),
     ],
+    format: ExportFormat = "markdown",
+    citation_style: CitationStyle = "numbered",
 ) -> Response:
-    """Download one previously exported report snapshot as Markdown."""
+    """Download one previously exported report snapshot."""
 
     try:
         content = await export_service.retrieve(
             tenant_id=current_session.tenant_id,
             research_run_id=research_run_id,
+            format=format,
+            citation_style=citation_style,
         )
     except DocumentNotFoundError as error:
         raise HTTPException(
@@ -367,11 +407,20 @@ async def download_research_run_report_export(
             detail="Report export storage is temporarily unavailable.",
         ) from error
 
+    if format == "pdf":
+        media_type = "application/pdf"
+        extension = "pdf"
+    else:
+        media_type = "text/markdown; charset=utf-8"
+        extension = "md"
+
     return Response(
         content=content,
-        media_type="text/markdown; charset=utf-8",
+        media_type=media_type,
         headers={
-            "Content-Disposition": f'attachment; filename="report-{research_run_id}.md"',
+            "Content-Disposition": (
+                f'attachment; filename="report-{research_run_id}-{citation_style}.{extension}"'
+            ),
         },
     )
 

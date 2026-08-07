@@ -21,7 +21,7 @@ from app.db.models import ResearchRun
 from app.main import app
 from app.schemas.evidence import CitationAudit, ReflectionDecision
 from app.schemas.progress import ResearchProgressRecord
-from app.schemas.report import ResearchReportResponse
+from app.schemas.report import ResearchReportResponse, ResearchReportSourceResponse
 from app.services.auth import ResolvedSession
 from app.services.cache import (
     CacheUnavailableError,
@@ -254,8 +254,8 @@ class FakeResearchReportExportService:
     def __init__(
         self,
         *,
-        storage_key: str = "tenants/example/report-exports/example/report.md",
-        content: str = "# Exported report",
+        storage_key: str = "tenants/example/report-exports/example/report-numbered.md",
+        content: bytes = b"# Exported report",
         export_error: Exception | None = None,
         retrieve_error: Exception | None = None,
     ) -> None:
@@ -264,20 +264,24 @@ class FakeResearchReportExportService:
         self.export_error = export_error
         self.retrieve_error = retrieve_error
         self.export_calls: list[dict[str, object]] = []
-        self.retrieve_calls: list[tuple[UUID, UUID]] = []
+        self.retrieve_calls: list[dict[str, object]] = []
 
     async def export(
         self,
         *,
         tenant_id: UUID,
         research_run_id: UUID,
-        content: str,
+        content: bytes,
+        format: str = "markdown",
+        citation_style: str = "numbered",
     ) -> str:
         self.export_calls.append(
             {
                 "tenant_id": tenant_id,
                 "research_run_id": research_run_id,
                 "content": content,
+                "format": format,
+                "citation_style": citation_style,
             }
         )
         if self.export_error is not None:
@@ -289,8 +293,17 @@ class FakeResearchReportExportService:
         *,
         tenant_id: UUID,
         research_run_id: UUID,
-    ) -> str:
-        self.retrieve_calls.append((tenant_id, research_run_id))
+        format: str = "markdown",
+        citation_style: str = "numbered",
+    ) -> bytes:
+        self.retrieve_calls.append(
+            {
+                "tenant_id": tenant_id,
+                "research_run_id": research_run_id,
+                "format": format,
+                "citation_style": citation_style,
+            }
+        )
         if self.retrieve_error is not None:
             raise self.retrieve_error
         return self.content
@@ -522,9 +535,104 @@ def test_export_research_report_is_tenant_scoped() -> None:
         {
             "tenant_id": tenant_id,
             "research_run_id": research_run_id,
-            "content": "Durable report.",
+            "content": b"Durable report.",
+            "format": "markdown",
+            "citation_style": "numbered",
         }
     ]
+
+
+def test_export_research_report_rewrites_citations_for_the_requested_style() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    source = ResearchReportSourceResponse(
+        source_id="WEB-0123456789ABCDEF",
+        origin="web",
+        title="HTTP/3 specification",
+        locator="https://example.com/http3",
+        provider="fixture",
+        relevance=0.9,
+        content_quality=0.8,
+        traceability=1.0,
+        overall_score=0.85,
+        cited=True,
+    )
+    report = ResearchReportResponse(
+        report_id=uuid4(),
+        research_run_id=research_run_id,
+        content="# HTTP/3\n\nHTTP/3 reduces latency. [WEB-0123456789ABCDEF]",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        created_at=datetime.now(UTC),
+        sources=[source],
+    )
+    report_store = FakeResearchReportStore(report)
+    export_service = FakeResearchReportExportService()
+    app.dependency_overrides[get_research_report_store] = lambda: report_store
+    app.dependency_overrides[get_research_report_export_service] = lambda: export_service
+    override_current_session(tenant_id=tenant_id)
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/research-runs/{research_run_id}/report/export",
+                params={"citation_style": "footnote"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    [export_call] = export_service.export_calls
+    assert export_call["format"] == "markdown"
+    assert export_call["citation_style"] == "footnote"
+    rendered = export_call["content"]
+    assert isinstance(rendered, bytes)
+    rendered_text = rendered.decode("utf-8")
+    assert "[^1]" in rendered_text
+    assert "[HTTP/3 specification](https://example.com/http3)" in rendered_text
+
+
+def test_export_research_report_renders_pdf_when_requested() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    report = ResearchReportResponse(
+        report_id=uuid4(),
+        research_run_id=research_run_id,
+        content="# HTTP/3\n\nHTTP/3 reduces latency.",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        created_at=datetime.now(UTC),
+        sources=[],
+    )
+    report_store = FakeResearchReportStore(report)
+    export_service = FakeResearchReportExportService()
+    app.dependency_overrides[get_research_report_store] = lambda: report_store
+    app.dependency_overrides[get_research_report_export_service] = lambda: export_service
+    override_current_session(tenant_id=tenant_id)
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                f"/research-runs/{research_run_id}/report/export",
+                params={"format": "pdf"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 201
+    [export_call] = export_service.export_calls
+    assert export_call["format"] == "pdf"
+    rendered = export_call["content"]
+    assert isinstance(rendered, bytes)
+    assert rendered.startswith(b"%PDF-")
 
 
 def test_export_research_report_returns_not_found_without_report() -> None:
@@ -584,7 +692,7 @@ def test_export_research_report_returns_service_unavailable() -> None:
 def test_download_research_report_export_is_tenant_scoped() -> None:
     tenant_id = uuid4()
     research_run_id = uuid4()
-    export_service = FakeResearchReportExportService(content="# Exported report\n\nBody.")
+    export_service = FakeResearchReportExportService(content=b"# Exported report\n\nBody.")
     app.dependency_overrides[get_research_report_export_service] = lambda: export_service
     override_current_session(tenant_id=tenant_id)
 
@@ -601,9 +709,49 @@ def test_download_research_report_export_is_tenant_scoped() -> None:
     assert response.headers["content-type"].startswith("text/markdown")
     assert (
         response.headers["content-disposition"]
-        == f'attachment; filename="report-{research_run_id}.md"'
+        == f'attachment; filename="report-{research_run_id}-numbered.md"'
     )
-    assert export_service.retrieve_calls == [(tenant_id, research_run_id)]
+    assert export_service.retrieve_calls == [
+        {
+            "tenant_id": tenant_id,
+            "research_run_id": research_run_id,
+            "format": "markdown",
+            "citation_style": "numbered",
+        }
+    ]
+
+
+def test_download_research_report_export_supports_pdf_and_footnote_style() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    export_service = FakeResearchReportExportService(content=b"%PDF-1.7 fake pdf bytes")
+    app.dependency_overrides[get_research_report_export_service] = lambda: export_service
+    override_current_session(tenant_id=tenant_id)
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{research_run_id}/report/export",
+                params={"format": "pdf", "citation_style": "footnote"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.content == b"%PDF-1.7 fake pdf bytes"
+    assert response.headers["content-type"] == "application/pdf"
+    assert (
+        response.headers["content-disposition"]
+        == f'attachment; filename="report-{research_run_id}-footnote.pdf"'
+    )
+    assert export_service.retrieve_calls == [
+        {
+            "tenant_id": tenant_id,
+            "research_run_id": research_run_id,
+            "format": "pdf",
+            "citation_style": "footnote",
+        }
+    ]
 
 
 def test_download_research_report_export_returns_not_found() -> None:
