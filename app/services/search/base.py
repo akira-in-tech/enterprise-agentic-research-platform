@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 
 @dataclass(frozen=True, slots=True)
@@ -10,6 +10,10 @@ class SearchResult:
     url: str
     content: str
     source: str
+    source_type: Literal["web", "paper"] = "web"
+    authors: tuple[str, ...] = ()
+    year: int | None = None
+    venue: str | None = None
 
 
 class SearchClient(Protocol):

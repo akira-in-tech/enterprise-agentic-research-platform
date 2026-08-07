@@ -10,13 +10,17 @@ class EvidenceSource(BaseModel):
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
-    source_id: str = Field(pattern=r"^(WEB|PRIVATE|MCP)-[0-9A-F]{16}$")
+    source_id: str = Field(pattern=r"^(WEB|PRIVATE|MCP|PAPER)-[0-9A-F]{16}$")
     origin: EvidenceOrigin
     title: str = Field(min_length=1, max_length=500)
     locator: str = Field(min_length=1, max_length=2048)
     content: str = Field(min_length=1, max_length=20_000)
     provider: str = Field(min_length=1, max_length=100)
     retrieval_score: float | None = Field(default=None, ge=-1.0, le=1.0)
+    source_type: Literal["web", "paper"] = "web"
+    authors: list[str] = Field(default_factory=list, max_length=20)
+    year: int | None = Field(default=None, ge=1000, le=2100)
+    venue: str | None = Field(default=None, max_length=300)
 
 
 class EvidenceScore(BaseModel):

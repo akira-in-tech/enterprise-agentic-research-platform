@@ -85,3 +85,7 @@ class ResearchSource(Base):
     traceability: Mapped[float] = mapped_column(Float, nullable=False)
     overall_score: Mapped[float] = mapped_column(Float, nullable=False)
     cited: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    source_type: Mapped[str] = mapped_column(String(10), nullable=False, server_default="web")
+    authors: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    venue: Mapped[str | None] = mapped_column(String(300), nullable=True)

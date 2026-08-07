@@ -19,6 +19,10 @@ def normalize_web_sources(
             locator=source.url,
             content=source.content,
             provider=source.provider,
+            source_type=source.source_type,
+            authors=source.authors,
+            year=source.year,
+            venue=source.venue,
         )
         for source in sources
         if source.content.strip()

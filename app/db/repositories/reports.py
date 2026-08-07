@@ -68,6 +68,10 @@ class ResearchReportRepository:
                     traceability=score.traceability,
                     overall_score=score.overall,
                     cited=source.source_id in cited_ids,
+                    source_type=source.source_type,
+                    authors=list(source.authors),
+                    year=source.year,
+                    venue=source.venue,
                 )
             )
 

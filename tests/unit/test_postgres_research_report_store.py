@@ -64,6 +64,8 @@ async def test_report_store_returns_tenant_scoped_report_and_sources() -> None:
             traceability=1,
             overall_score=0.88,
             cited=True,
+            source_type="web",
+            authors=[],
         )
     ]
 

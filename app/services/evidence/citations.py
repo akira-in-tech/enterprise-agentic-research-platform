@@ -3,7 +3,7 @@ from collections.abc import Iterable
 
 from app.schemas.evidence import CitationAudit, EvidenceSource
 
-CITATION_PATTERN = re.compile(r"\[((?:WEB|PRIVATE|MCP)-[0-9A-F]{16})\]")
+CITATION_PATTERN = re.compile(r"\[((?:WEB|PRIVATE|MCP|PAPER)-[0-9A-F]{16})\]")
 
 
 class CitationValidator:

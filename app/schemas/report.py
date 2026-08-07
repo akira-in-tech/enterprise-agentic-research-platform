@@ -20,6 +20,10 @@ class ResearchReportSourceResponse(BaseModel):
     traceability: float = Field(ge=0, le=1)
     overall_score: float = Field(ge=0, le=1)
     cited: bool
+    source_type: Literal["web", "paper"] = "web"
+    authors: list[str] = Field(default_factory=list)
+    year: int | None = None
+    venue: str | None = None
 
 
 class ResearchReportResponse(BaseModel):

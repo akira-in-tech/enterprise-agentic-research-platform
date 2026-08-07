@@ -14,7 +14,7 @@ class WebSource(BaseModel):
     )
 
     source_id: str = Field(
-        pattern=r"^WEB-[0-9A-F]{16}$",
+        pattern=r"^(WEB|PAPER)-[0-9A-F]{16}$",
     )
 
     title: str = Field(
@@ -34,6 +34,24 @@ class WebSource(BaseModel):
     provider: str = Field(
         min_length=1,
         max_length=50,
+    )
+
+    source_type: Literal["web", "paper"] = "web"
+
+    authors: list[str] = Field(
+        default_factory=list,
+        max_length=20,
+    )
+
+    year: int | None = Field(
+        default=None,
+        ge=1000,
+        le=2100,
+    )
+
+    venue: str | None = Field(
+        default=None,
+        max_length=300,
     )
 
 
