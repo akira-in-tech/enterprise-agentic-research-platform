@@ -1,5 +1,5 @@
 from app.services.evidence.citations import CitationValidator
-from app.services.evidence.scoring import EvidenceScorer
+from app.services.evidence.scoring import EvidenceScorer, select_top_evidence
 from app.services.evidence.sources import (
     create_mcp_evidence,
     normalize_private_sources,
@@ -12,4 +12,5 @@ __all__ = [
     "create_mcp_evidence",
     "normalize_private_sources",
     "normalize_web_sources",
+    "select_top_evidence",
 ]

@@ -4,14 +4,23 @@ from app.agents.prompting import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted_conten
 from app.schemas.evidence import EvidenceScore, EvidenceSource, ReflectionDecision
 from app.schemas.planner import ResearchPlan
 from app.schemas.workflow import ResearchAnalysis
+from app.services.evidence import select_top_evidence
 from app.services.llm.base import LLMClient
+
+DEFAULT_MAX_EVIDENCE_SOURCES = 20
 
 
 class WriterAgent:
     """Turn an approved analysis into the final source-traceable report."""
 
-    def __init__(self, llm_client: LLMClient) -> None:
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        *,
+        max_evidence_sources: int = DEFAULT_MAX_EVIDENCE_SOURCES,
+    ) -> None:
         self._llm_client = llm_client
+        self._max_evidence_sources = max_evidence_sources
 
     async def write_report(
         self,
@@ -26,10 +35,11 @@ class WriterAgent:
     ) -> str:
         """Generate one final report constrained to approved findings and evidence."""
 
+        top_sources = select_top_evidence(sources, scores, limit=self._max_evidence_sources)
         score_by_source = {score.source_id: score for score in scores}
         evidence_blocks = []
 
-        for source in sources:
+        for source in top_sources:
             score = score_by_source.get(source.source_id)
             overall = score.overall if score is not None else 0.0
             evidence_blocks.append(
@@ -78,13 +88,21 @@ class WriterAgent:
             f"Approved findings:\n{findings or 'NO APPROVED FINDINGS'}\n\n"
             f"Required outline:\n{outline}\n\n"
             f"Evidence:\n{evidence}\n\n"
-            "Write a concise Markdown report. Every factual paragraph based on evidence "
+            "Write the report as one Markdown ## heading per item in the required "
+            "outline above, in the same order, using each item's title as the "
+            "heading text. Do not merge outline items into a single section and do "
+            "not invent different headings; if evidence for one outline item is "
+            "thin, keep its heading and say so explicitly under it rather than "
+            "dropping it. Every factual paragraph based on evidence "
             "must end with one or more exact citations such as [WEB-0123456789ABCDEF]. "
             "Use only SOURCE_ID values shown above. If evidence is insufficient, say so "
-            "explicitly and do not invent facts, sources, URLs, or citations. When multiple "
-            "sources support the same claim, prefer citing sources with SOURCE_TYPE 'paper' "
-            "as the stronger evidence, but do not skip a clearly more relevant non-paper "
-            "source just to cite a less relevant paper."
+            "explicitly and do not invent facts, sources, URLs, or citations. When several "
+            "sources could support the same claim, cite the one(s) with the highest "
+            "QUALITY_SCORE rather than a lower-scored source that happens to appear "
+            "earlier in the evidence list; independently, prefer citing sources with "
+            "SOURCE_TYPE 'paper' as the stronger evidence when scores are close, but "
+            "do not skip a clearly more relevant non-paper source just to cite a less "
+            "relevant paper."
             f"{revision_context}"
         )
         report = (

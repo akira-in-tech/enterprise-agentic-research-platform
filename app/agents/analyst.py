@@ -4,14 +4,23 @@ from app.agents.prompting import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted_conten
 from app.schemas.evidence import EvidenceScore, EvidenceSource, ReflectionDecision
 from app.schemas.planner import ResearchPlan
 from app.schemas.workflow import ResearchAnalysis
+from app.services.evidence import select_top_evidence
 from app.services.llm.base import LLMClient
+
+DEFAULT_MAX_EVIDENCE_SOURCES = 20
 
 
 class AnalystAgent:
     """Produce evidence-backed analysis before final report writing."""
 
-    def __init__(self, llm_client: LLMClient) -> None:
+    def __init__(
+        self,
+        llm_client: LLMClient,
+        *,
+        max_evidence_sources: int = DEFAULT_MAX_EVIDENCE_SOURCES,
+    ) -> None:
         self._llm_client = llm_client
+        self._max_evidence_sources = max_evidence_sources
 
     async def analyze(
         self,
@@ -22,6 +31,7 @@ class AnalystAgent:
     ) -> ResearchAnalysis:
         """Generate structured findings constrained to the supplied evidence."""
 
+        top_sources = select_top_evidence(sources, scores, limit=self._max_evidence_sources)
         score_by_source = {score.source_id: score.model_dump() for score in scores}
         evidence = [
             {
@@ -29,7 +39,7 @@ class AnalystAgent:
                 "content": wrap_untrusted_content(source.content),
                 "quality": score_by_source.get(source.source_id),
             }
-            for source in sources
+            for source in top_sources
         ]
         prompt = (
             "You are the Analyst in an evidence-backed research workflow. "

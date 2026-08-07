@@ -1,9 +1,36 @@
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 
 from app.schemas.evidence import EvidenceScore, EvidenceSource
 
 TOKEN_PATTERN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_./+-]*")
+
+
+def select_top_evidence(
+    sources: Sequence[EvidenceSource],
+    scores: Sequence[EvidenceScore],
+    *,
+    limit: int,
+) -> list[EvidenceSource]:
+    """Return the highest-`overall`-scored sources, capped at `limit`.
+
+    A wide evidence pool (dozens of sources across several search tasks)
+    dilutes an LLM's attention and lets a handful of low-relevance,
+    off-topic results compete for citation alongside clearly on-topic
+    ones. Capping the sources handed to an LLM prompt to the top-scored
+    ones keeps it focused on the evidence most likely to actually answer
+    the question. This does not remove anything from the source pool
+    persisted or shown to users -- only from what a given prompt sees.
+    """
+
+    overall_by_id = {score.source_id: score.overall for score in scores}
+    ranked_sources = sorted(
+        sources,
+        key=lambda source: overall_by_id.get(source.source_id, 0.0),
+        reverse=True,
+    )
+
+    return ranked_sources[:limit]
 
 
 class EvidenceScorer:

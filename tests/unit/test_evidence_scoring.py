@@ -1,5 +1,5 @@
-from app.schemas.evidence import EvidenceSource
-from app.services.evidence.scoring import EvidenceScorer
+from app.schemas.evidence import EvidenceScore, EvidenceSource
+from app.services.evidence.scoring import EvidenceScorer, select_top_evidence
 
 
 def create_source(
@@ -53,3 +53,47 @@ def test_overall_score_stays_within_bounds_for_a_maximal_paper_source() -> None:
     )[0]
 
     assert score.overall <= 1.0
+
+
+def create_score(*, source_id: str, overall: float) -> EvidenceScore:
+    return EvidenceScore(
+        source_id=source_id,
+        relevance=overall,
+        content_quality=overall,
+        traceability=overall,
+        overall=overall,
+    )
+
+
+def test_select_top_evidence_keeps_the_highest_scored_sources() -> None:
+    high = create_source(source_id="WEB-0000000000000001")
+    medium = create_source(source_id="WEB-0000000000000002")
+    low = create_source(source_id="WEB-0000000000000003")
+    scores = [
+        create_score(source_id="WEB-0000000000000001", overall=0.9),
+        create_score(source_id="WEB-0000000000000002", overall=0.5),
+        create_score(source_id="WEB-0000000000000003", overall=0.1),
+    ]
+
+    selected = select_top_evidence([low, medium, high], scores, limit=2)
+
+    assert selected == [high, medium]
+
+
+def test_select_top_evidence_is_a_no_op_when_under_the_limit() -> None:
+    source = create_source(source_id="WEB-0000000000000001")
+    scores = [create_score(source_id="WEB-0000000000000001", overall=0.5)]
+
+    selected = select_top_evidence([source], scores, limit=20)
+
+    assert selected == [source]
+
+
+def test_select_top_evidence_treats_a_missing_score_as_zero() -> None:
+    scored = create_source(source_id="WEB-0000000000000001")
+    unscored = create_source(source_id="WEB-0000000000000002")
+    scores = [create_score(source_id="WEB-0000000000000001", overall=0.1)]
+
+    selected = select_top_evidence([unscored, scored], scores, limit=1)
+
+    assert selected == [scored]

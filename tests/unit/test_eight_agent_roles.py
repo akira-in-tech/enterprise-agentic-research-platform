@@ -243,6 +243,56 @@ async def test_analyst_returns_source_bound_structured_findings() -> None:
 
 
 @pytest.mark.anyio
+async def test_analyst_caps_evidence_to_the_highest_scored_sources() -> None:
+    high = EvidenceSource(
+        source_id="WEB-0000000000000001",
+        origin="web",
+        title="On-topic queue delivery guide",
+        locator="https://example.com/queue",
+        content="The queue uses at-least-once delivery.",
+        provider="fixture",
+    )
+    low = EvidenceSource(
+        source_id="WEB-0000000000000002",
+        origin="web",
+        title="Unrelated dictionary definition",
+        locator="https://example.com/definition",
+        content="A definition of an unrelated word.",
+        provider="fixture",
+    )
+    analysis = ResearchAnalysis(
+        summary="The queue uses at-least-once delivery.",
+        findings=[],
+        needs_more_research=False,
+    )
+    llm = RecordingLLMClient(structured={ResearchAnalysis: analysis})
+
+    await AnalystAgent(llm, max_evidence_sources=1).analyze(
+        query="Evaluate queue delivery",
+        sources=[low, high],
+        scores=[
+            EvidenceScore(
+                source_id=high.source_id,
+                relevance=1,
+                content_quality=1,
+                traceability=1,
+                overall=0.9,
+            ),
+            EvidenceScore(
+                source_id=low.source_id,
+                relevance=0.1,
+                content_quality=1,
+                traceability=1,
+                overall=0.2,
+            ),
+        ],
+    )
+
+    assert high.source_id in llm.prompts[0]
+    assert low.source_id not in llm.prompts[0]
+
+
+@pytest.mark.anyio
 async def test_reflect_removes_attempted_queries() -> None:
     repeated = SupplementaryResearchQuery(
         query="queue worker recovery",
@@ -323,3 +373,55 @@ async def test_writer_uses_approved_analysis_and_source_ids() -> None:
     assert "Approved findings" in llm.prompts[0]
     assert "untrusted retrieved data" in llm.prompts[0]
     assert "<<<UNTRUSTED_SOURCE_CONTENT_START>>>" in llm.prompts[0]
+
+
+@pytest.mark.anyio
+async def test_writer_caps_evidence_to_the_highest_scored_sources() -> None:
+    high = EvidenceSource(
+        source_id="WEB-0000000000000001",
+        origin="web",
+        title="On-topic queue delivery guide",
+        locator="https://example.com/queue",
+        content="The queue uses at-least-once delivery.",
+        provider="fixture",
+    )
+    low = EvidenceSource(
+        source_id="WEB-0000000000000002",
+        origin="web",
+        title="Unrelated dictionary definition",
+        locator="https://example.com/definition",
+        content="A definition of an unrelated word.",
+        provider="fixture",
+    )
+    analysis = ResearchAnalysis(
+        summary="The queue uses at-least-once delivery.",
+        findings=[],
+        needs_more_research=False,
+    )
+    llm = RecordingLLMClient(text="Duplicate delivery is possible. [WEB-0000000000000001]")
+
+    await WriterAgent(llm, max_evidence_sources=1).write_report(
+        query="Evaluate queue delivery",
+        plan=create_plan(),
+        analysis=analysis,
+        sources=[low, high],
+        scores=[
+            EvidenceScore(
+                source_id=high.source_id,
+                relevance=1,
+                content_quality=1,
+                traceability=1,
+                overall=0.9,
+            ),
+            EvidenceScore(
+                source_id=low.source_id,
+                relevance=0.1,
+                content_quality=1,
+                traceability=1,
+                overall=0.2,
+            ),
+        ],
+    )
+
+    assert high.source_id in llm.prompts[0]
+    assert low.source_id not in llm.prompts[0]
