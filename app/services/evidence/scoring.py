@@ -47,7 +47,10 @@ class EvidenceScorer:
 
         content_quality = min(len(source.content.strip()) / 500.0, 1.0)
         traceability = 1.0 if source.locator.strip() else 0.0
-        overall = (0.65 * relevance) + (0.25 * content_quality) + (0.10 * traceability)
+        paper_bonus = 0.10 if source.source_type == "paper" else 0.0
+        overall = (
+            (0.60 * relevance) + (0.20 * content_quality) + (0.10 * traceability) + paper_bonus
+        )
 
         return EvidenceScore(
             source_id=source.source_id,

@@ -151,7 +151,11 @@ class EvidenceJudgeAgent:
         return (
             "You are the Evidence Judge in an enterprise research workflow. "
             "Identify material evidence gaps and direct contradictions. Use only "
-            "the supplied source IDs. Do not invent sources.\n\n"
+            "the supplied source IDs. Do not invent sources. When multiple sources "
+            "support the same claim, prefer peer-reviewed or academic sources "
+            "(source_type \"paper\") as the stronger citation, but never treat a "
+            "source as a gap or contradiction just because it isn't a paper if it "
+            "is clearly the most relevant evidence available.\n\n"
             f"Research question: {query}\n"
             f"Evidence: {json.dumps(evidence, ensure_ascii=False)}"
         )

@@ -82,6 +82,10 @@ class AnalystAgent:
                         f"SOURCE_ID: {source.source_id}",
                         f"TITLE: {source.title}",
                         f"LOCATOR: {source.locator}",
+                        f"SOURCE_TYPE: {source.source_type}",
+                        f"AUTHORS: {', '.join(source.authors) or 'unknown'}",
+                        f"YEAR: {source.year if source.year is not None else 'unknown'}",
+                        f"VENUE: {source.venue or 'unknown'}",
                         f"QUALITY_SCORE: {overall:.4f}",
                         f"CONTENT: {wrap_untrusted_content(source.content[:4_000])}",
                     ]
@@ -115,7 +119,10 @@ class AnalystAgent:
             "Write a concise Markdown report. Every factual paragraph based on evidence "
             "must end with one or more exact citations such as [WEB-0123456789ABCDEF]. "
             "Use only SOURCE_ID values shown above. If evidence is insufficient, say so "
-            "explicitly and do not invent facts, sources, URLs, or citations."
+            "explicitly and do not invent facts, sources, URLs, or citations. When multiple "
+            "sources support the same claim, prefer citing sources with SOURCE_TYPE 'paper' "
+            "as the stronger evidence, but do not skip a clearly more relevant non-paper "
+            "source just to cite a less relevant paper."
             f"{revision_context}"
         )
         report = (
