@@ -99,6 +99,10 @@ export interface ResearchProgressRecord {
 
 export type ReportSourceType = "web" | "paper";
 
+export type ReportExportFormat = "markdown" | "pdf";
+
+export type ReportCitationStyle = "numbered" | "footnote";
+
 export interface ResearchReportSource {
   source_id: string;
   origin: "web" | "private" | "mcp";

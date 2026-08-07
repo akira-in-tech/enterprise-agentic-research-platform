@@ -128,12 +128,44 @@ describe("report export API", () => {
     expect(await blob.text()).toBe("# Report content");
     expect(fetchMock).toHaveBeenNthCalledWith(
       1,
-      `/api/research-runs/${researchRunId}/report/export`,
+      `/api/research-runs/${researchRunId}/report/export?format=markdown&citation_style=numbered`,
       { method: "POST", credentials: "include" },
     );
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      `/api/research-runs/${researchRunId}/report/export`,
+      `/api/research-runs/${researchRunId}/report/export?format=markdown&citation_style=numbered`,
+      { credentials: "include" },
+    );
+  });
+
+  it("passes the requested format and citation style through as query params", async () => {
+    const researchRunId = "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ storage_key: "tenants/x/report-exports/y/report.pdf" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response("%PDF-1.7", {
+          status: 200,
+          headers: { "Content-Type": "application/pdf" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await downloadResearchReport(researchRunId, "pdf", "footnote");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      `/api/research-runs/${researchRunId}/report/export?format=pdf&citation_style=footnote`,
+      { method: "POST", credentials: "include" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `/api/research-runs/${researchRunId}/report/export?format=pdf&citation_style=footnote`,
       { credentials: "include" },
     );
   });

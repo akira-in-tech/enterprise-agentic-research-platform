@@ -2,6 +2,8 @@ import type {
   CancelResearchRunResponse,
   CreateResearchJobResponse,
   KnowledgeDocument,
+  ReportCitationStyle,
+  ReportExportFormat,
   ResearchProgressRecord,
   ResearchReport,
   ResearchRun,
@@ -164,9 +166,15 @@ export async function getResearchReport(reportUrl: string): Promise<ResearchRepo
   return (await response.json()) as ResearchReport;
 }
 
-export async function downloadResearchReport(researchRunId: string): Promise<Blob> {
+export async function downloadResearchReport(
+  researchRunId: string,
+  format: ReportExportFormat = "markdown",
+  citationStyle: ReportCitationStyle = "numbered",
+): Promise<Blob> {
+  const query = `?format=${format}&citation_style=${citationStyle}`;
+
   const exportResponse = await fetch(
-    `${API_BASE_URL}/research-runs/${researchRunId}/report/export`,
+    `${API_BASE_URL}/research-runs/${researchRunId}/report/export${query}`,
     {
       method: "POST",
       credentials: "include",
@@ -178,7 +186,7 @@ export async function downloadResearchReport(researchRunId: string): Promise<Blo
   }
 
   const downloadResponse = await fetch(
-    `${API_BASE_URL}/research-runs/${researchRunId}/report/export`,
+    `${API_BASE_URL}/research-runs/${researchRunId}/report/export${query}`,
     { credentials: "include" },
   );
 
