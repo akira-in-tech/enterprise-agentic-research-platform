@@ -39,12 +39,14 @@ from app.services.evidence import (
 from app.services.llm.base import LLMClient
 from app.services.llm.factory import create_llm_client
 from app.services.mcp import MCPReferenceScout
+from app.services.search.composite import AcademicAwareSearchClient
 from app.services.search.executor import (
     DEFAULT_RETRYABLE_ERRORS,
     ResearchTaskResult,
     SearchExecutor,
 )
 from app.services.search.results import build_web_source_pool
+from app.services.search.semantic_scholar import SemanticScholarSearchClient
 from app.services.search.tavily import TavilySearchClient
 from app.workflow.state import ResearchState
 
@@ -994,12 +996,18 @@ def build_research_graph_for_client(
     """Build the production graph around one supplied LLM client."""
 
     tavily_client = TavilySearchClient()
+    semantic_scholar_client = SemanticScholarSearchClient()
+    search_client = AcademicAwareSearchClient(
+        web_client=tavily_client,
+        academic_client=semantic_scholar_client,
+        academic_circuit_breaker=CircuitBreaker(failure_threshold=3, reset_timeout_seconds=60),
+    )
 
     intent_router = IntentRouter(llm_client)
     direct_answer_agent = DirectAnswerAgent(llm_client)
     planner = PlannerAgent(llm_client)
     search_executor = SearchExecutor(
-        tavily_client,
+        search_client,
         circuit_breaker=CircuitBreaker(),
         retryable_errors=(*DEFAULT_RETRYABLE_ERRORS, TavilyTimeoutError),
     )
