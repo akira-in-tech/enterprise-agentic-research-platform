@@ -182,6 +182,69 @@ leverage next step; the more informative next experiment is a
 here since it is this project's first real-cost evaluation call and
 needs its own explicit go-ahead (see charter principle on paid actions).
 
+## Fourth run: enabling Qwen3 thinking mode
+
+`app/services/llm/ollama.py` had `think` hardcoded to `false`, but
+already contained dead-code handling for exactly the failure mode of
+turning it on (an error raised when the token budget is spent on
+reasoning with nothing left for the final answer) — a sign it had been
+tried before and abandoned. Qwen3 is a hybrid-reasoning model, and the
+two capability gaps runs 2-3 kept failing to move (outline adherence,
+correct source prioritization) are exactly what chain-of-thought tends
+to help with, so this was worth a real test: `think: true` was enabled
+in both `generate_text` and `generate_structured`, `max_tokens` was
+raised at every agent call site (`num_predict` bounds thinking +
+response combined, not response alone — Writer went from 1,500 to
+4,500, Analyst's structured call from 1,500 to 4,000, and so on down to
+Intent Router's 200 → 600), and the client's HTTP timeout was raised
+from 60s to 300s to give a single slower call room to finish.
+
+| Metric | Run 1 (baseline) | Run 3 (prompt fixes, no thinking) | Run 4 (+ thinking mode) |
+| --- | --- | --- | --- |
+| Source coverage rate | 80% | 100% | 80% |
+| Private-knowledge accuracy | 100% | 0% | 0% |
+| Report-section coverage | 0% | 0% | 5% |
+| Average latency | 204s | 266s | 283s |
+| Overall pass rate | 20% | 20% | 20% |
+
+The strict metrics did not move — but reading the actual report content
+shows a real, substantial qualitative change that the metrics don't
+capture. **The catastrophic topic drift from run 1 is gone.**
+`eval-eng-004`'s report is now genuinely about Redis security (sections
+titled "Redis Security Best Practices", "Hybrid Cloud Security
+Challenges", "Secure Connection Methods for Redis" — no more Merriam-
+Webster definitions of "comparison"), and `eval-eng-002`'s report now
+mentions RabbitMQ, which it hadn't in any prior run. The reports are
+also now multi-section by structure, just not using the exact heading
+text `evaluation_cases.jsonl` expects, which is why report-section
+coverage's case-insensitive *substring* match still scores near zero
+against topically sound, differently-worded headings like "Key Features
+of HTTP/3" instead of "Technical Background". That is a real, separate
+finding about the scoring method's own blind spot, not only about the
+model.
+
+**Private-knowledge citation is still unfixed, and inspecting why
+reveals a related but distinct problem.** The onboarding-runbook report
+this run built its entire structure around a single generic web blog
+post (down to lifting the blog's own "Help Improve This Post"
+call-to-action as a report section), never citing the private document
+that — as established in run 2's investigation — ranks #1 by score and
+carries an explicit `ORIGIN: private` label. So the model isn't failing
+to notice private evidence exists; it is fixating on one convenient web
+source and mining it exhaustively instead of drawing from the
+higher-priority evidence sitting alongside it. Thinking mode did not
+change this behavior.
+
+Net assessment: thinking mode is a real, worthwhile improvement to keep
+(it fixed a worse failure mode — total topic drift — than the one
+that's left), but it does not close the gap to a passing evaluation
+score on this model, and it made every case slower (204s → 283s average
+across runs 1 and 4). The evaluation harness's section-coverage metric
+also deserves a follow-up look independent of any model change, since
+it is now measurably under-crediting genuinely well-structured reports.
+The `--provider claude` comparison recommended after run 3 remains the
+next informative experiment and remains unrun pending explicit go-ahead.
+
 ## What the charter calls for beyond the above
 
 - Citation precision / unsupported-claim rate as a dedicated metric
