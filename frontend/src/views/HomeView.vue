@@ -27,27 +27,17 @@ function selectRun(run: RecentResearchRun): void {
 
 <template>
   <main id="main" class="home-page" tabindex="-1">
-    <section class="hero-section" aria-labelledby="hero-title">
-      <div class="hero-intro">
-        <p class="hero-eyebrow">Trusted research workspace</p>
-        <h1 id="hero-title">
-          A <em>research</em><br />workspace for<br />answers that<br />hold up.
-        </h1>
-        <span class="hero-rule" aria-hidden="true"></span>
-        <p class="hero-copy">
-          Plan the work. Inspect the evidence.<br />Share a report with every source attached.
-        </p>
-        <ul class="trust-list" aria-label="Research guarantees">
-          <li><PhShieldCheck :size="21" /> Sources remain inspectable</li>
-          <li>
-            <PhLockKey :size="21" /> Your data stays tenant-scoped and is never used for training.
-          </li>
-        </ul>
-      </div>
+    <section class="hero-centered" aria-labelledby="hero-title">
+      <p class="hero-eyebrow">Trusted research workspace</p>
+      <h1 id="hero-title" class="hero-centered-title">
+        A <em>research</em> workspace for answers that hold up.
+      </h1>
+      <span class="hero-rule hero-rule-centered" aria-hidden="true"></span>
+      <p class="hero-copy hero-copy-centered">
+        Plan the work. Inspect the evidence. Share a report with every source attached.
+      </p>
 
-      <div class="research-start-panel">
-        <p class="start-panel-label">Start new research</p>
-
+      <div class="composer-centered-wrap">
         <OperationalNotice
           v-if="researchStore.operationalIssue"
           :issue="researchStore.operationalIssue"
@@ -64,6 +54,13 @@ function selectRun(run: RecentResearchRun): void {
           @submit="submitResearch"
         />
       </div>
+
+      <ul class="trust-list" aria-label="Research guarantees">
+        <li><PhShieldCheck :size="18" /> Sources remain inspectable</li>
+        <li>
+          <PhLockKey :size="18" /> Your data stays tenant-scoped and is never used for training.
+        </li>
+      </ul>
     </section>
 
     <AgentWorkflow status="idle" />

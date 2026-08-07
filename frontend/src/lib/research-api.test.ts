@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   cancelResearchJob,
   deleteKnowledgeDocument,
+  downloadResearchReport,
   getResearchRun,
   listKnowledgeDocuments,
   parseSseFrames,
@@ -98,6 +99,83 @@ describe("research run lookup API", () => {
 
     await expect(getResearchRun("missing-id")).rejects.toMatchObject({
       message: "Research run was not found.",
+      status: 404,
+    });
+  });
+});
+
+describe("report export API", () => {
+  it("exports a snapshot before downloading it as a blob", async () => {
+    const researchRunId = "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ storage_key: "tenants/x/report-exports/y/report.md" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response("# Report content", {
+          status: 200,
+          headers: { "Content-Type": "text/markdown; charset=utf-8" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const blob = await downloadResearchReport(researchRunId);
+
+    expect(await blob.text()).toBe("# Report content");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      `/api/research-runs/${researchRunId}/report/export`,
+      { method: "POST", credentials: "include" },
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      `/api/research-runs/${researchRunId}/report/export`,
+      { credentials: "include" },
+    );
+  });
+
+  it("surfaces an export failure without attempting the download", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({ detail: "Report export storage is temporarily unavailable." }),
+        {
+          status: 503,
+          headers: { "Content-Type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(downloadResearchReport("missing-id")).rejects.toMatchObject({
+      message: "Report export storage is temporarily unavailable.",
+      status: 503,
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces a download failure after a successful export", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ storage_key: "tenants/x/report-exports/y/report.md" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ detail: "Report export was not found." }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(downloadResearchReport("missing-id")).rejects.toMatchObject({
+      message: "Report export was not found.",
       status: 404,
     });
   });

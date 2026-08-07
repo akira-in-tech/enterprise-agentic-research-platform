@@ -1,8 +1,10 @@
 import { mount } from "@vue/test-utils";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RecentResearchRun, ResearchReport, ResearchReportSource } from "../types/research";
 import ResearchDetail from "./ResearchDetail.vue";
+
+afterEach(() => vi.unstubAllGlobals());
 
 const run: RecentResearchRun = {
   id: "run-1",
@@ -155,6 +157,78 @@ describe("ResearchDetail", () => {
 
     expect(wrapper.text()).toContain("Citation revision required");
     expect(wrapper.text()).toContain("Revision required");
+  });
+
+  it("downloads the report as a file when Download is clicked", async () => {
+    // jsdom does not implement real anchor navigation; the component clicks a
+    // temporary <a download> element to trigger the browser's save dialog,
+    // which jsdom would otherwise try (and fail) to actually navigate to.
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ storage_key: "tenants/x/report-exports/y/report.md" }), {
+          status: 201,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response("# Report content", {
+          status: 200,
+          headers: { "Content-Type": "text/markdown; charset=utf-8" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report,
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    await wrapper.get(".download-button").trigger("click");
+    await new Promise((resolve) => setTimeout(resolve));
+    await wrapper.vm.$nextTick();
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(wrapper.find(".field-error").exists()).toBe(false);
+    expect(clickSpy).toHaveBeenCalledOnce();
+    clickSpy.mockRestore();
+  });
+
+  it("shows an inline error when the report download fails", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({ detail: "Report export storage is temporarily unavailable." }),
+          {
+            status: 503,
+            headers: { "Content-Type": "application/json" },
+          },
+        ),
+      ),
+    );
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report,
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    await wrapper.get(".download-button").trigger("click");
+    await new Promise((resolve) => setTimeout(resolve));
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.get(".field-error").text()).toContain(
+      "Report export storage is temporarily unavailable.",
+    );
   });
 
   it("offers cancellation only while a durable job is active", async () => {

@@ -15,6 +15,14 @@ if (!Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = () => {};
 }
 
+// jsdom does not implement the Blob URL registry used by file downloads.
+if (!URL.createObjectURL) {
+  URL.createObjectURL = () => "blob:mock-url";
+}
+if (!URL.revokeObjectURL) {
+  URL.revokeObjectURL = () => {};
+}
+
 afterEach(() => {
   document.body.innerHTML = "";
   localStorage.clear();

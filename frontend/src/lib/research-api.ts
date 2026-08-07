@@ -164,6 +164,31 @@ export async function getResearchReport(reportUrl: string): Promise<ResearchRepo
   return (await response.json()) as ResearchReport;
 }
 
+export async function downloadResearchReport(researchRunId: string): Promise<Blob> {
+  const exportResponse = await fetch(
+    `${API_BASE_URL}/research-runs/${researchRunId}/report/export`,
+    {
+      method: "POST",
+      credentials: "include",
+    },
+  );
+
+  if (!exportResponse.ok) {
+    throw new ResearchApiError(await errorMessage(exportResponse), exportResponse.status);
+  }
+
+  const downloadResponse = await fetch(
+    `${API_BASE_URL}/research-runs/${researchRunId}/report/export`,
+    { credentials: "include" },
+  );
+
+  if (!downloadResponse.ok) {
+    throw new ResearchApiError(await errorMessage(downloadResponse), downloadResponse.status);
+  }
+
+  return await downloadResponse.blob();
+}
+
 export async function listKnowledgeDocuments(): Promise<KnowledgeDocument[]> {
   const response = await fetch(`${API_BASE_URL}/documents`, {
     credentials: "include",

@@ -5,6 +5,7 @@ import {
   PhCaretDown,
   PhCheckCircle,
   PhCircleNotch,
+  PhDownloadSimple,
   PhFileText,
   PhGlobe,
   PhLockKey,
@@ -15,6 +16,7 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { computed, nextTick, ref, watch } from "vue";
 
+import { downloadResearchReport, ResearchApiError } from "../lib/research-api";
 import type {
   OperationalIssue,
   RecentResearchRun,
@@ -139,6 +141,33 @@ function handleReportContentClick(event: MouseEvent): void {
   event.preventDefault();
   focusSource(sourceId);
 }
+
+const downloading = ref(false);
+const downloadError = ref("");
+
+async function downloadReport(): Promise<void> {
+  if (downloading.value) return;
+
+  downloading.value = true;
+  downloadError.value = "";
+
+  try {
+    const blob = await downloadResearchReport(props.run.id);
+    const objectUrl = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = objectUrl;
+    link.download = `report-${props.run.id}.md`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(objectUrl);
+  } catch (error) {
+    downloadError.value =
+      error instanceof ResearchApiError ? error.message : "The report could not be downloaded.";
+  } finally {
+    downloading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -222,12 +251,25 @@ function handleReportContentClick(event: MouseEvent): void {
             <p class="eyebrow">Answer</p>
             <h2>Research conclusion</h2>
           </div>
-          <span class="approved-badge" :class="{ 'revision-badge': !reportApproved }">
-            <PhCheckCircle v-if="reportApproved" :size="16" weight="fill" />
-            <PhWarningCircle v-else :size="16" weight="fill" />
-            {{ reportApproved ? "Verified" : "Revision required" }}
-          </span>
+          <div class="report-heading-actions">
+            <span class="approved-badge" :class="{ 'revision-badge': !reportApproved }">
+              <PhCheckCircle v-if="reportApproved" :size="16" weight="fill" />
+              <PhWarningCircle v-else :size="16" weight="fill" />
+              {{ reportApproved ? "Verified" : "Revision required" }}
+            </span>
+            <button
+              class="secondary-button download-button"
+              type="button"
+              :disabled="downloading"
+              @click="downloadReport"
+            >
+              <PhCircleNotch v-if="downloading" class="spin" :size="15" />
+              <PhDownloadSimple v-else :size="15" />
+              {{ downloading ? "Preparing…" : "Download" }}
+            </button>
+          </div>
         </div>
+        <p v-if="downloadError" class="field-error" role="alert">{{ downloadError }}</p>
         <!-- eslint-disable vue/no-v-html -- renderedReportHtml is DOMPurify-sanitized above -->
         <div
           class="report-content"
