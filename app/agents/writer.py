@@ -48,6 +48,7 @@ class WriterAgent:
                         f"SOURCE_ID: {source.source_id}",
                         f"TITLE: {source.title}",
                         f"LOCATOR: {source.locator}",
+                        f"ORIGIN: {source.origin}",
                         f"SOURCE_TYPE: {source.source_type}",
                         f"AUTHORS: {', '.join(source.authors) or 'unknown'}",
                         f"YEAR: {source.year if source.year is not None else 'unknown'}",
@@ -96,10 +97,15 @@ class WriterAgent:
             "dropping it. Every factual paragraph based on evidence "
             "must end with one or more exact citations such as [WEB-0123456789ABCDEF]. "
             "Use only SOURCE_ID values shown above. If evidence is insufficient, say so "
-            "explicitly and do not invent facts, sources, URLs, or citations. When several "
-            "sources could support the same claim, cite the one(s) with the highest "
-            "QUALITY_SCORE rather than a lower-scored source that happens to appear "
-            "earlier in the evidence list; independently, prefer citing sources with "
+            "explicitly and do not invent facts, sources, URLs, or citations. If the research "
+            "question refers to 'our', 'the organization's', 'internal', or similar "
+            "possessive language, that is a request for the organization's own knowledge: "
+            "look for evidence with ORIGIN 'private' first and center the report on what "
+            "that source actually says, rather than substituting generic external best-"
+            "practice content from ORIGIN 'web' sources that only superficially match the "
+            "topic. When several sources could support the same claim, cite the one(s) with "
+            "the highest QUALITY_SCORE rather than a lower-scored source that happens to "
+            "appear earlier in the evidence list; independently, prefer citing sources with "
             "SOURCE_TYPE 'paper' as the stronger evidence when scores are close, but "
             "do not skip a clearly more relevant non-paper source just to cite a less "
             "relevant paper."

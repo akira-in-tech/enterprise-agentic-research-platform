@@ -121,6 +121,67 @@ source-prioritization instructions in the Writer prompt, or evaluating
 `--provider claude` for comparison (this would be the first real-cost
 run and needs its own explicit go-ahead).
 
+## Second and third runs: after two rounds of real fixes
+
+Two follow-up commits addressed the candidate follow-ups above,
+directly targeting the root causes found in the first run:
+
+1. `select_top_evidence()` caps what an Analyst/Writer prompt sees to
+   the 20 highest-`overall`-scored sources, so low-relevance noise (like
+   the "comparison" dictionary pages) competes far less with genuinely
+   on-topic evidence — without removing anything from the source pool
+   persisted or shown to users.
+2. The Writer prompt was strengthened twice: first to require one
+   Markdown `##` heading per outline item and to prefer the
+   highest-`QUALITY_SCORE` source among competing citations; then, after
+   the second live run below showed private-knowledge citation had
+   *stopped* working, to add an explicit `ORIGIN` field to each
+   evidence block and an instruction to prioritize `ORIGIN: private`
+   evidence whenever the question uses "our"/"internal"/possessive
+   language. The same origin-priority instruction was added to the
+   Analyst prompt.
+
+Two more live runs followed, same setup as the first (local Ollama
+`qwen3:8b`, no paid provider, a fresh tenant each time so Redis's
+result cache couldn't mask a re-execution):
+
+| Metric | Run 1 (baseline) | Run 2 (capping + outline fix) | Run 3 (+ ORIGIN field + private-preference instruction) |
+| --- | --- | --- | --- |
+| Source coverage rate | 80% | 80% | **100%** |
+| Private-knowledge accuracy | 100% | **0%** | 0% |
+| Report-section coverage | 0% | 5% | 0% |
+| Human-review trigger rate | 0% | 0% | 20% |
+| Overall pass rate | 20% | 20% | 20% |
+
+**Source coverage genuinely improved and held (80% → 100%)** — capping
+the evidence pool to the top-scored sources measurably helped the
+Writer cite enough independent sources.
+
+**Report-section coverage and private-knowledge accuracy did not
+reliably improve, despite two targeted, verified attempts.** The
+private-knowledge regression in run 2 was root-caused, not guessed at:
+inspecting the actual evidence pool for the onboarding-runbook case
+showed the private document ranked **#1 and #2 by score** (0.73, 0.69 —
+above every one of the 71 web sources in the same pool), yet the Writer
+still cited web sources about generic onboarding best practices instead.
+Run 3 gave the model everything it should have needed to get this
+right — an explicit `ORIGIN: private` label on the evidence block and a
+direct instruction to prefer it for possessive-language questions — and
+the report was still about generic onboarding advice, never citing or
+meaningfully reflecting the actual private document's content.
+
+That is the honest conclusion to draw here: this is not evidence of a
+retrieval bug, a scoring bug, or a missing instruction (all three were
+checked and ruled out in turn), but a real capability ceiling of a
+small local model on this kind of source-discipline-heavy task. Two
+further rounds of legitimate prompt engineering moved one metric
+(source coverage) and left two others flat or worse. Continuing to
+iterate on `qwen3:8b`'s prompt alone is unlikely to be the highest-
+leverage next step; the more informative next experiment is a
+`--provider claude` run for comparison, which is deliberately not run
+here since it is this project's first real-cost evaluation call and
+needs its own explicit go-ahead (see charter principle on paid actions).
+
 ## What the charter calls for beyond the above
 
 - Citation precision / unsupported-claim rate as a dedicated metric
