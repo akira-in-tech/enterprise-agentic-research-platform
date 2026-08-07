@@ -112,7 +112,8 @@ test.describe("authentication", () => {
     await expect(page).toHaveURL(/\/runs\/89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589$/);
 
     await page.route("**/api/auth/logout", (route) => route.fulfill({ status: 204, body: "" }));
-    await page.getByRole("button", { name: "Log out" }).click();
+    await page.getByRole("button", { name: "Account menu" }).click();
+    await page.getByRole("menuitem", { name: "Log out" }).click();
 
     await expect(page).toHaveURL(/\/login/);
   });
