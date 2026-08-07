@@ -245,6 +245,92 @@ it is now measurably under-crediting genuinely well-structured reports.
 The `--provider claude` comparison recommended after run 3 remains the
 next informative experiment and remains unrun pending explicit go-ahead.
 
+## Fifth run: `--provider claude` comparison (first real-cost run)
+
+Run with explicit go-ahead, same cases and local setup, `claude-sonnet-5`
+against real Anthropic billing instead of local Ollama.
+
+| Metric | Run 4 (qwen3:8b, thinking) | Run 5 (claude-sonnet-5) |
+| --- | --- | --- |
+| Routing accuracy | 100% | 60% |
+| Completion rate | 100% | 80% (one case crashed, see below) |
+| Source coverage rate | 80% | 60% |
+| Private-knowledge accuracy | 0% | **100%** |
+| Report-section coverage | 5% | 10% |
+| Average latency | 283s | 116s |
+| Overall pass rate | 20% | 20% |
+
+Same overall pass rate, for entirely different reasons.
+
+**Private-knowledge citation, unfixed across four straight qwen3:8b
+runs, worked immediately and cleanly on Claude.** Its onboarding-runbook
+report opens by explicitly naming the private source
+(`[PRIVATE-92B7A30FD1394FBD]`), accurately summarizes the actual
+runbook content (the Week 1 Docker Compose setup, the CI gate, the
+four-item first-two-weeks checklist), and *explicitly states in the
+report text* that it is deliberately not grounding findings in the
+web sources because they're generic and the question asked about "our"
+runbook specifically — which is precisely the origin-priority
+instruction added in run 3, verbatim. This confirms that instruction
+was correctly designed and correctly placed; qwen3:8b's three straight
+failures to follow it were a model capability gap, not a prompt defect.
+
+**Report-section coverage was still low (10%) for the same reason as
+every prior run, now confirmed independent of model choice.** Claude's
+headings ("Architectural Overview", "Performance and Throughput
+Analysis") are just as topically sound and just as unlikely to
+substring-match the fixture's exact wording as qwen3:8b's were. This
+was suspected to be a scoring-method blind spot after run 4; seeing the
+same pattern from a much stronger model makes that closer to confirmed.
+
+**Completion rate dropped to 80% because of a real crash, not a
+model-quality issue — and it's a genuine bug this run surfaced.**
+`eval-eng-001` failed with `HTTP 500: Internal Server Error`. The
+server log shows exactly why: Claude's structured `ResearchAnalysis`
+response was cut off mid-JSON-string
+(`Invalid JSON: EOF while parsing a string at line 1 column 2521`)
+because it hit the 4,000-token ceiling `max_tokens` was raised to in
+run 4 — sized for Qwen3's thinking-mode needs, not for how much
+Claude actually writes when it engages seriously with a full
+20-source evidence pool. `EvidenceJudgeAgent.judge()` already wraps
+its own structured call in a try/except with a deterministic
+fallback for exactly this class of failure (confirmed by log lines
+just before the crash: "Evidence Judge structured audit failed; using
+deterministic fallback" from an unrelated truncation a few requests
+earlier in the same run) — but `AnalystAgent.analyze()` had no such
+handling, so the `ValidationError` propagated all the way up through
+LangGraph and crashed the whole HTTP request with an unhandled 500
+instead of a clean "research failed" response. This is a real
+reliability gap independent of the evaluation harness. Fixed in the
+same commit as this write-up: `analyze()`'s token budget was raised
+(4,000 → 8,000) and it now wraps the structured call and the
+unknown-source-ID check in the same try/except pattern as
+`EvidenceJudgeAgent`, falling back to an empty analysis (the Writer
+still has the full evidence pool directly) instead of crashing the
+request. Unit tested; not re-verified with another live Claude run,
+since this is a resilience fix, not a claim about score improvement.
+
+**Routing accuracy (60%) is lower than qwen3:8b's 100%, but only one of
+the two misses is a real problem.** `eval-eng-001`'s route reads `None`
+only because the request crashed before routing could be scored
+meaningfully — not a routing failure. `eval-eng-004` (the Redis security
+question) is a genuine, interesting difference: Claude routed it
+`direct` and gave a confident, accurate, well-structured security
+answer from its own training knowledge, where every qwen3:8b run and
+the fixture both expect `deep_research`. That is defensible on its own
+terms (Claude judged it didn't need live web evidence to answer
+correctly) but works against this case's actual intent — testing
+whether the pipeline shows appropriate evidence and uncertainty for a
+high-risk domain rather than an unqualified directive — which is
+exactly what a confident direct answer skips.
+
+**Latency dropped by more than half (283s → 116s average)**, as
+expected for a cloud model against local CPU/GPU-bound Ollama
+inference — the trade a paid provider buys here is speed and, per
+private-knowledge accuracy, dramatically better instruction adherence,
+not a free pass on the section-coverage scoring gap or on the crash
+this run happened to catch.
+
 ## What the charter calls for beyond the above
 
 - Citation precision / unsupported-claim rate as a dedicated metric
