@@ -364,6 +364,43 @@ gap is real and unchanged; what changed is that it no longer gets
 compounded by a scoring-method artifact dragging four *other*,
 genuinely correct cases down with it.
 
+## A fourth attempt at qwen3:8b's private-knowledge gap (still unresolved)
+
+One more structurally different lever was tried against the one
+remaining failure: instead of an `ORIGIN` field sitting inside an
+otherwise-uniform flat list of evidence blocks, the Writer prompt now
+groups evidence into two clearly delimited sections --
+`=== YOUR ORGANIZATION'S OWN PRIVATE KNOWLEDGE ===` ahead of
+`=== PUBLIC WEB AND ACADEMIC SOURCES ===` -- with the closing
+instructions pointing at the private section by name as the
+authoritative answer for possessive-language questions. This is a
+different kind of change than the three before it (evidence capping,
+an `ORIGIN` field plus instruction, thinking mode): it changes *how*
+the private source is presented, not just what the model is told about
+it or how much room it has to reason.
+
+Checked cheaply before committing to another full harness run: a single
+direct call to `POST /research-runs` with the onboarding-runbook query
+against qwen3:8b. The report cited eighteen `[WEB-*]` markers and zero
+`[PRIVATE-*]` markers -- unchanged from every prior attempt. The
+grouped-section formatting is kept (it's a reasonable improvement in
+its own right and unit tested), but it did not move this specific
+failure, and a full 5-case harness re-run was skipped since it would
+not have produced new information beyond what this targeted check
+already showed.
+
+Four independently-designed fixes across four different mechanisms
+(noise filtering, explicit labeling plus instruction, chain-of-thought
+reasoning, and now presentation structure) have now failed to change
+this specific behavior. That is about as strong a signal as a single
+model's evaluation can give that this is a genuine capability ceiling
+of qwen3:8b on this task, not a prompt, structure, or instruction gap
+still waiting to be found. Run 5 already showed Claude does not have
+this ceiling (100% private-knowledge accuracy, first attempt, no
+special-casing). Further iteration on qwen3:8b's prompt for this
+specific gap is not recommended; the next real signal here is provider
+choice, not more prompt engineering.
+
 ## What the charter calls for beyond the above
 
 - Citation precision / unsupported-claim rate as a dedicated metric
