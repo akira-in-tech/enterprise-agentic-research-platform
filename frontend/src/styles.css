@@ -398,7 +398,7 @@ button:disabled {
 }
 
 .composer-centered-wrap {
-  width: min(600px, 100%);
+  width: min(720px, 100%);
   margin: 32px 0 0;
   text-align: left;
 }
@@ -430,7 +430,7 @@ button:disabled {
 
 .research-composer {
   position: relative;
-  padding: 13px;
+  padding: 10px;
   text-align: left;
   background: var(--surface);
   border: 1px solid var(--line-strong);
@@ -445,8 +445,8 @@ button:disabled {
 
 .research-composer textarea {
   width: 100%;
-  min-height: 150px;
-  padding: 10px 10px 8px;
+  min-height: 32px;
+  padding: 6px 8px 4px;
   resize: vertical;
   color: var(--ink);
   background: transparent;
