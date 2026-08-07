@@ -123,7 +123,10 @@ function onMenuKeydown(event: KeyboardEvent): void {
           /></span>
           <span class="provider-copy">
             <strong>Qwen Local</strong>
-            <small><PhShieldCheck :size="13" /> Private, no usage cost</small>
+            <small><PhShieldCheck :size="13" /> Maximum privacy · no usage cost</small>
+            <small class="provider-stats"
+              >•••••&nbsp;Synthesis &nbsp;·&nbsp; $&nbsp;Low cost &nbsp;·&nbsp; ~$0.02/req</small
+            >
           </span>
           <PhCheck v-if="modelValue === 'qwen'" class="provider-check" :size="17" weight="bold" />
         </button>
@@ -141,12 +144,17 @@ function onMenuKeydown(event: KeyboardEvent): void {
           /></span>
           <span class="provider-copy">
             <strong>Claude Cloud</strong>
-            <small>Stronger synthesis, usage billed</small>
+            <small><PhShieldCheck :size="13" /> High privacy · usage billed</small>
+            <small class="provider-stats"
+              >••••○&nbsp;Synthesis &nbsp;·&nbsp; $$$&nbsp;Higher cost &nbsp;·&nbsp;
+              ~$0.18/req</small
+            >
           </span>
           <PhCheck v-if="modelValue === 'claude'" class="provider-check" :size="17" weight="bold" />
         </button>
         <p class="provider-note">
-          The selected provider is recorded with every durable research run.
+          The selected provider is recorded with every durable research run. Estimates vary with
+          query complexity and research depth.
         </p>
       </div>
     </Transition>

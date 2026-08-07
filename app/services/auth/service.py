@@ -240,6 +240,63 @@ class AuthService:
                 tenant=tenant,
             )
 
+    async def update_display_name(
+        self,
+        *,
+        user_id: UUID,
+        tenant_id: UUID,
+        display_name: str | None,
+    ) -> AuthenticatedIdentity | None:
+        """Rename the caller's display name within their own tenant boundary."""
+
+        async with self._session_factory.begin() as session:
+            user_repository = self._user_repository_factory(session)
+            existing = await user_repository.get(user_id=user_id)
+
+            if existing is None or existing.tenant_id != tenant_id:
+                return None
+
+            user = await user_repository.update_display_name(
+                user_id=user_id,
+                display_name=display_name,
+            )
+            assert user is not None
+
+            tenant = await self._tenant_repository_factory(session).get(tenant_id=tenant_id)
+
+            if tenant is None:
+                return None
+
+            return AuthenticatedIdentity(
+                user=user,
+                tenant=tenant,
+            )
+
+    async def change_password(
+        self,
+        *,
+        user_id: UUID,
+        tenant_id: UUID,
+        current_password: str,
+        new_password: str,
+    ) -> None:
+        """Change the caller's password after verifying their current one."""
+
+        async with self._session_factory.begin() as session:
+            user_repository = self._user_repository_factory(session)
+            user = await user_repository.get(user_id=user_id)
+
+            if user is None or user.tenant_id != tenant_id:
+                raise InvalidCredentialsError("Current password is incorrect.")
+
+            if not verify_password(current_password, user.password_hash):
+                raise InvalidCredentialsError("Current password is incorrect.")
+
+            await user_repository.update_password_hash(
+                user_id=user_id,
+                password_hash=hash_password(new_password),
+            )
+
     async def _issue_session(
         self,
         session: AsyncSession,

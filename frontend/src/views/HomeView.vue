@@ -4,7 +4,6 @@ import { useRouter } from "vue-router";
 
 import AgentWorkflow from "../components/AgentWorkflow.vue";
 import OperationalNotice from "../components/OperationalNotice.vue";
-import ProviderComparison from "../components/ProviderComparison.vue";
 import RecentResearchList from "../components/RecentResearchList.vue";
 import ResearchComposer from "../components/ResearchComposer.vue";
 import { enabledProviders } from "../lib/provider-config";
@@ -63,12 +62,6 @@ function selectRun(run: RecentResearchRun): void {
           :enabled-providers="enabledProviders"
           :submitting="researchStore.submitting"
           @submit="submitResearch"
-        />
-
-        <ProviderComparison
-          v-model="researchStore.provider"
-          :enabled-providers="enabledProviders"
-          :disabled="researchStore.submitting"
         />
       </div>
     </section>

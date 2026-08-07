@@ -3,12 +3,14 @@ import { PhBookOpen, PhBriefcase, PhMoon, PhSun } from "@phosphor-icons/vue";
 import { computed } from "vue";
 
 import evidentMark from "../assets/evident-mark.png";
+import ProfileMenu from "./ProfileMenu.vue";
 
 const props = defineProps<{
   darkMode: boolean;
   apiStatus: "checking" | "online" | "offline";
   tenantName: string;
   userDisplayName: string | null;
+  userEmail: string;
   activePage: "research" | "knowledge";
 }>();
 
@@ -17,6 +19,7 @@ const emit = defineEmits<{
   showRecent: [];
   showKnowledge: [];
   toggleTheme: [];
+  editProfile: [];
   logout: [];
 }>();
 
@@ -87,15 +90,14 @@ const userInitials = computed(() => {
         <PhBriefcase :size="16" />
         <span>{{ tenantName }}</span>
       </span>
-      <button
-        class="avatar-button"
-        type="button"
-        aria-label="Log out"
-        title="Log out"
-        @click="emit('logout')"
-      >
-        {{ userInitials }}
-      </button>
+      <ProfileMenu
+        :user-display-name="userDisplayName"
+        :user-email="userEmail"
+        :tenant-name="tenantName"
+        :initials="userInitials"
+        @edit-profile="emit('editProfile')"
+        @logout="emit('logout')"
+      />
     </nav>
   </header>
 </template>

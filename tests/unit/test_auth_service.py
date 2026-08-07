@@ -439,3 +439,174 @@ async def test_get_profile_returns_none_for_mismatched_tenant() -> None:
 
     assert result is None
     tenant_repository_mock.get.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_update_display_name_renames_the_caller() -> None:
+    (
+        session_factory,
+        tenant_repository_mock,
+        user_repository_mock,
+        session_repository_mock,
+    ) = create_test_dependencies()
+    tenant = create_tenant()
+    existing_user = create_user(
+        tenant_id=tenant.id,
+        password="correct-horse-battery",
+    )
+    renamed_user = create_user(
+        tenant_id=tenant.id,
+        password="correct-horse-battery",
+    )
+    renamed_user.id = existing_user.id
+    renamed_user.display_name = "New Name"
+    user_repository_mock.get.return_value = existing_user
+    user_repository_mock.update_display_name.return_value = renamed_user
+    tenant_repository_mock.get.return_value = tenant
+    service = create_service(
+        session_factory,
+        tenant_repository_mock=tenant_repository_mock,
+        user_repository_mock=user_repository_mock,
+        session_repository_mock=session_repository_mock,
+    )
+
+    result = await service.update_display_name(
+        user_id=existing_user.id,
+        tenant_id=tenant.id,
+        display_name="New Name",
+    )
+
+    assert result is not None
+    assert result.user.display_name == "New Name"
+    user_repository_mock.update_display_name.assert_awaited_once_with(
+        user_id=existing_user.id,
+        display_name="New Name",
+    )
+
+
+@pytest.mark.anyio
+async def test_update_display_name_returns_none_for_mismatched_tenant() -> None:
+    (
+        session_factory,
+        tenant_repository_mock,
+        user_repository_mock,
+        session_repository_mock,
+    ) = create_test_dependencies()
+    user = create_user(
+        tenant_id=uuid4(),
+        password="correct-horse-battery",
+    )
+    user_repository_mock.get.return_value = user
+    service = create_service(
+        session_factory,
+        tenant_repository_mock=tenant_repository_mock,
+        user_repository_mock=user_repository_mock,
+        session_repository_mock=session_repository_mock,
+    )
+
+    result = await service.update_display_name(
+        user_id=user.id,
+        tenant_id=uuid4(),
+        display_name="New Name",
+    )
+
+    assert result is None
+    user_repository_mock.update_display_name.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_change_password_succeeds_with_correct_current_password() -> None:
+    (
+        session_factory,
+        tenant_repository_mock,
+        user_repository_mock,
+        session_repository_mock,
+    ) = create_test_dependencies()
+    tenant = create_tenant()
+    user = create_user(
+        tenant_id=tenant.id,
+        password="correct-horse-battery",
+    )
+    user_repository_mock.get.return_value = user
+    service = create_service(
+        session_factory,
+        tenant_repository_mock=tenant_repository_mock,
+        user_repository_mock=user_repository_mock,
+        session_repository_mock=session_repository_mock,
+    )
+
+    await service.change_password(
+        user_id=user.id,
+        tenant_id=tenant.id,
+        current_password="correct-horse-battery",
+        new_password="new-correct-horse-battery",
+    )
+
+    user_repository_mock.update_password_hash.assert_awaited_once()
+    assert (
+        user_repository_mock.update_password_hash.await_args.kwargs["password_hash"]
+        != user.password_hash
+    )
+
+
+@pytest.mark.anyio
+async def test_change_password_rejects_wrong_current_password() -> None:
+    (
+        session_factory,
+        tenant_repository_mock,
+        user_repository_mock,
+        session_repository_mock,
+    ) = create_test_dependencies()
+    tenant = create_tenant()
+    user = create_user(
+        tenant_id=tenant.id,
+        password="correct-horse-battery",
+    )
+    user_repository_mock.get.return_value = user
+    service = create_service(
+        session_factory,
+        tenant_repository_mock=tenant_repository_mock,
+        user_repository_mock=user_repository_mock,
+        session_repository_mock=session_repository_mock,
+    )
+
+    with pytest.raises(InvalidCredentialsError):
+        await service.change_password(
+            user_id=user.id,
+            tenant_id=tenant.id,
+            current_password="wrong-password",
+            new_password="new-correct-horse-battery",
+        )
+
+    user_repository_mock.update_password_hash.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_change_password_rejects_mismatched_tenant() -> None:
+    (
+        session_factory,
+        tenant_repository_mock,
+        user_repository_mock,
+        session_repository_mock,
+    ) = create_test_dependencies()
+    user = create_user(
+        tenant_id=uuid4(),
+        password="correct-horse-battery",
+    )
+    user_repository_mock.get.return_value = user
+    service = create_service(
+        session_factory,
+        tenant_repository_mock=tenant_repository_mock,
+        user_repository_mock=user_repository_mock,
+        session_repository_mock=session_repository_mock,
+    )
+
+    with pytest.raises(InvalidCredentialsError):
+        await service.change_password(
+            user_id=user.id,
+            tenant_id=uuid4(),
+            current_password="correct-horse-battery",
+            new_password="new-correct-horse-battery",
+        )
+
+    user_repository_mock.update_password_hash.assert_not_awaited()

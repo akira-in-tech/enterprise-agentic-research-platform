@@ -75,6 +75,42 @@ export async function logout(): Promise<void> {
   });
 }
 
+export async function updateProfile(displayName: string | null): Promise<AuthIdentity> {
+  const response = await fetch(`${API_BASE_URL}/auth/profile`, {
+    method: "PATCH",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ display_name: displayName }),
+  });
+
+  if (!response.ok) {
+    throw new AuthApiError(await errorMessage(response), response.status);
+  }
+
+  return (await response.json()) as AuthIdentity;
+}
+
+export interface ChangePasswordParams {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export async function changePassword(params: ChangePasswordParams): Promise<void> {
+  const response = await fetch(`${API_BASE_URL}/auth/change-password`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      current_password: params.currentPassword,
+      new_password: params.newPassword,
+    }),
+  });
+
+  if (!response.ok) {
+    throw new AuthApiError(await errorMessage(response), response.status);
+  }
+}
+
 export async function getCurrentUser(): Promise<AuthIdentity | null> {
   const response = await fetch(`${API_BASE_URL}/auth/me`, {
     credentials: "include",

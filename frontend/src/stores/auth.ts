@@ -3,10 +3,13 @@ import { ref } from "vue";
 
 import {
   AuthApiError,
+  changePassword as apiChangePassword,
   getCurrentUser,
   login as apiLogin,
   logout as apiLogout,
   register as apiRegister,
+  updateProfile as apiUpdateProfile,
+  type ChangePasswordParams,
   type LoginParams,
   type RegisterParams,
 } from "../lib/auth-api";
@@ -74,6 +77,28 @@ export const useAuthStore = defineStore("auth", () => {
     setIdentity(null);
   }
 
+  async function updateDisplayName(displayName: string): Promise<boolean> {
+    error.value = "";
+    try {
+      setIdentity(await apiUpdateProfile(displayName.trim() || null));
+      return true;
+    } catch (caught) {
+      error.value = caught instanceof AuthApiError ? caught.message : "Profile update failed.";
+      return false;
+    }
+  }
+
+  async function changePassword(params: ChangePasswordParams): Promise<boolean> {
+    error.value = "";
+    try {
+      await apiChangePassword(params);
+      return true;
+    } catch (caught) {
+      error.value = caught instanceof AuthApiError ? caught.message : "Password change failed.";
+      return false;
+    }
+  }
+
   /** Test- and design-preview-only override, bypassing the API. */
   function setForPreview(identity: AuthIdentity): void {
     setIdentity(identity);
@@ -89,6 +114,8 @@ export const useAuthStore = defineStore("auth", () => {
     register,
     login,
     logout,
+    updateDisplayName,
+    changePassword,
     setForPreview,
   };
 });

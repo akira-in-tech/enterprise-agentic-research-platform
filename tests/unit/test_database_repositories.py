@@ -175,6 +175,136 @@ def test_user_repository_rejects_invalid_email(
     session_mock.flush.assert_not_awaited()
 
 
+def test_user_repository_update_display_name_normalizes_and_flushes() -> None:
+    session, session_mock = create_session_mock()
+    repository = UserRepository(session)
+    tenant_id = uuid4()
+    existing_user = User(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        email="engineer@acme.com",
+        password_hash="test-password-hash",
+        display_name="Old Name",
+    )
+    session_mock.scalar.return_value = existing_user
+
+    user = asyncio.run(
+        repository.update_display_name(
+            user_id=existing_user.id,
+            display_name="  New Name  ",
+        )
+    )
+
+    assert user is not None
+    assert user.display_name == "New Name"
+    session_mock.flush.assert_awaited_once_with()
+    session_mock.commit.assert_not_awaited()
+
+
+def test_user_repository_update_display_name_blanks_out_empty_string() -> None:
+    session, session_mock = create_session_mock()
+    repository = UserRepository(session)
+    existing_user = User(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        email="engineer@acme.com",
+        password_hash="test-password-hash",
+        display_name="Old Name",
+    )
+    session_mock.scalar.return_value = existing_user
+
+    user = asyncio.run(
+        repository.update_display_name(
+            user_id=existing_user.id,
+            display_name="   ",
+        )
+    )
+
+    assert user is not None
+    assert user.display_name is None
+
+
+def test_user_repository_update_display_name_rejects_overlong_name() -> None:
+    session, session_mock = create_session_mock()
+    repository = UserRepository(session)
+    existing_user = User(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        email="engineer@acme.com",
+        password_hash="test-password-hash",
+    )
+    session_mock.scalar.return_value = existing_user
+
+    with pytest.raises(
+        ValueError,
+        match="display_name must not exceed 200 characters",
+    ):
+        asyncio.run(
+            repository.update_display_name(
+                user_id=existing_user.id,
+                display_name="a" * 201,
+            )
+        )
+
+    session_mock.flush.assert_not_awaited()
+
+
+def test_user_repository_update_display_name_returns_none_for_unknown_user() -> None:
+    session, session_mock = create_session_mock()
+    repository = UserRepository(session)
+    session_mock.scalar.return_value = None
+
+    user = asyncio.run(
+        repository.update_display_name(
+            user_id=uuid4(),
+            display_name="New Name",
+        )
+    )
+
+    assert user is None
+    session_mock.flush.assert_not_awaited()
+
+
+def test_user_repository_update_password_hash_flushes() -> None:
+    session, session_mock = create_session_mock()
+    repository = UserRepository(session)
+    existing_user = User(
+        id=uuid4(),
+        tenant_id=uuid4(),
+        email="engineer@acme.com",
+        password_hash="old-hash",
+    )
+    session_mock.scalar.return_value = existing_user
+
+    user = asyncio.run(
+        repository.update_password_hash(
+            user_id=existing_user.id,
+            password_hash="new-hash",
+        )
+    )
+
+    assert user is not None
+    assert user.password_hash == "new-hash"
+    session_mock.flush.assert_awaited_once_with()
+    session_mock.commit.assert_not_awaited()
+
+
+def test_user_repository_update_password_hash_returns_none_for_unknown_user() -> None:
+    session, session_mock = create_session_mock()
+    repository = UserRepository(session)
+    session_mock.scalar.return_value = None
+
+    user = asyncio.run(
+        repository.update_password_hash(
+            user_id=uuid4(),
+            password_hash="new-hash",
+        )
+    )
+
+    assert user is None
+    session_mock.flush.assert_not_awaited()
+
+
 def test_research_run_repository_normalizes_and_flushes() -> None:
     session, session_mock = create_session_mock()
     repository = ResearchRunRepository(session)

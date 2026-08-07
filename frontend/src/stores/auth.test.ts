@@ -136,6 +136,62 @@ describe("useAuthStore", () => {
     expect(store.tenant).toBeNull();
   });
 
+  it("updates the display name and stores the returned identity", async () => {
+    const renamed = { ...identity, user: { ...identity.user, display_name: "New Name" } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(renamed)));
+    const store = useAuthStore();
+
+    const success = await store.updateDisplayName("New Name");
+
+    expect(success).toBe(true);
+    expect(store.user?.display_name).toBe("New Name");
+  });
+
+  it("surfaces a profile-update error without changing the stored identity", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(identity)));
+    const store = useAuthStore();
+    await store.login({ email: identity.user.email, password: "correct-horse-battery" });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "Not authenticated." }, 401)),
+    );
+    const success = await store.updateDisplayName("New Name");
+
+    expect(success).toBe(false);
+    expect(store.error).toBe("Not authenticated.");
+    expect(store.user?.display_name).toBe(identity.user.display_name);
+  });
+
+  it("changes the password without altering the stored identity", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 204 })));
+    const store = useAuthStore();
+
+    const success = await store.changePassword({
+      currentPassword: "correct-horse-battery",
+      newPassword: "new-correct-horse-battery",
+    });
+
+    expect(success).toBe(true);
+    expect(store.error).toBe("");
+  });
+
+  it("surfaces a change-password error for the wrong current password", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ detail: "Current password is incorrect." }, 401)),
+    );
+    const store = useAuthStore();
+
+    const success = await store.changePassword({
+      currentPassword: "wrong-password",
+      newPassword: "new-correct-horse-battery",
+    });
+
+    expect(success).toBe(false);
+    expect(store.error).toBe("Current password is incorrect.");
+  });
+
   it("sets a preview identity without calling the API", () => {
     const store = useAuthStore();
 

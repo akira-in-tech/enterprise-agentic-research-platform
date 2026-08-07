@@ -144,3 +144,47 @@ class UserRepository:
         result = await self._session.scalar(statement)
 
         return result
+
+    async def update_display_name(
+        self,
+        *,
+        user_id: UUID,
+        display_name: str | None,
+    ) -> User | None:
+        """Update one user's display name without committing the transaction."""
+
+        user = await self.get(user_id=user_id)
+
+        if user is None:
+            return None
+
+        normalized_display_name = display_name.strip() if display_name is not None else None
+
+        if normalized_display_name == "":
+            normalized_display_name = None
+
+        if normalized_display_name is not None and len(normalized_display_name) > 200:
+            raise ValueError("display_name must not exceed 200 characters.")
+
+        user.display_name = normalized_display_name
+        await self._session.flush()
+
+        return user
+
+    async def update_password_hash(
+        self,
+        *,
+        user_id: UUID,
+        password_hash: str,
+    ) -> User | None:
+        """Update one user's password hash without committing the transaction."""
+
+        user = await self.get(user_id=user_id)
+
+        if user is None:
+            return None
+
+        user.password_hash = password_hash
+        await self._session.flush()
+
+        return user

@@ -14,8 +14,10 @@ describe("ProviderMenu", () => {
     await trigger.trigger("click");
 
     expect(trigger.attributes("aria-expanded")).toBe("true");
-    expect(wrapper.text()).toContain("Private, no usage cost");
-    expect(wrapper.text()).toContain("Stronger synthesis, usage billed");
+    expect(wrapper.text()).toContain("Maximum privacy · no usage cost");
+    expect(wrapper.text()).toContain("High privacy · usage billed");
+    expect(wrapper.text()).toContain("~$0.02/req");
+    expect(wrapper.text()).toContain("~$0.18/req");
 
     const options = wrapper.findAll('[role="option"]');
     await options[1]?.trigger("click");

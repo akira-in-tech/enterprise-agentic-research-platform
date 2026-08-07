@@ -24,13 +24,19 @@ class FakeAuthService:
         login_error: Exception | None = None,
         resolved_session: ResolvedSession | None = None,
         profile: AuthenticatedIdentity | None = None,
+        updated_profile: AuthenticatedIdentity | None = None,
+        change_password_error: Exception | None = None,
     ) -> None:
         self.authenticated_session = authenticated_session
         self.register_error = register_error
         self.login_error = login_error
         self.resolved_session = resolved_session
         self.profile = profile
+        self.updated_profile = updated_profile
+        self.change_password_error = change_password_error
         self.logout_calls: list[str] = []
+        self.update_display_name_calls: list[dict[str, object]] = []
+        self.change_password_calls: list[dict[str, object]] = []
 
     async def register(
         self,
@@ -79,6 +85,41 @@ class FakeAuthService:
         tenant_id: object,
     ) -> AuthenticatedIdentity | None:
         return self.profile
+
+    async def update_display_name(
+        self,
+        *,
+        user_id: object,
+        tenant_id: object,
+        display_name: str | None,
+    ) -> AuthenticatedIdentity | None:
+        self.update_display_name_calls.append(
+            {
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "display_name": display_name,
+            }
+        )
+        return self.updated_profile
+
+    async def change_password(
+        self,
+        *,
+        user_id: object,
+        tenant_id: object,
+        current_password: str,
+        new_password: str,
+    ) -> None:
+        self.change_password_calls.append(
+            {
+                "user_id": user_id,
+                "tenant_id": tenant_id,
+                "current_password": current_password,
+                "new_password": new_password,
+            }
+        )
+        if self.change_password_error is not None:
+            raise self.change_password_error
 
 
 def create_identity() -> AuthenticatedIdentity:
@@ -291,6 +332,196 @@ def test_me_rejects_unresolvable_session() -> None:
         with TestClient(app) as client:
             client.cookies.set("session_token", "stale-token")
             response = client.get("/auth/me")
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 401
+
+
+def test_update_profile_renames_the_caller() -> None:
+    identity = create_identity()
+    resolved_session = ResolvedSession(
+        user_id=identity.user.id,
+        tenant_id=identity.tenant.id,
+    )
+    renamed_identity = AuthenticatedIdentity(
+        user=User(
+            id=identity.user.id,
+            tenant_id=identity.tenant.id,
+            email=identity.user.email,
+            password_hash="irrelevant",
+            display_name="New Name",
+        ),
+        tenant=identity.tenant,
+    )
+    fake_service = FakeAuthService(
+        resolved_session=resolved_session,
+        updated_profile=renamed_identity,
+    )
+    app.dependency_overrides[get_auth_service] = lambda: fake_service
+
+    try:
+        with TestClient(app) as client:
+            client.cookies.set("session_token", "opaque-session-token")
+            response = client.patch(
+                "/auth/profile",
+                json={"display_name": "New Name"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    assert response.json()["user"]["display_name"] == "New Name"
+    assert fake_service.update_display_name_calls == [
+        {
+            "user_id": identity.user.id,
+            "tenant_id": identity.tenant.id,
+            "display_name": "New Name",
+        }
+    ]
+
+
+def test_update_profile_requires_authentication() -> None:
+    app.dependency_overrides[get_auth_service] = lambda: FakeAuthService(
+        resolved_session=None,
+    )
+
+    try:
+        with TestClient(app) as client:
+            response = client.patch(
+                "/auth/profile",
+                json={"display_name": "New Name"},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 401
+
+
+def test_update_profile_rejects_overlong_display_name() -> None:
+    identity = create_identity()
+    resolved_session = ResolvedSession(
+        user_id=identity.user.id,
+        tenant_id=identity.tenant.id,
+    )
+    app.dependency_overrides[get_auth_service] = lambda: FakeAuthService(
+        resolved_session=resolved_session,
+        profile=identity,
+    )
+
+    try:
+        with TestClient(app) as client:
+            client.cookies.set("session_token", "opaque-session-token")
+            response = client.patch(
+                "/auth/profile",
+                json={"display_name": "a" * 201},
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+
+
+def test_change_password_succeeds() -> None:
+    identity = create_identity()
+    resolved_session = ResolvedSession(
+        user_id=identity.user.id,
+        tenant_id=identity.tenant.id,
+    )
+    fake_service = FakeAuthService(resolved_session=resolved_session)
+    app.dependency_overrides[get_auth_service] = lambda: fake_service
+
+    try:
+        with TestClient(app) as client:
+            client.cookies.set("session_token", "opaque-session-token")
+            response = client.post(
+                "/auth/change-password",
+                json={
+                    "current_password": "correct-horse-battery",
+                    "new_password": "new-correct-horse-battery",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 204
+    assert fake_service.change_password_calls == [
+        {
+            "user_id": identity.user.id,
+            "tenant_id": identity.tenant.id,
+            "current_password": "correct-horse-battery",
+            "new_password": "new-correct-horse-battery",
+        }
+    ]
+
+
+def test_change_password_rejects_wrong_current_password() -> None:
+    identity = create_identity()
+    resolved_session = ResolvedSession(
+        user_id=identity.user.id,
+        tenant_id=identity.tenant.id,
+    )
+    app.dependency_overrides[get_auth_service] = lambda: FakeAuthService(
+        resolved_session=resolved_session,
+        change_password_error=InvalidCredentialsError("Current password is incorrect."),
+    )
+
+    try:
+        with TestClient(app) as client:
+            client.cookies.set("session_token", "opaque-session-token")
+            response = client.post(
+                "/auth/change-password",
+                json={
+                    "current_password": "wrong-password",
+                    "new_password": "new-correct-horse-battery",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 401
+
+
+def test_change_password_rejects_short_new_password() -> None:
+    identity = create_identity()
+    resolved_session = ResolvedSession(
+        user_id=identity.user.id,
+        tenant_id=identity.tenant.id,
+    )
+    app.dependency_overrides[get_auth_service] = lambda: FakeAuthService(
+        resolved_session=resolved_session,
+    )
+
+    try:
+        with TestClient(app) as client:
+            client.cookies.set("session_token", "opaque-session-token")
+            response = client.post(
+                "/auth/change-password",
+                json={
+                    "current_password": "correct-horse-battery",
+                    "new_password": "short",
+                },
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 422
+
+
+def test_change_password_requires_authentication() -> None:
+    app.dependency_overrides[get_auth_service] = lambda: FakeAuthService(
+        resolved_session=None,
+    )
+
+    try:
+        with TestClient(app) as client:
+            response = client.post(
+                "/auth/change-password",
+                json={
+                    "current_password": "correct-horse-battery",
+                    "new_password": "new-correct-horse-battery",
+                },
+            )
     finally:
         app.dependency_overrides.clear()
 

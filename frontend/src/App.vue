@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 
 import AppHeader from "./components/AppHeader.vue";
+import ProfileDialog from "./components/ProfileDialog.vue";
 import { useAuthStore } from "./stores/auth";
 import { useResearchStore } from "./stores/research";
 import { useWorkspaceStore } from "./stores/workspace";
@@ -16,6 +17,8 @@ const authStore = useAuthStore();
 const activePage = computed<"research" | "knowledge">(() =>
   route.name === "knowledge" ? "knowledge" : "research",
 );
+
+const profileDialogOpen = ref(false);
 
 onMounted(() => {
   workspaceStore.hydrate();
@@ -44,21 +47,26 @@ async function logout(): Promise<void> {
 <template>
   <a v-if="!researchStore.designPreview" class="skip-link" href="#main">Skip to main content</a>
   <div class="app-shell">
-    <AppHeader
-      v-if="authStore.isAuthenticated()"
-      :dark-mode="workspaceStore.darkMode"
-      :api-status="researchStore.apiStatus"
-      :tenant-name="authStore.tenant?.name ?? ''"
-      :user-display-name="authStore.user?.display_name ?? null"
-      :active-page="activePage"
-      @new-research="startNewResearch"
-      @show-recent="startNewResearch"
-      @show-knowledge="showKnowledge"
-      @toggle-theme="workspaceStore.toggleTheme()"
-      @logout="logout"
-    />
+    <div v-if="authStore.isAuthenticated()" class="header-bar">
+      <AppHeader
+        :dark-mode="workspaceStore.darkMode"
+        :api-status="researchStore.apiStatus"
+        :tenant-name="authStore.tenant?.name ?? ''"
+        :user-display-name="authStore.user?.display_name ?? null"
+        :user-email="authStore.user?.email ?? ''"
+        :active-page="activePage"
+        @new-research="startNewResearch"
+        @show-recent="startNewResearch"
+        @show-knowledge="showKnowledge"
+        @toggle-theme="workspaceStore.toggleTheme()"
+        @edit-profile="profileDialogOpen = true"
+        @logout="logout"
+      />
+    </div>
 
     <router-view />
+
+    <ProfileDialog v-if="profileDialogOpen" @close="profileDialogOpen = false" />
 
     <footer v-if="authStore.isAuthenticated()" class="app-footer">
       <span>All research and sources are scoped to {{ authStore.tenant?.name }}.</span>
