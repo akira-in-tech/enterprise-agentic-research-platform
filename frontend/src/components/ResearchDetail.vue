@@ -5,7 +5,6 @@ import {
   PhCaretDown,
   PhCheckCircle,
   PhCircleNotch,
-  PhDownloadSimple,
   PhFileText,
   PhGlobe,
   PhGraduationCap,
@@ -21,12 +20,15 @@ import { downloadResearchReport, ResearchApiError } from "../lib/research-api";
 import type {
   OperationalIssue,
   RecentResearchRun,
+  ReportCitationStyle,
+  ReportExportFormat,
   ResearchAgentId,
   ResearchProgressRecord,
   ResearchReport,
   ResearchReportSource,
 } from "../types/research";
 import AgentWorkflow from "./AgentWorkflow.vue";
+import DownloadOptionsMenu from "./DownloadOptionsMenu.vue";
 import OperationalNotice from "./OperationalNotice.vue";
 
 const CITATION_PATTERN = /\[(WEB|PRIVATE|MCP|PAPER)-([0-9A-F]{16})\]/g;
@@ -147,18 +149,22 @@ function handleReportContentClick(event: MouseEvent): void {
 const downloading = ref(false);
 const downloadError = ref("");
 
-async function downloadReport(): Promise<void> {
+async function downloadReport(
+  format: ReportExportFormat,
+  citationStyle: ReportCitationStyle,
+): Promise<void> {
   if (downloading.value) return;
 
   downloading.value = true;
   downloadError.value = "";
 
   try {
-    const blob = await downloadResearchReport(props.run.id);
+    const blob = await downloadResearchReport(props.run.id, format, citationStyle);
     const objectUrl = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = objectUrl;
-    link.download = `report-${props.run.id}.md`;
+    const extension = format === "pdf" ? "pdf" : "md";
+    link.download = `report-${props.run.id}-${citationStyle}.${extension}`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -259,16 +265,7 @@ async function downloadReport(): Promise<void> {
               <PhWarningCircle v-else :size="16" weight="fill" />
               {{ reportApproved ? "Verified" : "Revision required" }}
             </span>
-            <button
-              class="secondary-button download-button"
-              type="button"
-              :disabled="downloading"
-              @click="downloadReport"
-            >
-              <PhCircleNotch v-if="downloading" class="spin" :size="15" />
-              <PhDownloadSimple v-else :size="15" />
-              {{ downloading ? "Preparing…" : "Download" }}
-            </button>
+            <DownloadOptionsMenu :downloading="downloading" @download="downloadReport" />
           </div>
         </div>
         <p v-if="downloadError" class="field-error" role="alert">{{ downloadError }}</p>

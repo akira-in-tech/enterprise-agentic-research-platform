@@ -194,6 +194,7 @@ describe("ResearchDetail", () => {
     });
 
     await wrapper.get(".download-button").trigger("click");
+    await wrapper.get('[role="option"]').trigger("click");
     await new Promise((resolve) => setTimeout(resolve));
     await wrapper.vm.$nextTick();
 
@@ -227,6 +228,7 @@ describe("ResearchDetail", () => {
     });
 
     await wrapper.get(".download-button").trigger("click");
+    await wrapper.get('[role="option"]').trigger("click");
     await new Promise((resolve) => setTimeout(resolve));
     await wrapper.vm.$nextTick();
 
