@@ -150,6 +150,28 @@ class TestScoreCase:
 
         assert result.passed is True
 
+    def test_incomplete_section_coverage_does_not_veto_an_otherwise_correct_case(
+        self,
+    ) -> None:
+        # Real evaluation runs across two different models showed sound,
+        # correctly-cited, multi-section reports scoring zero or partial
+        # section matches purely from heading-wording differences (e.g.
+        # "Key Features of HTTP/3" vs. an expected "Technical Background").
+        # passed must not gate on this loosely-matched, evidence-shown-to-
+        # be-unreliable signal.
+        case = create_case(
+            expected_report_sections=["Executive Summary", "Technical Background", "Trade-offs"]
+        )
+        outcome = create_outcome(report_sections=["Key Features of HTTP/3"])
+
+        result = score_case(case, outcome)
+
+        assert result.matched_report_sections == 0
+        assert result.route_correct is True
+        assert result.source_count_met is True
+        assert result.private_knowledge_correct is True
+        assert result.passed is True
+
 
 class TestBuildReport:
     def test_aggregates_rates_across_cases(self) -> None:

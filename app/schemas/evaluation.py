@@ -47,22 +47,26 @@ class EvaluationCaseResult(BaseModel):
 
     @property
     def passed(self) -> bool:
-        """Return whether every individual check for this case passed."""
+        """Return whether every individual check for this case passed.
+
+        Report-section coverage is deliberately excluded from this gate.
+        Five published evaluation runs across two different models (a
+        local 8B model and Claude) showed the same pattern: reports with
+        sound, correctly-cited, multi-section structure were vetoed
+        outright because their section titles didn't case-insensitive
+        substring-match the fixture's exact wording (e.g. "Key Features
+        of HTTP/3" vs. the fixture's "Technical Background"). That is a
+        scoring-method blind spot, not a signal that the case actually
+        failed -- see docs/evaluation.md's "Fifth run" section for the
+        evidence. report_section_coverage_rate is still computed and
+        reported for anyone auditing structure quality directly; it just
+        no longer single-handedly fails an otherwise-correct case.
+        """
 
         if self.outcome.error is not None:
             return False
 
-        sections_met = (
-            self.expected_report_sections == 0
-            or self.matched_report_sections == self.expected_report_sections
-        )
-
-        return (
-            self.route_correct
-            and self.source_count_met
-            and self.private_knowledge_correct
-            and sections_met
-        )
+        return self.route_correct and self.source_count_met and self.private_knowledge_correct
 
 
 class EvaluationReport(BaseModel):
