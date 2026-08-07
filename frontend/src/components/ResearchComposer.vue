@@ -38,7 +38,7 @@ function handleKeydown(event: KeyboardEvent): void {
     <textarea
       id="research-question"
       :value="query"
-      rows="3"
+      rows="5"
       maxlength="4000"
       placeholder="What would you like to understand?"
       @input="emit('update:query', ($event.target as HTMLTextAreaElement).value)"

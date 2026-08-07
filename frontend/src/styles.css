@@ -394,7 +394,7 @@ button:disabled {
 }
 
 .hero-copy-centered {
-  max-width: 560px;
+  max-width: 720px;
 }
 
 .composer-centered-wrap {
@@ -445,7 +445,7 @@ button:disabled {
 
 .research-composer textarea {
   width: 100%;
-  min-height: 92px;
+  min-height: 150px;
   padding: 10px 10px 8px;
   resize: vertical;
   color: var(--ink);
@@ -1992,10 +1992,6 @@ button:disabled {
 
   .hero-centered {
     padding-top: 26px;
-  }
-
-  .research-composer textarea {
-    min-height: 150px;
   }
 
   .composer-toolbar {
