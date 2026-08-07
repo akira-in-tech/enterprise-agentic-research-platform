@@ -9,9 +9,9 @@ evaluation dataset because they provide concrete, technically demanding
 research scenarios.
 
 The platform is being built incrementally with FastAPI, LangGraph, Claude,
-Qwen through Ollama, Tavily, PostgreSQL, Redis, Milvus, MCP, Vue, Docker, and
-AWS. A component is listed as tested only after its automated checks pass in
-this repository.
+Qwen through Ollama, Tavily, Semantic Scholar, PostgreSQL, Redis, Milvus, MCP,
+Vue, Docker, and AWS. A component is listed as tested only after its
+automated checks pass in this repository.
 
 ## Current Phase
 
@@ -57,6 +57,8 @@ Implemented and live verified: real authentication replacing the pre-authenticat
 Implemented and live verified: research_agent_steps wired into live execution via LangGraph's astream(stream_mode=["tasks", "values"]), tracing every canonical agent step as a real run executes, confirmed against the real production graph and a real Ollama call
 Implemented and tested: exponential backoff with full jitter (app/core/retry.py), wired around the actual connectivity-level failures of Ollama, Tavily, and Milvus search -- deliberately not Anthropic, whose SDK already retries internally, and deliberately layered outside the circuit breaker rather than inside it
 Implemented and tested: scripts/run_evaluation.py, a reproducible evaluation harness over evaluation_cases.jsonl (routing accuracy, source coverage, private-knowledge accuracy, report-section coverage, completion rate, human-review trigger rate, latency); scoring/loading unit tested and the harness itself smoke-tested end-to-end locally, but no run against a real provider has been published
+Implemented and tested: an AcademicAwareSearchClient fanning out to Tavily and the Semantic Scholar Academic Graph API concurrently, with per-leg fail-open and a dedicated circuit breaker around the academic leg; source_type/authors/year/venue flow through evidence scoring (a +0.10 paper bonus) and citations end to end; live-network verified that a real Semantic Scholar failure does not break Tavily results, but a live PAPER- source inside a generated report is not yet published, blocked by that provider's unauthenticated rate limit on the verifying network
+Implemented and tested: report export now accepts format (markdown/pdf) and citation_style (numbered/footnote) query params, rewriting citation markers into a real-link References/Notes list and rendering PDF via Markdown -> HTML -> WeasyPrint with a branded stylesheet; DownloadOptionsMenu in the Vue console offers all four combinations; verified inside the production Docker image and GitHub Actions CI, since WeasyPrint's native libraries are not installable on this dev machine's host OS
 ```
 
 See [docs/workflow.md](docs/workflow.md) for the deep-research agent path
@@ -164,14 +166,15 @@ this log used to spell out inline.
 | High-risk domain human review | Intent Router detection and ReflectionAgent human_review_required/reason unit tested; surfaced on the synchronous research-run API response |
 | Full MCP research tool set | search_web, search_private_documents, retrieve_source, ingest_document, save_research_report, and get_research_history unit tested against real repositories/services with mocked sessions; request_human_review unit tested against the durability audit-event repository |
 | research_agent_steps schema, repository, and live execution wiring | SQLAlchemy and Alembic tested; live PostgreSQL upgrade/downgrade/zero-drift and a live tenant/run/step round trip verified; wired into live workflow execution via LangGraph's astream, unit tested against a real graph (ordering, final-state equivalence, failure attribution) and live-Postgres and real-Ollama integration tested; each step start also publishes to the SSE progress stream (unit tested for the exact published sequence, live browser verified showing the Vue agent-flow diagram advance in real time) |
-| Report export storage and REST endpoint | ResearchReportExportService unit tested over the existing local/S3 DocumentStorage interface (including a not-found/other-failure distinction for both backends); tenant-scoped `POST`/`GET /research-runs/{id}/report/export` unit tested with mocked dependencies and live-Postgres/live-filesystem integration tested |
+| Report export storage and REST endpoint | ResearchReportExportService unit tested over the existing local/S3 DocumentStorage interface (including a not-found/other-failure distinction for both backends); tenant-scoped `POST`/`GET /research-runs/{id}/report/export` accept `format` (markdown/pdf) and `citation_style` (numbered/footnote) query params, unit tested with mocked dependencies and live-Postgres/live-filesystem integration tested. Citation markers are rewritten into numbered `[1]` or footnote `[^1]` form with a real-link References/Notes list (unit tested); PDF is rendered via Markdown → HTML → WeasyPrint with a branded stylesheet (unit tested, and the exact rendered bytes visually verified inside the production Docker image, since WeasyPrint's native libraries are not installable on this dev machine's host OS). DownloadOptionsMenu in the Vue console offers all four format/style combinations from the report page (component tested; wired into ResearchDetail.vue) |
+| Academic-aware web search (Tavily + Semantic Scholar) | AcademicAwareSearchClient fans out to Tavily and the unauthenticated-by-default Semantic Scholar Academic Graph API concurrently, with independent fail-open per leg and a dedicated circuit breaker around the academic leg so a persistently failing provider adds no latency to every search; `source_type`/`authors`/`year`/`venue` flow through the evidence pipeline end to end (`SearchResult` → `WebSource` → `EvidenceSource` → `ResearchReportSourceResponse`), paper-typed sources get a `+0.10` evidence-scoring bonus, and cross-provider source pooling dedupes by normalized URL, preferring the paper-typed result for a shared URL. Unit tested (result mapping, composite fail-isolation, circuit-breaker tripping, scoring bonus, pool dedup — 40+ dedicated tests); live-network verified — a real Tavily call succeeded while a concurrent real Semantic Scholar call hit its unauthenticated rate limit, and the composite client correctly returned Tavily-only results instead of failing the whole search. A live `PAPER-`-prefixed source inside an actual generated report has not yet been observed end to end (blocked by that same rate limit on this network at verification time); Semantic Scholar also works with an optional `SEMANTIC_SCHOLAR_API_KEY` for a higher limit |
 | Per-request correlation IDs | Middleware, log-record injection, and header echo unit tested |
 | Circuit breaker | Closed/open/half-open state machine unit tested with a fake clock; wired into the Tavily search executor, the Anthropic client, and the Milvus vector store, each with a dedicated test |
 | Exponential backoff with jitter | Full-jitter retry helper unit tested (delay calculation, capping, exhaustion, non-retryable passthrough); wired around Ollama, Tavily, and Milvus search's actual connectivity-level exceptions, each with a dedicated retry test |
 | Authentication | Email+password registration and login, Argon2id password hashing, a durable sessions table, httpOnly session-cookie middleware, and self-service tenant signup, replacing the pre-authentication X-Tenant-ID/X-User-ID headers; unit, live-Postgres, and Vue/Playwright tested |
 | PostgreSQL/Redis CI integration gate | The Postgres/Redis-only subset of integration tests run against postgres:17-alpine and redis:8-alpine service containers on every pull request and push to main |
 | Architecture documentation | docs/PROJECT_CHARTER.md and eight supporting documents, cross-referencing actual code paths and explicitly separating implemented from planned |
-| Evaluation harness | scripts/run_evaluation.py scores routing accuracy, source coverage, private-knowledge accuracy, report-section coverage, completion rate, human-review trigger rate, and latency against evaluation_cases.jsonl; scoring/loading unit tested against the real fixture file and a mocked HTTP transport, harness smoke-tested end-to-end locally; no run against a real provider published |
+| Evaluation harness | scripts/run_evaluation.py scores routing accuracy, source coverage, private-knowledge accuracy, report-section coverage, completion rate, human-review trigger rate, and latency against evaluation_cases.jsonl; scoring/loading unit tested against the real fixture file and a mocked HTTP transport. First real run published (2026-08-07, `--provider qwen`, local Ollama, no paid provider): 100% routing accuracy, 100% completion rate, 100% private-knowledge accuracy, but only 20% overall pass rate — every deep-research report collapsed the Planner's multi-section outline into one flowing document, and two cases show the Writer citing only the lowest-relevance sources in the pool while ignoring clearly on-topic ones already retrieved. A real, published, unflattering finding, not a pipeline bug — see [docs/evaluation.md](docs/evaluation.md#first-published-run) |
 | Prompt-injection-aware evidence handling | Web, private-document, and MCP evidence content is delimited and flagged as untrusted data (not instructions) before reaching the Analyst or Writer LLM prompt, with forged-delimiter stripping; unit tested at the helper level and through both agents' prompt construction |
 | Open-source contribution | Planned |
 
@@ -230,6 +233,7 @@ flowchart TB
     subgraph providers["External provider boundaries"]
         claude["Claude<br/>structured LLM output live verified"]
         tavily["Tavily<br/>web search live verified"]
+        semanticscholar["Semantic Scholar<br/>academic search, unauthenticated by default<br/>fail-open leg, live rate-limit hit verified"]
         embeddings["Embedding provider<br/>Ollama live verified locally<br/>Bedrock adapter unit tested"]
         objects["Source object storage<br/>local filesystem tested<br/>private S3 declared and mock tested"]
         mcp["Internal MCP reference server<br/>official SDK + live TCP verified"]
@@ -242,6 +246,7 @@ flowchart TB
     planner --> web
     planner --> local
     web --> tavily
+    web --> semanticscholar
     local --> embeddings --> milvus
     api --> objects
     web --> judge
@@ -354,7 +359,9 @@ GET  /research-runs                        → tenant-scoped recent-run history
 GET  /research-runs/{run_id}               → one run's durable lifecycle state
 GET  /research-runs/{run_id}/report        → durable report content and citations
 POST /research-runs/{run_id}/report/export → snapshot the report to object storage
+                                              (?format=markdown|pdf&citation_style=numbered|footnote)
 GET  /research-runs/{run_id}/report/export → download a previously exported snapshot
+                                              (same format/citation_style query params)
 GET  /research-runs/{run_id}/sources       → tenant-scoped scored evidence
 GET  /providers                            → Claude/Qwen capability metadata
 GET  /health                               → process liveness only

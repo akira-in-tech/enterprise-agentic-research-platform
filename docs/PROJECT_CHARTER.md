@@ -231,12 +231,16 @@ Qwen：本地和低成本开发、Intent routing、Structured planning、Summari
 Research tasks
 → bounded concurrency
 → circuit breaker (fails fast once Tavily is clearly failing)
-→ Tavily
+→ AcademicAwareSearchClient: Tavily ‖ Semantic Scholar (concurrent, each leg fails open independently;
+  Semantic Scholar carries its own circuit breaker so an unavailable academic provider adds no latency)
 → timeout and partial-failure isolation
 → URL normalization
-→ deduplication
-→ stable WEB-* source IDs
+→ deduplication (paper-typed result preferred when both providers return the same URL)
+→ stable WEB-*/PAPER-* source IDs, with author/year/venue metadata for paper-typed sources
 ```
+
+Semantic Scholar works unauthenticated by default (lower rate limit) or with an
+optional `SEMANTIC_SCHOLAR_API_KEY` for a higher one.
 
 ### Private retrieval
 

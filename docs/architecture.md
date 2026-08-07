@@ -34,6 +34,7 @@ flowchart TB
     subgraph providers["External providers"]
         claude["Claude (Anthropic)"]
         tavily["Tavily (web search, circuit-breaker guarded)"]
+        semanticscholar["Semantic Scholar (academic search, own circuit breaker, fail-open)"]
         embeddings["Ollama or Bedrock embeddings"]
         mcp["MCP server (app/mcp_server.py)"]
     end
@@ -44,6 +45,7 @@ flowchart TB
     router -->|direct| direct --> claude
     router -->|deep_research| planner
     planner --> web --> tavily
+    web --> semanticscholar
     planner --> local --> embeddings --> milvus
     web --> judge
     local --> judge
@@ -286,7 +288,11 @@ unavailable.
   state machine wired around Tavily (`SearchExecutor`), the Anthropic
   client, and `MilvusVectorStore.search()`, so a failing dependency stops
   being hammered mid-run instead of every remaining call paying its own
-  timeout to find out independently.
+  timeout to find out independently. `AcademicAwareSearchClient`
+  (`app/services/search/composite.py`) wraps the Semantic Scholar leg with
+  its own separate breaker: the two search providers fail independently, so
+  a persistently unavailable Semantic Scholar never blocks or slows down
+  Tavily results.
 - **Exponential backoff with jitter** (`app/core/retry.py`): layered
   outside the circuit breaker around each client's actual
   connectivity-level exceptions (not Anthropic, whose SDK already retries

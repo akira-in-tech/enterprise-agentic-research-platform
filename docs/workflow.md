@@ -31,7 +31,8 @@ Intent Router
 
 Planner creates 2-6 sub-questions, 2-6 search tasks, and a 3-8 section
 outline whose sections fit the request's actual domain. Web Scout
-(`SearchExecutor` → Tavily, circuit-breaker and retry guarded) and Local
+(`SearchExecutor` → `AcademicAwareSearchClient` → Tavily + Semantic
+Scholar concurrently, circuit-breaker and retry guarded) and Local
 Scout (`PrivateKnowledgeRetriever` → Milvus, tenant-scoped) run in
 parallel and are joined before Evidence Judge normalizes both pools,
 scores relevance/quality/traceability, and detects gaps and conflicts.
