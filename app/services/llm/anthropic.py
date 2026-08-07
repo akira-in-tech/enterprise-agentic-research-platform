@@ -39,7 +39,7 @@ class AnthropicClient:
         self._model = configured_model
         self._client = AsyncAnthropic(
             api_key=configured_api_key,
-            timeout=30.0,
+            timeout=120.0,
             max_retries=2,
         )
         self._circuit_breaker = circuit_breaker
