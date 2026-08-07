@@ -18,6 +18,7 @@ dependencies = [
     "httpx",
     "langgraph",
     "langgraph-checkpoint-postgres>=3.0,<4.0",
+    "markdown",
     "mcp>=1.26,<2.0",
     "pydantic-settings",
     "pymilvus>=2.6.14,<3.0",
@@ -28,6 +29,7 @@ dependencies = [
     "sqlalchemy[asyncio]",
     "tavily-python",
     "uvicorn[standard]",
+    "weasyprint",
 ]
 
 [project.optional-dependencies]
