@@ -466,3 +466,99 @@ async def test_writer_caps_evidence_to_the_highest_scored_sources() -> None:
 
     assert high.source_id in llm.prompts[0]
     assert low.source_id not in llm.prompts[0]
+
+
+@pytest.mark.anyio
+async def test_writer_groups_private_evidence_into_its_own_labeled_section() -> None:
+    private_source = EvidenceSource(
+        source_id="PRIVATE-0000000000000001",
+        origin="private",
+        title="onboarding-runbook.md",
+        locator="DOC-0000000000000001/CHK-0000000000000001",
+        content="Week 1: clone the monorepo and run the local stack.",
+        provider="private_knowledge",
+    )
+    web_source = EvidenceSource(
+        source_id="WEB-0000000000000001",
+        origin="web",
+        title="Generic onboarding checklist",
+        locator="https://example.com/onboarding",
+        content="Generic industry onboarding advice.",
+        provider="fixture",
+    )
+    analysis = ResearchAnalysis(
+        summary="Summarize the internal onboarding runbook.",
+        findings=[],
+        needs_more_research=False,
+    )
+    llm = RecordingLLMClient(text="Week 1 covers environment setup. [PRIVATE-0000000000000001]")
+
+    await WriterAgent(llm).write_report(
+        query="Summarize our internal onboarding runbook",
+        plan=create_plan(),
+        analysis=analysis,
+        sources=[web_source, private_source],
+        scores=[
+            EvidenceScore(
+                source_id=private_source.source_id,
+                relevance=0.9,
+                content_quality=1,
+                traceability=1,
+                overall=0.9,
+            ),
+            EvidenceScore(
+                source_id=web_source.source_id,
+                relevance=0.5,
+                content_quality=1,
+                traceability=1,
+                overall=0.6,
+            ),
+        ],
+    )
+
+    prompt = llm.prompts[0]
+    assert "YOUR ORGANIZATION'S OWN PRIVATE KNOWLEDGE" in prompt
+    assert "PUBLIC WEB AND ACADEMIC SOURCES" in prompt
+    # The private section must appear before the public section so a
+    # position-sensitive model encounters the authoritative evidence first.
+    assert prompt.index("PRIVATE KNOWLEDGE") < prompt.index("PUBLIC WEB")
+    assert private_source.source_id in prompt
+    assert web_source.source_id in prompt
+
+
+@pytest.mark.anyio
+async def test_writer_omits_the_private_section_when_no_private_evidence_exists() -> None:
+    web_source = EvidenceSource(
+        source_id="WEB-0000000000000001",
+        origin="web",
+        title="HTTP/3 overview",
+        locator="https://example.com/http3",
+        content="HTTP/3 uses QUIC.",
+        provider="fixture",
+    )
+    analysis = ResearchAnalysis(
+        summary="HTTP/3 uses QUIC.",
+        findings=[],
+        needs_more_research=False,
+    )
+    llm = RecordingLLMClient(text="HTTP/3 uses QUIC. [WEB-0000000000000001]")
+
+    await WriterAgent(llm).write_report(
+        query="Explain HTTP/3",
+        plan=create_plan(),
+        analysis=analysis,
+        sources=[web_source],
+        scores=[
+            EvidenceScore(
+                source_id=web_source.source_id,
+                relevance=0.9,
+                content_quality=1,
+                traceability=1,
+                overall=0.9,
+            ),
+        ],
+    )
+
+    prompt = llm.prompts[0]
+    assert "=== YOUR ORGANIZATION'S OWN PRIVATE KNOWLEDGE ===" not in prompt
+    assert "=== PUBLIC WEB AND ACADEMIC SOURCES ===" in prompt

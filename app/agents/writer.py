@@ -37,26 +37,43 @@ class WriterAgent:
 
         top_sources = select_top_evidence(sources, scores, limit=self._max_evidence_sources)
         score_by_source = {score.source_id: score for score in scores}
-        evidence_blocks = []
 
-        for source in top_sources:
+        def render_source(source: EvidenceSource) -> str:
             score = score_by_source.get(source.source_id)
             overall = score.overall if score is not None else 0.0
-            evidence_blocks.append(
-                "\n".join(
-                    [
-                        f"SOURCE_ID: {source.source_id}",
-                        f"TITLE: {source.title}",
-                        f"LOCATOR: {source.locator}",
-                        f"ORIGIN: {source.origin}",
-                        f"SOURCE_TYPE: {source.source_type}",
-                        f"AUTHORS: {', '.join(source.authors) or 'unknown'}",
-                        f"YEAR: {source.year if source.year is not None else 'unknown'}",
-                        f"VENUE: {source.venue or 'unknown'}",
-                        f"QUALITY_SCORE: {overall:.4f}",
-                        f"CONTENT: {wrap_untrusted_content(source.content[:4_000])}",
-                    ]
-                )
+            return "\n".join(
+                [
+                    f"SOURCE_ID: {source.source_id}",
+                    f"TITLE: {source.title}",
+                    f"LOCATOR: {source.locator}",
+                    f"ORIGIN: {source.origin}",
+                    f"SOURCE_TYPE: {source.source_type}",
+                    f"AUTHORS: {', '.join(source.authors) or 'unknown'}",
+                    f"YEAR: {source.year if source.year is not None else 'unknown'}",
+                    f"VENUE: {source.venue or 'unknown'}",
+                    f"QUALITY_SCORE: {overall:.4f}",
+                    f"CONTENT: {wrap_untrusted_content(source.content[:4_000])}",
+                ]
+            )
+
+        private_sources = [source for source in top_sources if source.origin == "private"]
+        other_sources = [source for source in top_sources if source.origin != "private"]
+        evidence_sections = []
+
+        if private_sources:
+            evidence_sections.append(
+                "=== YOUR ORGANIZATION'S OWN PRIVATE KNOWLEDGE ===\n"
+                "These are not generic web content -- they are the organization's own "
+                "documents. For any question about \"our\"/\"internal\"/the organization's "
+                "own practices, these are the authoritative answer; center the report on "
+                "what they actually say.\n\n"
+                + "\n\n".join(render_source(source) for source in private_sources)
+            )
+
+        if other_sources:
+            evidence_sections.append(
+                "=== PUBLIC WEB AND ACADEMIC SOURCES ===\n\n"
+                + "\n\n".join(render_source(source) for source in other_sources)
             )
 
         outline = "\n".join(
@@ -66,7 +83,7 @@ class WriterAgent:
             f"- {finding.claim} ({finding.confidence}): {', '.join(finding.source_ids)}"
             for finding in analysis.findings
         )
-        evidence = "\n\n".join(evidence_blocks) or "NO VERIFIED EVIDENCE"
+        evidence = "\n\n".join(evidence_sections) or "NO VERIFIED EVIDENCE"
         revision_context = ""
 
         if previous_report is not None and revision_feedback is not None:
@@ -100,10 +117,11 @@ class WriterAgent:
             "explicitly and do not invent facts, sources, URLs, or citations. If the research "
             "question refers to 'our', 'the organization's', 'internal', or similar "
             "possessive language, that is a request for the organization's own knowledge: "
-            "look for evidence with ORIGIN 'private' first and center the report on what "
-            "that source actually says, rather than substituting generic external best-"
-            "practice content from ORIGIN 'web' sources that only superficially match the "
-            "topic. When several sources could support the same claim, cite the one(s) with "
+            "the evidence section titled YOUR ORGANIZATION'S OWN PRIVATE KNOWLEDGE, if "
+            "present, is the authoritative answer -- center the report on what it "
+            "actually says, rather than substituting generic content from the PUBLIC WEB "
+            "AND ACADEMIC SOURCES section that only superficially matches the topic. "
+            "When several sources could support the same claim, cite the one(s) with "
             "the highest QUALITY_SCORE rather than a lower-scored source that happens to "
             "appear earlier in the evidence list; independently, prefer citing sources with "
             "SOURCE_TYPE 'paper' as the stronger evidence when scores are close, but "
