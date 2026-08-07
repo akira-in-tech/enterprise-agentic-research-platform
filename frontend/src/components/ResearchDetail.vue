@@ -8,6 +8,7 @@ import {
   PhDownloadSimple,
   PhFileText,
   PhGlobe,
+  PhGraduationCap,
   PhLockKey,
   PhPlugs,
   PhWarningCircle,
@@ -28,7 +29,7 @@ import type {
 import AgentWorkflow from "./AgentWorkflow.vue";
 import OperationalNotice from "./OperationalNotice.vue";
 
-const CITATION_PATTERN = /\[(WEB|PRIVATE|MCP)-([0-9A-F]{16})\]/g;
+const CITATION_PATTERN = /\[(WEB|PRIVATE|MCP|PAPER)-([0-9A-F]{16})\]/g;
 
 const props = defineProps<{
   run: RecentResearchRun;
@@ -82,6 +83,7 @@ const activeAgent = computed<ResearchAgentId>(() => {
 });
 
 function sourceIcon(source: ResearchReportSource): typeof PhGlobe {
+  if (source.source_type === "paper") return PhGraduationCap;
   if (source.origin === "private") return PhLockKey;
   if (source.origin === "mcp") return PhPlugs;
   return PhGlobe;

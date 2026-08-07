@@ -61,6 +61,10 @@ export function createDesignPreviewReport(now = new Date()): ResearchReport {
         traceability: 1,
         overall_score: 0.97,
         cited: true,
+        source_type: "web",
+        authors: [],
+        year: null,
+        venue: null,
       },
       {
         source_id: "web-cdc-overview",
@@ -73,6 +77,10 @@ export function createDesignPreviewReport(now = new Date()): ResearchReport {
         traceability: 1,
         overall_score: 0.96,
         cited: true,
+        source_type: "web",
+        authors: [],
+        year: null,
+        venue: null,
       },
       {
         source_id: "private-reliability-notes",
@@ -85,6 +93,10 @@ export function createDesignPreviewReport(now = new Date()): ResearchReport {
         traceability: 0.96,
         overall_score: 0.93,
         cited: true,
+        source_type: "web",
+        authors: [],
+        year: null,
+        venue: null,
       },
     ],
   };

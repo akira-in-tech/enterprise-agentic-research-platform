@@ -97,6 +97,8 @@ export interface ResearchProgressRecord {
   error_message: string | null;
 }
 
+export type ReportSourceType = "web" | "paper";
+
 export interface ResearchReportSource {
   source_id: string;
   origin: "web" | "private" | "mcp";
@@ -108,6 +110,10 @@ export interface ResearchReportSource {
   traceability: number;
   overall_score: number;
   cited: boolean;
+  source_type: ReportSourceType;
+  authors: string[];
+  year: number | null;
+  venue: string | null;
 }
 
 export interface ResearchReport {

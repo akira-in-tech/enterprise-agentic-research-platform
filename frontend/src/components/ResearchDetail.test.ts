@@ -26,6 +26,10 @@ const baseSource: ResearchReportSource = {
   traceability: 1,
   overall_score: 0.97,
   cited: true,
+  source_type: "web",
+  authors: [],
+  year: null,
+  venue: null,
 };
 
 const report: ResearchReport = {
