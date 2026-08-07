@@ -398,7 +398,7 @@ button:disabled {
 }
 
 .composer-centered-wrap {
-  width: min(720px, 100%);
+  width: min(600px, 100%);
   margin: 32px 0 0;
   text-align: left;
 }
@@ -1640,11 +1640,20 @@ button:disabled {
   gap: 10px;
 }
 
+.download-picker {
+  position: relative;
+}
+
 .download-button {
   min-height: 36px;
   gap: 6px;
   padding: 0 12px;
   font-size: 12px;
+}
+
+.download-popover {
+  right: 0;
+  left: auto;
 }
 
 .report-content {
