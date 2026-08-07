@@ -51,6 +51,7 @@ class Settings(BaseSettings):
     anthropic_model: str = ""
     anthropic_api_key: SecretStr = SecretStr("")
     tavily_api_key: SecretStr = SecretStr("")
+    semantic_scholar_api_key: SecretStr = SecretStr("")
 
     llm_provider: str = "anthropic"
     vector_store_provider: str = "memory"
