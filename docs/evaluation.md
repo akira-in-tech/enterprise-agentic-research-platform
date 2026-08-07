@@ -331,6 +331,39 @@ private-knowledge accuracy, dramatically better instruction adherence,
 not a free pass on the section-coverage scoring gap or on the crash
 this run happened to catch.
 
+## Sixth run: fixing the scoring gate and the routing prompt
+
+Two fixes followed directly from what runs 4-5 established:
+
+1. `EvaluationCaseResult.passed` required matched sections to equal
+   expected sections exactly. Given the confirmed, cross-model evidence
+   that this substring match under-credits genuinely good structure,
+   report-section coverage was removed from the pass/fail gate — it is
+   still computed and reported as its own rate, just no longer a veto.
+2. The Intent Router prompt was strengthened to treat a rule-based
+   `deep_research` suggestion as a strong prior for security, safety,
+   legal, and financial questions, directly targeting the routing miss
+   from run 5.
+
+| Metric | Run 4 (qwen3:8b, before) | Run 6 (qwen3:8b, after) |
+| --- | --- | --- |
+| Routing accuracy | 100% | 100% |
+| Source coverage rate | 80% | 80% |
+| Private-knowledge accuracy | 0% | 0% |
+| Report-section coverage | 5% | 5% |
+| **Overall pass rate** | **20%** | **80%** |
+
+Every underlying rate is unchanged — this is entirely the gate fix
+taking effect, not a capability improvement, and that's the honest way
+to read it. 4 of 5 cases now pass. The one that still doesn't,
+`eval-eng-003` (the onboarding-runbook case), fails for exactly the
+reason established in runs 2-4 and never fixed: qwen3:8b still doesn't
+cite the private document, so both `source_count_met` and
+`private_knowledge_correct` are false for that case. That capability
+gap is real and unchanged; what changed is that it no longer gets
+compounded by a scoring-method artifact dragging four *other*,
+genuinely correct cases down with it.
+
 ## What the charter calls for beyond the above
 
 - Citation precision / unsupported-claim rate as a dedicated metric
