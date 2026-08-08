@@ -401,6 +401,46 @@ special-casing). Further iteration on qwen3:8b's prompt for this
 specific gap is not recommended; the next real signal here is provider
 choice, not more prompt engineering.
 
+## Trying alternative local models: deepseek-r1:8b and deepseek-r1:14b
+
+`app/services/llm/factory.py`'s `create_llm_client()` gained an
+`ollama_model` override so a specific Ollama model can be selected for
+one client without touching the server-wide `OLLAMA_MODEL` setting
+(unit tested in `test_llm_factory.py` and `test_ollama_client.py`).
+The motivation: qwen3:8b is over a year old as a release, and
+deepseek-r1 is a newer, generally well-regarded reasoning model family
+in the same 8B-14B weight class this machine (16GB RAM, Apple M2 Pro)
+can run. Before recommending either as an addition, both were checked
+against the actual pipeline, not just pulled and assumed better.
+
+Both `deepseek-r1:8b` and `deepseek-r1:14b` were pulled via `ollama
+pull` and compared against the qwen3:8b baseline using
+`eval-eng-001` ("Compare HTTP/2 and HTTP/3 using current technical
+sources") -- a single representative case, run through the real API
+server and the real 8-agent graph (not a raw prompt to the model), one
+model at a time, each against a freshly created scratch database and a
+fresh evaluation tenant to guarantee genuine re-execution.
+
+| Model | Result | Latency | What happened |
+| --- | --- | --- | --- |
+| qwen3:8b (baseline) | PASS | 242.7s | Correctly routed, cited sources in the app's `[WEB-XXXXXXXX]` format, stayed on topic. |
+| deepseek-r1:8b | FAIL | 306.4s | Cited sources as literal `[RFC 7540]`-style brackets instead of the app's `[WEB-XXXXXXXX]` marker format the citation extractor expects -- `cited_source_count: 0`, so none of its claims are actually traceable. It also drifted completely off-topic: the report was titled "HTTP/2 and Cybersecurity" and never once mentioned HTTP/3, despite that being the explicit subject of the query. |
+| deepseek-r1:14b | FAIL | >600s (timed out) | Individual `/api/generate` calls took roughly 1m45s-2m30s *each* on this hardware; the deep-research pipeline needs several sequential calls (planner, evidence judging, analyst, writer, reflection, a second search-and-write round), so the run never finished even at a 10-minute client timeout. |
+
+**Conclusion: neither model is being added as an alternative.** Both
+are pulled locally and immediately usable via the new
+`ollama_model` override or by setting `OLLAMA_MODEL` for anyone who
+wants to experiment further, but the real, in-pipeline evidence points
+the other way from the initial hypothesis: qwen3:8b is the better fit
+for this specific application, not despite being an older release but
+because of two very concrete reasons unrelated to general reasoning
+ability -- deepseek-r1 doesn't reliably follow this app's citation
+marker convention, and its 14B step-up is too slow on this hardware to
+complete a multi-step agentic workflow at all. This is the same
+pattern as every other finding in this document: real evidence
+determined the outcome, even though it runs counter to what "pick a
+few models better than qwen" set out to find.
+
 ## What the charter calls for beyond the above
 
 - Citation precision / unsupported-claim rate as a dedicated metric
