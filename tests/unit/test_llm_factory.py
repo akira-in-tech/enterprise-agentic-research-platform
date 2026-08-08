@@ -28,12 +28,28 @@ def test_factory_creates_ollama_provider(
     monkeypatch.setattr(
         factory,
         "OllamaClient",
-        lambda: expected_client,
+        lambda **_: expected_client,
     )
 
     result = factory.create_llm_client("ollama")
 
     assert result is expected_client
+
+
+def test_factory_passes_through_an_ollama_model_override(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured_kwargs: dict[str, object] = {}
+
+    def fake_ollama_client(**kwargs: object) -> object:
+        captured_kwargs.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(factory, "OllamaClient", fake_ollama_client)
+
+    factory.create_llm_client("ollama", ollama_model="deepseek-r1:14b")
+
+    assert captured_kwargs == {"model": "deepseek-r1:14b"}
 
 
 @pytest.mark.parametrize(
@@ -108,7 +124,7 @@ def test_factory_uses_provider_from_settings(
     monkeypatch.setattr(
         factory,
         "OllamaClient",
-        lambda: expected_client,
+        lambda **_: expected_client,
     )
 
     result = factory.create_llm_client()

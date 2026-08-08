@@ -51,9 +51,9 @@ def _strip_unsupported_grammar_keywords(schema: dict[str, Any]) -> dict[str, Any
 class OllamaClient:
     """Provide local LLM access through the Ollama HTTP API."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, model: str | None = None) -> None:
         self._base_url = settings.ollama_base_url.rstrip("/")
-        self._model = settings.ollama_model
+        self._model = (model or settings.ollama_model).strip()
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
             timeout=300.0,

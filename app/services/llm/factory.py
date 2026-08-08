@@ -44,12 +44,20 @@ def normalize_llm_provider(
 
 def create_llm_client(
     provider: str | None = None,
+    *,
+    ollama_model: str | None = None,
 ) -> ClosableLLMClient:
-    """Create the selected LLM provider client."""
+    """Create the selected LLM provider client.
+
+    ollama_model overrides settings.ollama_model for this client only
+    (ignored for the anthropic provider). Useful for comparing local
+    models -- e.g. deepseek-r1:14b vs. the configured default -- without
+    changing the OLLAMA_MODEL environment variable server-wide.
+    """
 
     selected_provider = normalize_llm_provider(provider)
 
     if selected_provider == "anthropic":
         return AnthropicClient(circuit_breaker=CircuitBreaker())
 
-    return OllamaClient()
+    return OllamaClient(model=ollama_model)

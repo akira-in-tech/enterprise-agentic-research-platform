@@ -23,10 +23,12 @@ class ConstrainedAnswer(BaseModel):
 
 def make_client(
     handler: Callable[[httpx.Request], httpx.Response],
+    *,
+    model: str | None = None,
 ) -> OllamaClient:
     """Build a real OllamaClient with its HTTP transport swapped for a fake."""
 
-    client = OllamaClient()
+    client = OllamaClient(model=model)
     client._client = httpx.AsyncClient(
         base_url=client._client.base_url,
         transport=httpx.MockTransport(handler),
@@ -101,6 +103,21 @@ async def test_generate_structured_enables_thinking() -> None:
 
     assert result == Answer(text="epoll")
     assert captured_bodies[0]["think"] is True
+
+
+@pytest.mark.anyio
+async def test_generate_text_uses_the_overridden_model_when_given() -> None:
+    captured_bodies: list[dict[str, object]] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        captured_bodies.append(json.loads(request.content))
+        return httpx.Response(200, json={"response": "epoll observes file descriptors."})
+
+    client = make_client(handler, model="deepseek-r1:14b")
+
+    await client.generate_text("Explain epoll.")
+
+    assert captured_bodies[0]["model"] == "deepseek-r1:14b"
 
 
 @pytest.mark.anyio
