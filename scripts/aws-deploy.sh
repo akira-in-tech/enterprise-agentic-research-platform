@@ -101,20 +101,39 @@ registry_host=${api_repository%%/*}
 aws ecr get-login-password |
   docker login --username AWS --password-stdin "${registry_host}"
 
-docker buildx build \
-  --platform linux/arm64 \
-  --provenance=false \
-  --tag "${api_repository}:${image_tag}" \
-  --push \
-  "${repository_root}"
+# ECR repositories are immutable-tagged, so retrying a deploy for the same
+# git-sha image tag after a partial failure (e.g. one repository pushed,
+# the other crashed mid-build under QEMU emulation) would otherwise fail
+# on "tag already exists" for the repository that already succeeded.
+image_already_pushed() {
+  aws ecr describe-images \
+    --repository-name "$1" \
+    --image-ids imageTag="${image_tag}" \
+    >/dev/null 2>&1
+}
 
-docker buildx build \
-  --platform linux/arm64 \
-  --provenance=false \
-  --build-arg VITE_ENABLED_LLM_PROVIDERS=claude \
-  --tag "${frontend_repository}:${image_tag}" \
-  --push \
-  "${repository_root}/frontend"
+if image_already_pushed "${api_repository##*/}"; then
+  echo "API image ${image_tag} already exists in ECR; skipping build."
+else
+  docker buildx build \
+    --platform linux/arm64 \
+    --provenance=false \
+    --tag "${api_repository}:${image_tag}" \
+    --push \
+    "${repository_root}"
+fi
+
+if image_already_pushed "${frontend_repository##*/}"; then
+  echo "Frontend image ${image_tag} already exists in ECR; skipping build."
+else
+  docker buildx build \
+    --platform linux/arm64 \
+    --provenance=false \
+    --build-arg VITE_ENABLED_LLM_PROVIDERS=claude \
+    --tag "${frontend_repository}:${image_tag}" \
+    --push \
+    "${repository_root}/frontend"
+fi
 
 echo "Starting ${desired_count} application task(s) with immutable tag ${image_tag}."
 terraform -chdir="${terraform_directory}" apply \
