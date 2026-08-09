@@ -104,6 +104,7 @@ resource "aws_iam_role_policy" "regional_staging" {
           "ec2:DescribeVpcAttribute",
           "ec2:DescribeVpcs",
           "ec2:GetManagedPrefixListEntries",
+          "ec2:GetSecurityGroupsForVpc",
           "ecr:DescribeImages",
           "ecr:DescribeRepositories",
           "ecr:GetLifecyclePolicy",
@@ -373,10 +374,56 @@ resource "aws_iam_role_policy" "global_staging" {
         Sid    = "ManageStagingBudget"
         Effect = "Allow"
         Action = [
+          "budgets:DeleteBudget",
           "budgets:ModifyBudget",
+          "budgets:TagResource",
+          "budgets:UntagResource",
           "budgets:ViewBudget",
         ]
         Resource = "arn:aws:budgets::${local.account_id}:budget/${local.name_prefix}-monthly"
+      },
+      {
+        Sid    = "ManageStagingDocumentBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:DeleteBucketPolicy",
+          "s3:DeleteObject",
+          "s3:GetBucketPolicy",
+          "s3:GetBucketPublicAccessBlock",
+          "s3:GetBucketTagging",
+          "s3:GetBucketVersioning",
+          "s3:GetEncryptionConfiguration",
+          "s3:GetLifecycleConfiguration",
+          "s3:ListBucket",
+          "s3:PutBucketPolicy",
+          "s3:PutBucketPublicAccessBlock",
+          "s3:PutBucketTagging",
+          "s3:PutBucketVersioning",
+          "s3:PutEncryptionConfiguration",
+          "s3:PutLifecycleConfiguration",
+        ]
+        Resource = [
+          "arn:aws:s3:::${local.name_prefix}-*-documents",
+          "arn:aws:s3:::${local.name_prefix}-*-documents/*",
+        ]
+      },
+      {
+        Sid    = "ManageStagingEncryptionGrants"
+        Effect = "Allow"
+        Action = [
+          "kms:CreateGrant",
+          "kms:DescribeKey",
+          "kms:ListGrants",
+          "kms:RevokeGrant",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = var.aws_region
+          }
+        }
       },
       {
         Sid    = "ManageProjectEcsRoles"
