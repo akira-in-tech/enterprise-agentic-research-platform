@@ -1,8 +1,9 @@
 # Architecture
 
-See [PROJECT_CHARTER.md](PROJECT_CHARTER.md) for the target-state vision and
-the root [README.md](../README.md) for the current, verified implementation
-status. This document describes how the pieces fit together.
+See [PROJECT_CHARTER.md](PROJECT_CHARTER.md) for the target-state vision, the
+root [README.md](../README.md) for a product overview, and
+[status.md](status.md) for the current, verified, component-by-component
+implementation status. This document describes how the pieces fit together.
 
 ## Component overview
 

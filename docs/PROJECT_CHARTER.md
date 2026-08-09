@@ -2,7 +2,8 @@
 
 > 文档模式：Future-state / completion-state charter
 > 假设：所有 phases 均已完成。它描述最终目标，不代表当前仓库已经实现这些功能。
-> 当前实现状态见根目录 [README.md](../README.md)（逐项、可验证的状态表）。
+> 产品概览见根目录 [README.md](../README.md)；逐项、可验证的当前实现状态见
+> [status.md](status.md)。
 
 ## 1. 项目定位
 
@@ -388,7 +389,8 @@ Vue Test Utils
 Playwright
 ```
 
-Vue Router 驱动客户端路由与认证守卫（`router/index.ts`），Pinia 管理认证与主题 state（`stores/auth.ts`、`stores/workspace.ts`），TanStack Vue Query 管理研究数据的请求缓存（`views/ResearchRunView.vue`、`components/KnowledgeLibrary.vue`），Playwright 覆盖端到端流程（`frontend/e2e/`）。详见根 README Project Status 表。
+Vue Router 驱动客户端路由与认证守卫（`router/index.ts`），Pinia 管理认证与主题 state（`stores/auth.ts`、`stores/workspace.ts`），TanStack Vue Query 管理研究数据的请求缓存（`views/ResearchRunView.vue`、`components/KnowledgeLibrary.vue`），Playwright 覆盖端到端流程（`frontend/e2e/`）。详见 [status.md](status.md) 的
+Component Status 表。
 
 Frontend 标题保持通用："Enterprise Research Platform"，placeholder 保持通用："Ask a research question..."。内置 demo profile 可以展示工程示例，但不限制用户输入其他领域的问题。
 
