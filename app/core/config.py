@@ -1,8 +1,25 @@
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field, SecretStr
+from pydantic import BeforeValidator, Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+def _coerce_int_literal(value: object) -> object:
+    """Coerce a numeric-looking string to int before Literal[int, ...] validation.
+
+    Environment variables (as set by ECS task definitions and shells) are
+    always strings. Pydantic auto-coerces "1024" -> 1024 for a plain `int`
+    field, but not for `Literal[256, 512, 1024]`, which checks the raw
+    value's type and identity against the literal set -- "1024" != 1024.
+    """
+
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return value
+    return value
 
 
 def parse_cors_allowed_origins(value: str) -> list[str]:
@@ -63,7 +80,9 @@ class Settings(BaseSettings):
     embedding_provider: Literal["ollama", "bedrock"] = "ollama"
     aws_region: str = "us-west-2"
     bedrock_embedding_model: str = "amazon.titan-embed-text-v2:0"
-    bedrock_embedding_dimensions: Literal[256, 512, 1024] = 1024
+    bedrock_embedding_dimensions: Annotated[
+        Literal[256, 512, 1024], BeforeValidator(_coerce_int_literal)
+    ] = 1024
 
     mcp_endpoint: str = ""
     mcp_server_name: str = "evident-reference"
