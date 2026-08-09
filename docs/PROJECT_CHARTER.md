@@ -32,7 +32,7 @@ Enterprise Agentic Research Platform 是一个面向企业团队的通用、多�
 ## 2. Core Platform 与内置 Demo Profile 的关系
 
 | 层级 | 定位 |
-|---|---|
+| --- | --- |
 | Core product | 通用企业研究平台，可处理任意研究主题 |
 | Workflow | 根据问题复杂度选择 direct answer 或 deep research |
 | Evidence pipeline | 与领域无关的检索、评分、冲突检测和引用验证 |
