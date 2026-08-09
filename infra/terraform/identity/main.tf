@@ -314,6 +314,7 @@ resource "aws_iam_role_policy" "regional_staging" {
           "elasticloadbalancing:DeleteLoadBalancer",
           "elasticloadbalancing:DeleteTargetGroup",
           "elasticloadbalancing:DeregisterTargets",
+          "elasticloadbalancing:DescribeListenerAttributes",
           "elasticloadbalancing:DescribeListeners",
           "elasticloadbalancing:DescribeLoadBalancerAttributes",
           "elasticloadbalancing:DescribeLoadBalancers",
@@ -375,55 +376,13 @@ resource "aws_iam_role_policy" "global_staging" {
         Effect = "Allow"
         Action = [
           "budgets:DeleteBudget",
+          "budgets:ListTagsForResource",
           "budgets:ModifyBudget",
           "budgets:TagResource",
           "budgets:UntagResource",
           "budgets:ViewBudget",
         ]
         Resource = "arn:aws:budgets::${local.account_id}:budget/${local.name_prefix}-monthly"
-      },
-      {
-        Sid    = "ManageStagingDocumentBucket"
-        Effect = "Allow"
-        Action = [
-          "s3:CreateBucket",
-          "s3:DeleteBucket",
-          "s3:DeleteBucketPolicy",
-          "s3:DeleteObject",
-          "s3:GetBucketPolicy",
-          "s3:GetBucketPublicAccessBlock",
-          "s3:GetBucketTagging",
-          "s3:GetBucketVersioning",
-          "s3:GetEncryptionConfiguration",
-          "s3:GetLifecycleConfiguration",
-          "s3:ListBucket",
-          "s3:PutBucketPolicy",
-          "s3:PutBucketPublicAccessBlock",
-          "s3:PutBucketTagging",
-          "s3:PutBucketVersioning",
-          "s3:PutEncryptionConfiguration",
-          "s3:PutLifecycleConfiguration",
-        ]
-        Resource = [
-          "arn:aws:s3:::${local.name_prefix}-*-documents",
-          "arn:aws:s3:::${local.name_prefix}-*-documents/*",
-        ]
-      },
-      {
-        Sid    = "ManageStagingEncryptionGrants"
-        Effect = "Allow"
-        Action = [
-          "kms:CreateGrant",
-          "kms:DescribeKey",
-          "kms:ListGrants",
-          "kms:RevokeGrant",
-        ]
-        Resource = "*"
-        Condition = {
-          StringEquals = {
-            "aws:RequestedRegion" = var.aws_region
-          }
-        }
       },
       {
         Sid    = "ManageProjectEcsRoles"
@@ -492,4 +451,84 @@ resource "aws_iam_role_policy" "global_staging" {
       },
     ]
   })
+}
+
+# A customer-managed policy, not another inline one: IAM enforces a combined
+# 10240-byte ceiling across ALL of a role's inline policies together (not
+# per document), and regional_staging + global_staging + terraform_state
+# were already close to it before this statement set existed. A managed
+# policy has its own separate size budget and headroom for what the next
+# deploy attempt inevitably still needs.
+resource "aws_iam_policy" "staging_storage_and_secrets" {
+  name = "${local.name_prefix}-storage-and-secrets"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "ManageStagingDocumentBucket"
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket",
+          "s3:DeleteBucket",
+          "s3:DeleteBucketPolicy",
+          "s3:DeleteObject",
+          "s3:GetBucketAcl",
+          "s3:GetBucketPolicy",
+          "s3:GetBucketPublicAccessBlock",
+          "s3:GetBucketTagging",
+          "s3:GetBucketVersioning",
+          "s3:GetEncryptionConfiguration",
+          "s3:GetLifecycleConfiguration",
+          "s3:ListBucket",
+          "s3:PutBucketPolicy",
+          "s3:PutBucketPublicAccessBlock",
+          "s3:PutBucketTagging",
+          "s3:PutBucketVersioning",
+          "s3:PutEncryptionConfiguration",
+          "s3:PutLifecycleConfiguration",
+        ]
+        Resource = [
+          "arn:aws:s3:::${local.name_prefix}-*-documents",
+          "arn:aws:s3:::${local.name_prefix}-*-documents/*",
+        ]
+      },
+      {
+        Sid    = "ManageStagingRdsManagedSecret"
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:CreateSecret",
+          "secretsmanager:DeleteSecret",
+          "secretsmanager:DescribeSecret",
+          "secretsmanager:GetResourcePolicy",
+          "secretsmanager:ListSecretVersionIds",
+          "secretsmanager:PutSecretValue",
+          "secretsmanager:TagResource",
+          "secretsmanager:UntagResource",
+        ]
+        Resource = "arn:aws:secretsmanager:${var.aws_region}:${local.account_id}:secret:rds!db-*"
+      },
+      {
+        Sid    = "ManageStagingEncryptionGrants"
+        Effect = "Allow"
+        Action = [
+          "kms:CreateGrant",
+          "kms:DescribeKey",
+          "kms:ListGrants",
+          "kms:RevokeGrant",
+        ]
+        Resource = "*"
+        Condition = {
+          StringEquals = {
+            "aws:RequestedRegion" = var.aws_region
+          }
+        }
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "staging_storage_and_secrets" {
+  role       = aws_iam_role.github_deploy.id
+  policy_arn = aws_iam_policy.staging_storage_and_secrets.arn
 }

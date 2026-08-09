@@ -44,9 +44,9 @@ run "identity_contract" {
 
   assert {
     condition = (
-      jsondecode(aws_iam_role_policy.global_staging.policy).Statement[6].Action == "iam:PassRole" &&
-      jsondecode(aws_iam_role_policy.global_staging.policy).Statement[6].Condition.StringEquals["iam:PassedToService"] == "ecs-tasks.amazonaws.com" &&
-      length(jsondecode(aws_iam_role_policy.global_staging.policy).Statement[6].Resource) == 2
+      jsondecode(aws_iam_role_policy.global_staging.policy).Statement[4].Action == "iam:PassRole" &&
+      jsondecode(aws_iam_role_policy.global_staging.policy).Statement[4].Condition.StringEquals["iam:PassedToService"] == "ecs-tasks.amazonaws.com" &&
+      length(jsondecode(aws_iam_role_policy.global_staging.policy).Statement[4].Resource) == 2
     )
     error_message = "PassRole must be limited to the two project roles and ECS tasks."
   }
