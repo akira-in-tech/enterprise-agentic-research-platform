@@ -401,6 +401,55 @@ special-casing). Further iteration on qwen3:8b's prompt for this
 specific gap is not recommended; the next real signal here is provider
 choice, not more prompt engineering.
 
+## A fifth attempt: naming the exact source ID in the reflection feedback
+
+One more lever, different from all four before it: instead of a general
+instruction about preferring private sources, `ReflectionAgent` now
+detects specifically when the highest-scored source in the evidence
+pool is private and uncited, and feeds the Writer a revision reason
+that names the exact source ID: *"The highest-scored source in the
+evidence pool is your organization's own private knowledge
+(PRIVATE-XXXXXXXX) and it was not cited. If it directly answers the
+query, cite it explicitly using its exact source ID."* This routes
+through the existing bounded citation-repair loop
+(`build_eight_agent_writer_node`, `max_writer_attempts=2`) that already
+exists for invalid-citation repair, so it required no new
+infrastructure -- just a new revision reason.
+
+Checked with a real, live call against qwen3:8b (fresh tenant, fresh
+document upload, `RUN_LIVE_TESTS`-equivalent manual run against a local
+server) on the onboarding-runbook private-knowledge case. The revision
+attempt did something genuinely new compared to the four prior
+attempts: it named the source ID *in prose*, twice --
+
+> "The highest-quality source (PRIVATE-EA17436986005215) is not
+> referenced in the provided content... its absence from the text
+> means it cannot be cited here."
+
+-- but never emitted it as an actual `[PRIVATE-EA17436986005215]`
+citation marker. `citation_valid` stayed `false` and
+`reflection_status` stayed `revise` through both attempts; the
+citation validator correctly did not count prose mentions of a source
+ID as a citation. This run's `WEB-*` markers were also suspicious
+(`WEB-0123456789ABCDEF`, `WEB-1234567890ABCDEF` -- sequential-looking,
+not this project's real random hex IDs), suggesting general citation
+quality degraded under the added revision pressure, not just the
+private-source gap specifically.
+
+This is arguably the most conclusive attempt yet: it is hard to be
+more explicit than naming the exact required source ID in the
+correction feedback, and the model's response was to write *about*
+the instruction rather than comply with it. Five independently-designed
+fixes across five different mechanisms (noise filtering, explicit
+labeling plus instruction, chain-of-thought reasoning, presentation
+structure, and now a targeted corrective revision naming the exact
+source ID) have now failed to change this behavior. The revision
+mechanism itself is kept (it is a reasonable, low-risk addition to the
+existing citation-repair pattern, and costs nothing when the citing
+model doesn't need it -- Claude already cites correctly on its first
+attempt per Run 5), but no further prompt-engineering iteration on this
+specific qwen3:8b gap is planned.
+
 ## Trying alternative local models: deepseek-r1:8b and deepseek-r1:14b
 
 `app/services/llm/factory.py`'s `create_llm_client()` gained an

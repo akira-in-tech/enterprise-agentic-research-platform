@@ -172,6 +172,19 @@ class ReflectionAgent:
         if not citation_audit.cited_source_ids:
             reasons.append("The report contains no recognized citations.")
 
+        top_score = max(evidence_scores, key=lambda score: score.overall, default=None)
+        if (
+            top_score is not None
+            and top_score.source_id.startswith("PRIVATE-")
+            and top_score.source_id not in citation_audit.cited_source_ids
+        ):
+            reasons.append(
+                "The highest-scored source in the evidence pool is your "
+                f"organization's own private knowledge ({top_score.source_id}) "
+                "and it was not cited. If it directly answers the query, cite "
+                "it explicitly using its exact source ID."
+            )
+
         # A high-risk domain always requires human review, independent of
         # citation/evidence quality: sufficient evidence makes a report
         # approvable, but it never makes a medical, legal, financial, or

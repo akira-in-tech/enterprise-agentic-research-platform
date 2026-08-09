@@ -128,6 +128,105 @@ def test_reflection_requests_revision_with_explanations() -> None:
     assert decision.human_review_reason is None
 
 
+def test_reflection_requests_revision_when_the_top_scored_source_is_private_and_uncited() -> None:
+    private_score = EvidenceScore(
+        source_id="PRIVATE-0123456789ABCDEF",
+        relevance=0.95,
+        content_quality=0.9,
+        traceability=1,
+        overall=0.94,
+    )
+    web_score = EvidenceScore(
+        source_id="WEB-0123456789ABCDEF",
+        relevance=0.5,
+        content_quality=0.5,
+        traceability=1,
+        overall=0.5,
+    )
+    audit = CitationAudit(
+        valid=True,
+        cited_source_ids=[web_score.source_id],
+        unknown_source_ids=[],
+        uncited_claims=[],
+        coverage_ratio=1,
+    )
+
+    decision = ReflectionAgent().review(
+        citation_audit=audit,
+        evidence_scores=[private_score, web_score],
+    )
+
+    assert decision.status == "revise"
+    assert any("PRIVATE-0123456789ABCDEF" in reason for reason in decision.reasons)
+
+
+def test_reflection_approves_when_the_top_scored_private_source_is_cited() -> None:
+    private_score = EvidenceScore(
+        source_id="PRIVATE-0123456789ABCDEF",
+        relevance=0.95,
+        content_quality=0.9,
+        traceability=1,
+        overall=0.94,
+    )
+    web_score = EvidenceScore(
+        source_id="WEB-0123456789ABCDEF",
+        relevance=0.5,
+        content_quality=0.5,
+        traceability=1,
+        overall=0.5,
+    )
+    audit = CitationAudit(
+        valid=True,
+        cited_source_ids=[private_score.source_id, web_score.source_id],
+        unknown_source_ids=[],
+        uncited_claims=[],
+        coverage_ratio=1,
+    )
+
+    decision = ReflectionAgent().review(
+        citation_audit=audit,
+        evidence_scores=[private_score, web_score],
+    )
+
+    assert decision.status == "approved"
+    assert decision.reasons == []
+
+
+def test_reflection_does_not_flag_a_lower_scored_uncited_private_source() -> None:
+    web_score = EvidenceScore(
+        source_id="WEB-0123456789ABCDEF",
+        relevance=0.95,
+        content_quality=0.9,
+        traceability=1,
+        overall=0.94,
+    )
+    private_score = EvidenceScore(
+        source_id="PRIVATE-0123456789ABCDEF",
+        relevance=0.2,
+        content_quality=0.2,
+        traceability=0.2,
+        overall=0.2,
+    )
+    audit = CitationAudit(
+        valid=True,
+        cited_source_ids=[web_score.source_id],
+        unknown_source_ids=[],
+        uncited_claims=[],
+        coverage_ratio=1,
+    )
+
+    decision = ReflectionAgent().review(
+        citation_audit=audit,
+        evidence_scores=[web_score, private_score],
+    )
+
+    # The uncited source here is private, but it is not the top-scored
+    # source in the pool -- forcing a citation of a low-relevance private
+    # document would just be noise, so this must not trigger a revision.
+    assert decision.status == "approved"
+    assert decision.reasons == []
+
+
 def test_reflection_requires_human_review_for_high_risk_domain_even_when_approved() -> None:
     scores = [
         EvidenceScore(
