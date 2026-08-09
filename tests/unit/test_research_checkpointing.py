@@ -20,6 +20,19 @@ def test_checkpoint_url_converts_asyncpg_driver_without_hiding_password() -> Non
     assert result == "postgresql://research_user:secret@db:5432/research"
 
 
+def test_checkpoint_url_translates_asyncpg_ssl_param_to_psycopg_sslmode() -> None:
+    # entrypoint.build_managed_database_url appends ?ssl=require for the
+    # managed RDS path -- asyncpg accepts that key, but raw psycopg/libpq
+    # rejects it outright ("invalid URI query parameter: ssl") and expects
+    # sslmode instead. This crashed every staging container's startup
+    # lifespan before the key rename was added.
+    result = create_langgraph_postgres_url(
+        SecretStr("postgresql+asyncpg://research_user:secret@db:5432/research?ssl=require")
+    )
+
+    assert result == "postgresql://research_user:secret@db:5432/research?sslmode=require"
+
+
 def test_checkpoint_url_rejects_non_postgresql_database() -> None:
     with pytest.raises(ValueError, match="require a PostgreSQL"):
         create_langgraph_postgres_url(SecretStr("sqlite+aiosqlite:///test.db"))
