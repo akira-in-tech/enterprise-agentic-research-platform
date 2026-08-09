@@ -474,6 +474,7 @@ resource "aws_iam_policy" "staging_storage_and_secrets" {
           "s3:DeleteBucketPolicy",
           "s3:DeleteObject",
           "s3:GetBucketAcl",
+          "s3:GetBucketCORS",
           "s3:GetBucketPolicy",
           "s3:GetBucketPublicAccessBlock",
           "s3:GetBucketTagging",
