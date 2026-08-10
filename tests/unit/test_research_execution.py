@@ -1,4 +1,5 @@
 from collections.abc import Sequence
+from typing import cast
 from uuid import UUID, uuid4
 
 import pytest
@@ -10,12 +11,15 @@ from app.schemas.evidence import (
     EvidenceSource,
     ReflectionDecision,
 )
+from app.schemas.llm import LLMUsage
 from app.schemas.progress import ResearchProgressRecord
 from app.services.cache import CacheUnavailableError
 from app.services.llm.factory import CanonicalLLMProvider
 from app.services.research.execution import (
+    LangGraphResearchWorkflow,
     ResearchExecutionService,
 )
+from app.workflow.graph import ResearchGraph
 from app.workflow.state import ResearchState
 
 
@@ -115,6 +119,18 @@ class RecordingWorkflow:
 
     async def close(self) -> None:
         self.close_calls += 1
+
+
+class UsageReportingGraph:
+    def __init__(self, result: ResearchState) -> None:
+        self.result = result
+
+    async def ainvoke(
+        self,
+        state: ResearchState | None,
+        config: object | None = None,
+    ) -> ResearchState:
+        return self.result
 
 
 class RecordingResearchResultCache:
@@ -389,7 +405,6 @@ async def test_execution_normalizes_provider_and_completes(
         "running",
         "completed",
     ]
-
     assert provider_calls == [
         canonical_provider,
     ]
@@ -399,10 +414,41 @@ async def test_execution_normalizes_provider_and_completes(
             "tenant_id": tenant_id,
         }
     ]
-
     assert workflow.close_calls == 1
-
     assert result.cache_hit is False
+
+
+@pytest.mark.anyio
+async def test_execution_exposes_default_workflow_provider_usage() -> None:
+    store = RecordingResearchRunStore()
+    workflow_result: ResearchState = {
+        "query": "Explain Linux epoll.",
+        "route": "direct",
+        "answer": "epoll observes file descriptors.",
+        "status": "direct_answer_completed",
+    }
+
+    async def close() -> None:
+        return None
+
+    workflow = LangGraphResearchWorkflow(
+        cast(ResearchGraph, UsageReportingGraph(workflow_result)),
+        close,
+        lambda: LLMUsage(input_tokens=40, output_tokens=10, request_count=2),
+    )
+    service = ResearchExecutionService(store, lambda _: workflow)
+
+    result = await service.execute(
+        tenant_id=uuid4(),
+        query="Explain Linux epoll.",
+        llm_provider="qwen",
+    )
+
+    assert result.llm_usage == LLMUsage(
+        input_tokens=40,
+        output_tokens=10,
+        request_count=2,
+    )
 
 
 @pytest.mark.anyio

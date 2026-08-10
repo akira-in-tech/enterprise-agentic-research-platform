@@ -42,6 +42,9 @@ Scholar, PostgreSQL, Redis, Milvus, MCP, Vue, Docker, and AWS.
   and a live view of the agent workflow as a run executes.
 - **MCP tool server** exposing search, retrieval, ingestion, and report
   tools to other agents or clients over Streamable HTTP.
+- **Reproducible evaluation harness** for routing, citation integrity,
+  unsupported claims, independent-source diversity, private-knowledge use,
+  latency, provider token usage, and explicitly priced per-run API cost.
 
 ## Demo
 

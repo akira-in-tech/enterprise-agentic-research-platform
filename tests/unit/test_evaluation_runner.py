@@ -1,10 +1,11 @@
 import json
 from collections.abc import Callable
+from decimal import Decimal
 
 import httpx
 import pytest
 
-from app.schemas.evaluation import EvaluationCase
+from app.schemas.evaluation import EvaluationCase, EvaluationProviderPricing
 from app.services.evaluation import (
     EvaluationAuthenticationError,
     authenticate,
@@ -122,11 +123,20 @@ class TestExecuteCase:
                         "research_run_id": "89e4ac76-dfc4-4fc1-b0d7-a4ed6923f589",
                         "status": "completed",
                         "route": "deep_research",
-                        "answer": "# Executive Summary\n\nHTTP/3 uses QUIC.\n\n## Trade-offs\n",
+                        "answer": (
+                            "# Executive Summary\n\nHTTP/3 uses QUIC "
+                            "[WEB-0123456789ABCDEF].\n\n## Trade-offs\n\n"
+                            "Private guidance [PRIVATE-FEDCBA9876543210]."
+                        ),
                         "citation_valid": True,
                         "citation_coverage": 0.9,
                         "human_review_required": False,
                         "cache_hit": False,
+                        "llm_usage": {
+                            "input_tokens": 1_000,
+                            "output_tokens": 500,
+                            "request_count": 3,
+                        },
                     },
                 )
 
@@ -136,19 +146,53 @@ class TestExecuteCase:
             return json_response(
                 200,
                 [
-                    {"source_id": "WEB-1", "origin": "web", "cited": True},
-                    {"source_id": "WEB-2", "origin": "web", "cited": False},
-                    {"source_id": "PRIVATE-1", "origin": "private", "cited": True},
+                    {
+                        "source_id": "WEB-0123456789ABCDEF",
+                        "origin": "web",
+                        "locator": "https://example.com/http3",
+                        "provider": "tavily",
+                        "cited": True,
+                    },
+                    {
+                        "source_id": "WEB-1111111111111111",
+                        "origin": "web",
+                        "locator": "https://example.com/unused",
+                        "provider": "tavily",
+                        "cited": False,
+                    },
+                    {
+                        "source_id": "PRIVATE-FEDCBA9876543210",
+                        "origin": "private",
+                        "locator": "runbook.pdf",
+                        "provider": "milvus",
+                        "cited": True,
+                    },
                 ],
             )
 
         async with make_client(handler) as client:
-            outcome = await execute_case(client, create_case(), provider="qwen")
+            outcome = await execute_case(
+                client,
+                create_case(),
+                provider="qwen",
+                provider_pricing=EvaluationProviderPricing(
+                    input_per_million_tokens_usd=Decimal("2"),
+                    output_per_million_tokens_usd=Decimal("10"),
+                ),
+            )
 
         assert outcome.status == "completed"
         assert outcome.route == "deep_research"
         assert outcome.cited_source_count == 2
         assert outcome.cited_private_source_count == 1
+        assert outcome.cited_evidence_count == 2
+        assert outcome.citation_precision == 1.0
+        assert outcome.unsupported_claim_rate == pytest.approx(0.1)
+        assert outcome.source_diversity == 1.0
+        assert outcome.llm_input_tokens == 1_000
+        assert outcome.llm_output_tokens == 500
+        assert outcome.llm_request_count == 3
+        assert outcome.provider_cost_usd == Decimal("0.007")
         assert outcome.report_sections == ["Executive Summary", "Trade-offs"]
         assert outcome.error is None
         assert outcome.latency_seconds >= 0

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from app.core.circuit_breaker import CircuitBreaker
 from app.core.config import settings
+from app.schemas.llm import LLMUsage
 
 logger = logging.getLogger(__name__)
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
@@ -43,6 +44,9 @@ class AnthropicClient:
             max_retries=2,
         )
         self._circuit_breaker = circuit_breaker
+        self._input_tokens = 0
+        self._output_tokens = 0
+        self._request_count = 0
 
     async def generate_text(
         self,
@@ -76,6 +80,7 @@ class AnthropicClient:
             )
 
         message = await self._call(call_claude)
+        self._record_usage(message)
 
         text_parts = [block.text for block in message.content if isinstance(block, TextBlock)]
 
@@ -126,6 +131,7 @@ class AnthropicClient:
             )
 
         message = await self._call(call_claude)
+        self._record_usage(message)
 
         parsed_output = message.parsed_output
 
@@ -138,6 +144,28 @@ class AnthropicClient:
         )
 
         return parsed_output
+
+    def _record_usage(self, message: object) -> None:
+        """Accumulate usage exposed by a successful provider response."""
+
+        usage = getattr(message, "usage", None)
+
+        if usage is None:
+            return
+
+        self._input_tokens += int(getattr(usage, "input_tokens", 0))
+        self._output_tokens += int(getattr(usage, "output_tokens", 0))
+        self._request_count += 1
+
+    @property
+    def usage(self) -> LLMUsage:
+        """Return a snapshot of this research client's accumulated usage."""
+
+        return LLMUsage(
+            input_tokens=self._input_tokens,
+            output_tokens=self._output_tokens,
+            request_count=self._request_count,
+        )
 
     async def _call(
         self,

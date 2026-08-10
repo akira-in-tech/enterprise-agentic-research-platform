@@ -20,6 +20,7 @@ from app.api.dependencies import (
 from app.db.models import ResearchRun
 from app.main import app
 from app.schemas.evidence import CitationAudit, ReflectionDecision
+from app.schemas.llm import LLMUsage
 from app.schemas.progress import ResearchProgressRecord
 from app.schemas.report import (
     EvidenceConflictResponse,
@@ -55,10 +56,12 @@ class FakeResearchExecutionService:
         idempotency_replayed: bool = False,
         error: Exception | None = None,
         state: ResearchState | None = None,
+        llm_usage: LLMUsage | None = None,
     ) -> None:
         self.idempotency_replayed = idempotency_replayed
         self.error = error
         self.state = state
+        self.llm_usage = llm_usage or LLMUsage()
         self.calls: list[dict[str, object]] = []
 
     async def execute(
@@ -96,6 +99,7 @@ class FakeResearchExecutionService:
             llm_provider="ollama",
             state=state,
             idempotency_replayed=self.idempotency_replayed,
+            llm_usage=self.llm_usage,
         )
 
 
@@ -1053,7 +1057,9 @@ def test_create_research_job_rejects_a_document_still_indexing(
 def test_create_research_run_accepts_qwen_selection(
     research_rate_limiter: FakeResearchRateLimiter,
 ) -> None:
-    fake_service = FakeResearchExecutionService()
+    fake_service = FakeResearchExecutionService(
+        llm_usage=LLMUsage(input_tokens=120, output_tokens=30, request_count=2)
+    )
     tenant_id = uuid4()
     user_id = uuid4()
 
@@ -1086,6 +1092,11 @@ def test_create_research_run_accepts_qwen_selection(
     assert body["route"] == "direct"
     assert body["answer"] is not None
     assert body["idempotency_replayed"] is False
+    assert body["llm_usage"] == {
+        "input_tokens": 120,
+        "output_tokens": 30,
+        "request_count": 2,
+    }
     assert response.headers["X-RateLimit-Limit"] == "20"
     assert response.headers["X-RateLimit-Remaining"] == "19"
     assert response.headers["X-RateLimit-Reset"] == "60"

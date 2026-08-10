@@ -6,6 +6,7 @@ from pydantic import BaseModel, ValidationError
 
 from app.core.config import settings
 from app.core.retry import call_with_backoff
+from app.schemas.llm import LLMUsage
 
 StructuredModel = TypeVar("StructuredModel", bound=BaseModel)
 
@@ -58,6 +59,9 @@ class OllamaClient:
             base_url=self._base_url,
             timeout=300.0,
         )
+        self._input_tokens = 0
+        self._output_tokens = 0
+        self._request_count = 0
 
     async def generate_text(
         self,
@@ -94,6 +98,7 @@ class OllamaClient:
         )
 
         response_data = cast(dict[str, Any], response.json())
+        self._record_usage(response_data)
         response_text = str(response_data.get("response") or "").strip()
 
         if not response_text:
@@ -146,7 +151,9 @@ class OllamaClient:
             retryable=_RETRYABLE_ERRORS,
         )
 
-        raw_text = response.json().get("response", "").strip()
+        response_data = cast(dict[str, Any], response.json())
+        self._record_usage(response_data)
+        raw_text = str(response_data.get("response") or "").strip()
 
         if not raw_text:
             raise RuntimeError("Ollama returned no structured output.")
@@ -155,6 +162,29 @@ class OllamaClient:
             return output_model.model_validate_json(raw_text)
         except ValidationError as error:
             raise RuntimeError("Ollama returned invalid structured output.") from error
+
+    def _record_usage(self, response_data: dict[str, Any]) -> None:
+        """Accumulate token counts reported by Ollama's generate endpoint."""
+
+        prompt_tokens = response_data.get("prompt_eval_count")
+        output_tokens = response_data.get("eval_count")
+
+        if not isinstance(prompt_tokens, int) or not isinstance(output_tokens, int):
+            return
+
+        self._input_tokens += max(prompt_tokens, 0)
+        self._output_tokens += max(output_tokens, 0)
+        self._request_count += 1
+
+    @property
+    def usage(self) -> LLMUsage:
+        """Return a snapshot of this research client's accumulated usage."""
+
+        return LLMUsage(
+            input_tokens=self._input_tokens,
+            output_tokens=self._output_tokens,
+            request_count=self._request_count,
+        )
 
     async def close(self) -> None:
         """Close the underlying HTTP client."""

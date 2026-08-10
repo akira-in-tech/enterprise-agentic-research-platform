@@ -38,12 +38,36 @@ What it scores, per case:
   verbatim, so this checks structural intent, not exact wording).
 - **Completion rate**, **human-review trigger rate**, and **latency**
   aggregated across the run.
+- **Citation precision** — the fraction of unique canonical citation IDs in
+  the generated report that resolve to sources returned by the tenant-scoped
+  sources endpoint. This is a deterministic citation-integrity check, not a
+  claim that the cited passage semantically entails the sentence.
+- **Unsupported-claim rate** — `1 - citation_coverage`, using the existing
+  claim-level citation audit. Direct-answer cases are excluded because that
+  route does not promise an evidence-backed report.
+- **Source diversity** — independent source families divided by cited evidence
+  rows. Web pages are grouped by normalized hostname, private chunks by
+  document locator, and MCP evidence by provider, so ten citations to one site
+  do not look like ten independent sources.
+- **Provider usage and estimated cost** — input tokens, output tokens, request
+  count, total cost, and average cost per measured run. Token counts come from
+  the provider response. Cost is calculated only when the exact per-million
+  token prices are supplied to the runner and those rates are saved in the
+  report artifact.
 
-What it does **not** yet measure: citation precision / unsupported-claim
-rate (would need a separate claim-by-claim audit beyond the citation
-validator's existing valid/invalid signal), source diversity (beyond a
-raw count), and provider token usage or cost (the API does not currently
-surface either).
+Usage describes work performed by that API request. A Redis result-cache hit
+or completed idempotency replay makes no provider call, so its token counts and
+estimated provider cost are zero rather than repeating the original run's
+cost. If a workflow fails before the API can return its completion response,
+partial provider usage is not currently surfaced by the evaluation endpoint;
+cost aggregates therefore cover completed measured requests, not failed
+partial executions.
+
+The citation-precision metric intentionally does **not** claim semantic
+entailment. A separate human or model-graded claim-to-passage evaluation would
+be required to judge whether every cited source truly supports the associated
+claim. Keeping those two questions separate makes the automated score
+reproducible and prevents it from overstating what was measured.
 
 Running the harness for real is a deliberate, explicit action, not
 something this repository or its CI does automatically — the same
@@ -57,6 +81,24 @@ python scripts/run_evaluation.py \
   --cases-file demo_profiles/engineering/evaluation_cases.jsonl \
   --email you@example.com --password correct-horse-battery
 ```
+
+For a priced provider run, pass both rates explicitly. The repository does not
+hardcode vendor prices because model pricing changes over time:
+
+```bash
+python scripts/run_evaluation.py \
+  --cases-file demo_profiles/engineering/evaluation_cases.jsonl \
+  --provider claude \
+  --email you@example.com \
+  --password correct-horse-battery \
+  --input-price-per-million-usd <current-input-rate> \
+  --output-price-per-million-usd <current-output-rate>
+```
+
+Published runs below predate token accounting and the three new quality
+metrics, so their historical tables remain unchanged. Re-running a provider is
+an explicit cost-bearing action and is not performed merely to backfill newer
+columns.
 
 ## First published run
 

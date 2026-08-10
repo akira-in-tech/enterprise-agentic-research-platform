@@ -18,11 +18,12 @@ import asyncio
 import subprocess
 import sys
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 
 import httpx
 
-from app.schemas.evaluation import EvaluationReport
+from app.schemas.evaluation import EvaluationProviderPricing, EvaluationReport
 from app.services.evaluation import (
     authenticate,
     build_report,
@@ -81,15 +82,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--tenant-name",
         default="Evaluation",
-        help="Tenant name used only if the account does not exist yet "
-        "(default: %(default)s).",
+        help="Tenant name used only if the account does not exist yet (default: %(default)s).",
     )
     parser.add_argument(
         "--output",
         type=Path,
         default=None,
-        help="Where to write the JSON report "
-        "(default: eval_runs/eval-<timestamp>.json).",
+        help="Where to write the JSON report (default: eval_runs/eval-<timestamp>.json).",
     )
     parser.add_argument(
         "--timeout",
@@ -97,8 +96,32 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=120.0,
         help="Per-request HTTP timeout in seconds (default: %(default)s).",
     )
+    parser.add_argument(
+        "--input-price-per-million-usd",
+        type=Decimal,
+        default=None,
+        help="Provider input-token price used for this run. Must be paired "
+        "with --output-price-per-million-usd.",
+    )
+    parser.add_argument(
+        "--output-price-per-million-usd",
+        type=Decimal,
+        default=None,
+        help="Provider output-token price used for this run. Must be paired "
+        "with --input-price-per-million-usd.",
+    )
 
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+
+    if (args.input_price_per_million_usd is None) != (args.output_price_per_million_usd is None):
+        parser.error("Both provider price arguments must be supplied together.")
+
+    if (args.input_price_per_million_usd is not None and args.input_price_per_million_usd < 0) or (
+        args.output_price_per_million_usd is not None and args.output_price_per_million_usd < 0
+    ):
+        parser.error("Provider prices must be non-negative.")
+
+    return args
 
 
 def _print_summary(
@@ -115,6 +138,36 @@ def _print_summary(
     print(f"  private-knowledge accuracy: {report.private_knowledge_accuracy:.0%}")
     print(f"  report-section coverage:    {report.report_section_coverage_rate:.0%}")
     print(f"  human-review trigger rate:  {report.human_review_trigger_rate:.0%}")
+    print(
+        "  citation precision:         "
+        + (f"{report.citation_precision:.0%}" if report.citation_precision is not None else "n/a")
+    )
+    print(
+        "  unsupported-claim rate:     "
+        + (
+            f"{report.unsupported_claim_rate:.0%}"
+            if report.unsupported_claim_rate is not None
+            else "n/a"
+        )
+    )
+    print(
+        "  source diversity:           "
+        + (
+            f"{report.source_diversity_score:.0%}"
+            if report.source_diversity_score is not None
+            else "n/a"
+        )
+    )
+    print(f"  provider input tokens:      {report.total_input_tokens}")
+    print(f"  provider output tokens:     {report.total_output_tokens}")
+    print(
+        "  total provider cost (USD):  "
+        + (
+            f"${report.total_provider_cost_usd:.6f}"
+            if report.total_provider_cost_usd is not None
+            else "n/a (prices not supplied)"
+        )
+    )
     print(f"  average latency (s):        {report.average_latency_seconds:.2f}")
     print(f"  overall pass rate:          {report.overall_pass_rate:.0%}")
     print()
@@ -129,6 +182,14 @@ def _print_summary(
 
 async def _run(args: argparse.Namespace) -> int:
     cases = load_evaluation_cases(args.cases_file)
+    provider_pricing = (
+        EvaluationProviderPricing(
+            input_per_million_tokens_usd=args.input_price_per_million_usd,
+            output_per_million_tokens_usd=args.output_price_per_million_usd,
+        )
+        if args.input_price_per_million_usd is not None
+        else None
+    )
 
     if not cases:
         print(f"No cases found in {args.cases_file}.", file=sys.stderr)
@@ -141,7 +202,12 @@ async def _run(args: argparse.Namespace) -> int:
             password=args.password,
             tenant_name=args.tenant_name,
         )
-        case_results = await run_evaluation(cases, client, provider=args.provider)
+        case_results = await run_evaluation(
+            cases,
+            client,
+            provider=args.provider,
+            provider_pricing=provider_pricing,
+        )
 
     report = build_report(
         run_at=datetime.now(UTC),
@@ -150,6 +216,7 @@ async def _run(args: argparse.Namespace) -> int:
         llm_provider=args.provider,
         cases_file=str(args.cases_file),
         case_results=case_results,
+        provider_pricing=provider_pricing,
     )
 
     output_path = args.output or Path("eval_runs") / f"eval-{report.run_at:%Y%m%dT%H%M%SZ}.json"

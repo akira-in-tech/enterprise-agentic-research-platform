@@ -1,4 +1,11 @@
 from app.services.evaluation.loader import load_evaluation_cases
+from app.services.evaluation.metrics import (
+    calculate_citation_precision,
+    calculate_source_diversity,
+    create_source_family,
+    estimate_provider_cost,
+    extract_citation_ids,
+)
 from app.services.evaluation.runner import (
     EvaluationAuthenticationError,
     authenticate,
@@ -16,9 +23,14 @@ __all__ = [
     "EvaluationAuthenticationError",
     "authenticate",
     "build_report",
+    "calculate_citation_precision",
+    "calculate_source_diversity",
     "count_matched_sections",
+    "create_source_family",
+    "estimate_provider_cost",
     "execute_case",
     "extract_report_sections",
+    "extract_citation_ids",
     "load_evaluation_cases",
     "run_evaluation",
     "score_case",

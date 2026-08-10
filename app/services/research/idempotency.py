@@ -6,6 +6,7 @@ from uuid import UUID
 
 from app.core.config import settings
 from app.schemas.idempotency import ResearchIdempotencyRecord
+from app.schemas.llm import LLMUsage
 from app.schemas.research import CreateResearchRunResponse
 from app.services.cache import (
     CacheUnavailableError,
@@ -413,6 +414,7 @@ class IdempotentResearchExecutionService:
                 if "reflection" in result.state
                 else None
             ),
+            llm_usage=result.llm_usage,
         )
 
     @staticmethod
@@ -441,4 +443,5 @@ class IdempotentResearchExecutionService:
             state=state,
             cache_hit=response.cache_hit,
             idempotency_replayed=True,
+            llm_usage=LLMUsage(),
         )

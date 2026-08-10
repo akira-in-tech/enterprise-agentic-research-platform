@@ -46,6 +46,9 @@ async def test_generate_text_returns_anthropic_text(
 
     assert result == "The API works correctly."
     create_message.assert_awaited_once()
+    assert client.usage.input_tokens == 8
+    assert client.usage.output_tokens == 5
+    assert client.usage.request_count == 1
 
 
 @pytest.mark.anyio

@@ -1,6 +1,11 @@
 from datetime import UTC, datetime
+from decimal import Decimal
 
-from app.schemas.evaluation import EvaluationCase, EvaluationCaseOutcome
+from app.schemas.evaluation import (
+    EvaluationCase,
+    EvaluationCaseOutcome,
+    EvaluationProviderPricing,
+)
 from app.services.evaluation import (
     build_report,
     count_matched_sections,
@@ -36,6 +41,10 @@ def create_outcome(
     human_review_required: bool = False,
     latency_seconds: float = 1.5,
     error: str | None = None,
+    citation_precision: float | None = 1.0,
+    unsupported_claim_rate: float | None = 0.1,
+    source_diversity: float | None = 0.75,
+    provider_cost_usd: Decimal | None = Decimal("0.01"),
 ) -> EvaluationCaseOutcome:
     return EvaluationCaseOutcome(
         status=status,
@@ -46,15 +55,20 @@ def create_outcome(
         human_review_required=human_review_required,
         latency_seconds=latency_seconds,
         error=error,
+        citation_precision=citation_precision,
+        unsupported_claim_rate=unsupported_claim_rate,
+        source_diversity=source_diversity,
+        llm_input_tokens=100,
+        llm_output_tokens=50,
+        llm_request_count=2,
+        provider_cost_usd=provider_cost_usd,
     )
 
 
 class TestExtractReportSections:
     def test_extracts_headings_in_document_order(self) -> None:
         markdown = (
-            "# Executive Summary\n\nSome text.\n\n"
-            "## Trade-offs\n\nMore text.\n\n"
-            "### References\n"
+            "# Executive Summary\n\nSome text.\n\n## Trade-offs\n\nMore text.\n\n### References\n"
         )
 
         assert extract_report_sections(markdown) == [
@@ -194,6 +208,33 @@ class TestBuildReport:
         assert report.routing_accuracy == 0.5
         assert report.completion_rate == 1.0
         assert report.overall_pass_rate == 0.5
+        assert report.citation_precision == 1.0
+        assert report.unsupported_claim_rate == 0.1
+        assert report.source_diversity_score == 0.75
+        assert report.total_input_tokens == 200
+        assert report.total_output_tokens == 100
+        assert report.total_llm_requests == 4
+        assert report.total_provider_cost_usd == Decimal("0.02")
+        assert report.average_provider_cost_per_run_usd == Decimal("0.01")
+
+    def test_records_explicit_pricing_with_the_report(self) -> None:
+        pricing = EvaluationProviderPricing(
+            input_per_million_tokens_usd=Decimal("3"),
+            output_per_million_tokens_usd=Decimal("15"),
+        )
+
+        report = build_report(
+            run_at=datetime.now(UTC),
+            commit_sha=None,
+            base_url="http://127.0.0.1:8000",
+            llm_provider="claude",
+            cases_file="cases.jsonl",
+            case_results=[],
+            provider_pricing=pricing,
+        )
+
+        assert report.provider_pricing == pricing
+        assert report.total_provider_cost_usd is None
 
     def test_private_knowledge_accuracy_ignores_cases_that_do_not_require_it(self) -> None:
         results = [score_case(create_case(requires_private_knowledge=False), create_outcome())]

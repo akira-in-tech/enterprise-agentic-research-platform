@@ -5,6 +5,7 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schemas.intent import ResearchRoute
+from app.schemas.llm import LLMUsage
 
 ResearchRunStatus = Literal[
     "queued",
@@ -64,6 +65,7 @@ class CreateResearchRunResponse(BaseModel):
     reflection_reasons: list[str] = Field(default_factory=list)
     human_review_required: bool = False
     human_review_reason: str | None = None
+    llm_usage: LLMUsage = Field(default_factory=LLMUsage)
 
 
 class CreateResearchJobResponse(BaseModel):

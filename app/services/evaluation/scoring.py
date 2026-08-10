@@ -1,11 +1,13 @@
 import re
 from collections.abc import Sequence
 from datetime import datetime
+from decimal import Decimal
 
 from app.schemas.evaluation import (
     EvaluationCase,
     EvaluationCaseOutcome,
     EvaluationCaseResult,
+    EvaluationProviderPricing,
     EvaluationReport,
 )
 
@@ -61,9 +63,7 @@ def score_case(
         route_correct=(outcome.route == case.expected_route),
         source_count_met=(outcome.cited_source_count >= case.min_independent_sources),
         private_knowledge_correct=(
-            outcome.cited_private_source_count > 0
-            if case.requires_private_knowledge
-            else True
+            outcome.cited_private_source_count > 0 if case.requires_private_knowledge else True
         ),
         matched_report_sections=matched_sections,
         expected_report_sections=len(case.expected_report_sections),
@@ -77,6 +77,13 @@ def _rate(numerator: int, denominator: int) -> float:
     return numerator / denominator
 
 
+def _average(values: Sequence[float]) -> float | None:
+    if not values:
+        return None
+
+    return sum(values) / len(values)
+
+
 def build_report(
     *,
     run_at: datetime,
@@ -85,6 +92,7 @@ def build_report(
     llm_provider: str,
     cases_file: str,
     case_results: Sequence[EvaluationCaseResult],
+    provider_pricing: EvaluationProviderPricing | None = None,
 ) -> EvaluationReport:
     """Aggregate scored case results into reproducible summary metrics."""
 
@@ -93,6 +101,27 @@ def build_report(
         result for result in case_results if result.case.requires_private_knowledge
     ]
     section_cases = [result for result in case_results if result.expected_report_sections > 0]
+    citation_precision_values = [
+        result.outcome.citation_precision
+        for result in case_results
+        if result.outcome.citation_precision is not None
+    ]
+    unsupported_claim_values = [
+        result.outcome.unsupported_claim_rate
+        for result in case_results
+        if result.outcome.unsupported_claim_rate is not None
+    ]
+    diversity_values = [
+        result.outcome.source_diversity
+        for result in case_results
+        if result.outcome.source_diversity is not None
+    ]
+    provider_costs = [
+        result.outcome.provider_cost_usd
+        for result in case_results
+        if result.outcome.provider_cost_usd is not None
+    ]
+    total_provider_cost = sum(provider_costs, start=Decimal(0)) if provider_costs else None
 
     return EvaluationReport(
         run_at=run_at,
@@ -100,6 +129,7 @@ def build_report(
         base_url=base_url,
         llm_provider=llm_provider,
         cases_file=cases_file,
+        provider_pricing=provider_pricing,
         case_results=list(case_results),
         routing_accuracy=_rate(
             sum(1 for result in case_results if result.route_correct),
@@ -124,6 +154,16 @@ def build_report(
         human_review_trigger_rate=_rate(
             sum(1 for result in case_results if result.outcome.human_review_required),
             total,
+        ),
+        citation_precision=_average(citation_precision_values),
+        unsupported_claim_rate=_average(unsupported_claim_values),
+        source_diversity_score=_average(diversity_values),
+        total_input_tokens=sum(result.outcome.llm_input_tokens for result in case_results),
+        total_output_tokens=sum(result.outcome.llm_output_tokens for result in case_results),
+        total_llm_requests=sum(result.outcome.llm_request_count for result in case_results),
+        total_provider_cost_usd=total_provider_cost,
+        average_provider_cost_per_run_usd=(
+            total_provider_cost / len(provider_costs) if total_provider_cost is not None else None
         ),
         average_latency_seconds=(
             sum(result.outcome.latency_seconds for result in case_results) / total if total else 0.0

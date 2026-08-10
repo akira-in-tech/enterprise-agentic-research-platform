@@ -710,8 +710,7 @@ async def create_research_run(
             else False
         ),
         human_review_reason=(
-            result.state["reflection"].human_review_reason
-            if "reflection" in result.state
-            else None
+            result.state["reflection"].human_review_reason if "reflection" in result.state else None
         ),
+        llm_usage=result.llm_usage,
     )

@@ -1,7 +1,7 @@
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from itertools import count
 from typing import Protocol, cast
@@ -12,6 +12,7 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from app.agents.local_scout import LocalScoutAgent
 from app.schemas.cache import CachedResearchResult
+from app.schemas.llm import LLMUsage
 from app.schemas.progress import ResearchProgressRecord, ResearchProgressStatus
 from app.services.cache import CacheUnavailableError
 from app.services.llm.base import ClosableLLMClient
@@ -59,9 +60,11 @@ class LangGraphResearchWorkflow:
             [],
             Awaitable[None],
         ],
+        usage_callback: Callable[[], LLMUsage] | None = None,
     ) -> None:
         self._graph = graph
         self._close_callback = close_callback
+        self._usage_callback = usage_callback
         self._thread_id: str | None = None
         self._resume = False
         self._step_recorder: AgentStepRecorder | None = None
@@ -181,6 +184,15 @@ class LangGraphResearchWorkflow:
         """Release workflow-owned resources."""
 
         await self._close_callback()
+
+    @property
+    def usage(self) -> LLMUsage:
+        """Return usage accumulated by the workflow's provider client."""
+
+        if self._usage_callback is None:
+            return LLMUsage()
+
+        return self._usage_callback()
 
 
 class ResearchRunStore(Protocol):
@@ -311,6 +323,7 @@ def create_default_workflow(
             checkpointer=checkpointer,
         ),
         llm_client.close,
+        lambda: llm_client.usage,
     )
 
 
@@ -326,6 +339,7 @@ class ResearchExecutionResult:
     state: ResearchState
     cache_hit: bool = False
     idempotency_replayed: bool = False
+    llm_usage: LLMUsage = field(default_factory=LLMUsage)
 
 
 @dataclass(
@@ -522,6 +536,14 @@ class ResearchExecutionService:
                     await workflow.close()
 
                 cache_hit = False
+                llm_usage = (
+                    workflow.usage
+                    if isinstance(workflow, LangGraphResearchWorkflow)
+                    else LLMUsage()
+                )
+
+            if cached_result is not None:
+                llm_usage = LLMUsage()
 
             await self._store.mark_completed(
                 tenant_id=tenant_id,
@@ -571,6 +593,7 @@ class ResearchExecutionService:
             llm_provider=canonical_provider,
             state=final_state,
             cache_hit=cache_hit,
+            llm_usage=llm_usage,
         )
 
     def _build_step_recorder(

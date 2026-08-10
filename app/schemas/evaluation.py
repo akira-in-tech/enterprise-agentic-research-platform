@@ -1,4 +1,5 @@
 from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, Field
 
@@ -27,7 +28,15 @@ class EvaluationCaseOutcome(BaseModel):
     citation_coverage: float | None = None
     human_review_required: bool = False
     cited_source_count: int = 0
+    cited_evidence_count: int = 0
     cited_private_source_count: int = 0
+    citation_precision: float | None = Field(default=None, ge=0.0, le=1.0)
+    unsupported_claim_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    source_diversity: float | None = Field(default=None, ge=0.0, le=1.0)
+    llm_input_tokens: int = Field(default=0, ge=0)
+    llm_output_tokens: int = Field(default=0, ge=0)
+    llm_request_count: int = Field(default=0, ge=0)
+    provider_cost_usd: Decimal | None = Field(default=None, ge=0)
     report_sections: list[str] = Field(default_factory=list)
     latency_seconds: float
     cache_hit: bool = False
@@ -69,6 +78,13 @@ class EvaluationCaseResult(BaseModel):
         return self.route_correct and self.source_count_met and self.private_knowledge_correct
 
 
+class EvaluationProviderPricing(BaseModel):
+    """Record the explicit provider rates used for one evaluation run."""
+
+    input_per_million_tokens_usd: Decimal = Field(ge=0)
+    output_per_million_tokens_usd: Decimal = Field(ge=0)
+
+
 class EvaluationReport(BaseModel):
     """Aggregate a full evaluation run into reproducible summary metrics."""
 
@@ -77,6 +93,7 @@ class EvaluationReport(BaseModel):
     base_url: str
     llm_provider: str
     cases_file: str
+    provider_pricing: EvaluationProviderPricing | None = None
     case_results: list[EvaluationCaseResult]
 
     routing_accuracy: float
@@ -85,5 +102,13 @@ class EvaluationReport(BaseModel):
     private_knowledge_accuracy: float
     report_section_coverage_rate: float
     human_review_trigger_rate: float
+    citation_precision: float | None = Field(default=None, ge=0.0, le=1.0)
+    unsupported_claim_rate: float | None = Field(default=None, ge=0.0, le=1.0)
+    source_diversity_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    total_input_tokens: int = Field(default=0, ge=0)
+    total_output_tokens: int = Field(default=0, ge=0)
+    total_llm_requests: int = Field(default=0, ge=0)
+    total_provider_cost_usd: Decimal | None = Field(default=None, ge=0)
+    average_provider_cost_per_run_usd: Decimal | None = Field(default=None, ge=0)
     average_latency_seconds: float
     overall_pass_rate: float

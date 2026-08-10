@@ -43,7 +43,14 @@ async def test_generate_text_succeeds_on_first_attempt() -> None:
     def handler(request: httpx.Request) -> httpx.Response:
         nonlocal calls
         calls += 1
-        return httpx.Response(200, json={"response": "epoll observes file descriptors."})
+        return httpx.Response(
+            200,
+            json={
+                "response": "epoll observes file descriptors.",
+                "prompt_eval_count": 12,
+                "eval_count": 7,
+            },
+        )
 
     client = make_client(handler)
 
@@ -51,6 +58,9 @@ async def test_generate_text_succeeds_on_first_attempt() -> None:
 
     assert result == "epoll observes file descriptors."
     assert calls == 1
+    assert client.usage.input_tokens == 12
+    assert client.usage.output_tokens == 7
+    assert client.usage.request_count == 1
 
 
 @pytest.mark.anyio

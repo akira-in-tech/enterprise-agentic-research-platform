@@ -2,6 +2,8 @@ from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
 
+from app.schemas.llm import LLMUsage
+
 StructuredModel = TypeVar(
     "StructuredModel",
     bound=BaseModel,
@@ -39,4 +41,9 @@ class ClosableLLMClient(
 
     async def close(self) -> None:
         """Release provider-owned network resources."""
+        ...
+
+    @property
+    def usage(self) -> LLMUsage:
+        """Return provider-reported usage accumulated by this client."""
         ...
