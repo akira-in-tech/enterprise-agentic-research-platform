@@ -109,9 +109,22 @@ const finalWebm = path.join(__dirname, "demo.webm");
 renameSync(rawWebm, finalWebm);
 
 console.log("Converting to mp4 ...");
-spawnSync(FFMPEG, ["-y", "-i", finalWebm, "-c:v", "libx264", "-pix_fmt", "yuv420p", path.join(__dirname, "demo.mp4")], {
-  stdio: "inherit",
-});
+spawnSync(
+  FFMPEG,
+  [
+    "-y",
+    "-i",
+    finalWebm,
+    "-c:v",
+    "libx264",
+    "-pix_fmt",
+    "yuv420p",
+    path.join(__dirname, "demo.mp4"),
+  ],
+  {
+    stdio: "inherit",
+  },
+);
 
 console.log("Converting to a looping GIF for README embedding ...");
 spawnSync(
