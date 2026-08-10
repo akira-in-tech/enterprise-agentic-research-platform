@@ -482,7 +482,15 @@ docs/
 - 明确标记状态：open、merged 或 closed
 - 不把"提交"描述成"merged"，除非确实合并
 
-当前状态：Planned（尚未开始）。
+当前状态：**Open**（已提交，尚未合并）——
+[langchain-ai/langgraph#8583](https://github.com/langchain-ai/langgraph/pull/8583)，
+为 `libs/checkpoint-postgres/README.md` 补充一条说明：`psycopg`（`PostgresSaver`/
+`AsyncPostgresSaver` 的底层驱动）的连接串使用 `sslmode` 参数，而不是
+`asyncpg`（例如从已有的 SQLAlchemy async engine URL 复用而来）所用的 `ssl`
+参数；错用会抛出不指名原因的 `psycopg.ProgrammingError`。该问题是本项目
+接入 `AsyncPostgresSaver`（见 [checkpointing.py](../app/services/research/checkpointing.py)）
+时真实遇到的，已在 [docs/status.md](status.md) 的 Development Log 中记录。
+Merged 之前不描述为 merged。
 
 ## 26. Engineering Demo Strategy
 
