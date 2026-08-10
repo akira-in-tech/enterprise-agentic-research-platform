@@ -41,7 +41,7 @@ what has not.
 | Vue Private Knowledge console | Typechecked, component tested, and production built with upload, empty, loading, failed, ready, deleting, retry, and two-step deletion states |
 | Provider-neutral embedding interface | Tested |
 | Qwen embeddings through Ollama | Tested with mocks and live smoke test |
-| Amazon Bedrock Titan V2 embeddings | Provider, request/response validation, retry configuration, lifecycle cleanup, and provider selection unit tested; live AWS invocation pending |
+| Amazon Bedrock Titan V2 embeddings | Provider, request/response validation, retry configuration, lifecycle cleanup, and provider selection unit tested; live AWS invocation verified through a private-document upload, Milvus index, retrieval, and citation round trip |
 | Provider-neutral vector-store interface | Tested |
 | In-memory vector store | Tested |
 | Milvus collection initialization | Tested |
@@ -93,7 +93,7 @@ what has not.
 | Durable research cancellation | Queued/running-only PostgreSQL transition, local worker interruption, terminal Redis/SSE progress, tenant-scoped REST endpoint, and Vue action tested; migration live applied, verified, and downgraded against local PostgreSQL |
 | Bounded reflection revision loop | Tested |
 | SSE progress and terminal-state streaming | Tested |
-| Vue 3 + TypeScript + Vite frontend | Typechecked, 50 tests passed, 13 Playwright end-to-end tests passed, production built, and desktop/mobile browser QA verified |
+| Vue 3 + TypeScript + Vite frontend | Typechecked, 85 tests passed, 14 Playwright end-to-end tests passed, production built, and desktop/mobile browser QA verified |
 | Canonical eight-agent workflow and console role mapping | Backend tested; frontend typechecked, component tested, and built |
 | Redis, SSE, job, report, and citation-revision UI states | Component and browser-fixture verified |
 | Docker Compose project stack | Built and smoke tested across eight healthy services, including the official-SDK MCP server |
@@ -144,9 +144,9 @@ Configured and live verified: Tavily Basic Search and canonical web-source norma
 Completed and verified: complete Private Knowledge upload product flow
 Implemented and live verified: tenant-scoped document upload, list, detail, delete, source storage, indexing, retrieval, and lifecycle persistence
 Implemented and verified: Vue Private Knowledge upload, lifecycle, recovery, and deletion console
-Implemented and locally verified: Amazon Bedrock Titan V2 embeddings and private S3 source-object storage
+Implemented and live verified: Amazon Bedrock Titan V2 embeddings and private S3 source-object storage
 Terraform validated and mock tested: encrypted, versioned, public-blocked S3 plus least-privilege ECS task access
-Deployment status: state bucket and CI identity only; staging application resources are not applied
+Deployment status: full application stack applied and AWS-verified; operated demo-on-demand and therefore not guaranteed to remain continuously online
 Implemented and live verified: official SDK Streamable HTTP MCP server, client, and Web Scout federation
 Implemented and live migration verified: PostgreSQL checkpoint, audit-event, and worker-lease schema foundation
 Implemented and live verified: atomic worker claim/reclaim/renew/release plus checkpoint and audit repositories
@@ -231,7 +231,7 @@ flowchart TB
         claude["Claude<br/>structured LLM output live verified"]
         tavily["Tavily<br/>web search live verified"]
         semanticscholar["Semantic Scholar<br/>academic search, unauthenticated by default<br/>fail-open leg, live rate-limit hit verified"]
-        embeddings["Embedding provider<br/>Ollama live verified locally<br/>Bedrock adapter unit tested, live invocation not yet observed"]
+        embeddings["Embedding provider<br/>Ollama live verified locally<br/>Bedrock Titan V2 live verified on AWS"]
         objects["Source object storage<br/>local filesystem tested<br/>private S3 applied and AWS-verified"]
         mcp["Internal MCP reference server<br/>official SDK + live TCP verified"]
     end
@@ -276,32 +276,31 @@ Backend (`ruff check .`, `mypy app tests scripts alembic/env.py
 alembic/versions`, `pytest -q`):
 
 ```text
-656 passed
-28 integration tests deselected
-1 dependency deprecation warning
+798 passed
+31 integration tests deselected
+2 dependency warnings
 ```
 
-The warning comes from the current FastAPI/Starlette test-client dependency
-combination and does not represent a failed application test. The default
-test suite does not call Claude, Tavily, Ollama, Milvus, PostgreSQL, or
-Redis.
+The warnings come from the current FastAPI/Starlette test-client dependency
+combination and do not represent failed application tests. The default test
+suite does not call Claude, Tavily, Ollama, Milvus, PostgreSQL, or Redis.
 
 Frontend (`npm run lint`, `npm run format:check`, `npm run typecheck`, `npm
 test`, `npm run build`, `npx playwright test`):
 
 ```text
 Vue and TypeScript typecheck passed
-50 component, store, and API-contract tests passed
+85 component, store, and API-contract tests passed
 Vite production build passed
-13 Playwright end-to-end tests passed (auth, navigation, design-preview,
-  direct-run-hydration)
+14 Playwright end-to-end tests passed (auth, navigation, design-preview,
+  report and failure states, and direct-run hydration)
 ```
 
 The console uses the real asynchronous API contract: it authenticates
 through the session cookie, submits durable jobs, consumes SSE with `fetch`,
 retrieves completed reports, and presents evidence scores and source links.
-Recent-run history remains browser-local until a tenant-scoped history
-endpoint is implemented. The evidence panel is collapsed by default so the
-report keeps a readable line length; a citation or evidence action expands
-the traceable source details only when needed. Visual implementation
-evidence and the source-to-build comparison are recorded in `design-qa.md`.
+Recent-run history is loaded from the tenant-scoped `GET /research-runs`
+endpoint, while in-progress updates arrive over SSE. The evidence panel is
+collapsed by default so the report keeps a readable line length; a citation
+or evidence action expands the traceable source details only when needed.
+Visual implementation evidence is committed under `frontend/artifacts/`.

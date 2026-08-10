@@ -68,8 +68,9 @@ certificate are not yet configured. The cloud image enables Claude only,
 since the cost-controlled Fargate task does not run Ollama — local builds
 continue to expose both Claude and Qwen. AWS staging selects Titan Text
 Embeddings V2 through Bedrock and a private S3 bucket for source objects;
-both adapters and the Terraform contract are locally verified, but no live
-Bedrock invocation or application apply is claimed yet.
+the full application stack, private-document upload, live Bedrock embedding,
+Milvus retrieval, private-source citation, and fresh ECS restart have all
+been AWS-verified. The stack remains demo-on-demand rather than always-on.
 
 Terraform is split into three roots (`infra/terraform/`):
 
