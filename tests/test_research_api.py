@@ -21,7 +21,11 @@ from app.db.models import ResearchRun
 from app.main import app
 from app.schemas.evidence import CitationAudit, ReflectionDecision
 from app.schemas.progress import ResearchProgressRecord
-from app.schemas.report import ResearchReportResponse, ResearchReportSourceResponse
+from app.schemas.report import (
+    EvidenceConflictResponse,
+    ResearchReportResponse,
+    ResearchReportSourceResponse,
+)
 from app.services.auth import ResolvedSession
 from app.services.cache import (
     CacheUnavailableError,
@@ -511,6 +515,47 @@ def test_get_research_report_surfaces_the_human_review_flag() -> None:
     body = response.json()
     assert body["human_review_required"] is True
     assert body["human_review_reason"] == "This request touches the medical domain."
+
+
+def test_get_research_report_surfaces_flagged_evidence_conflicts() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    report = ResearchReportResponse(
+        report_id=uuid4(),
+        research_run_id=research_run_id,
+        content="Durable report citing disputed sources.",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        evidence_conflicts=[
+            EvidenceConflictResponse(
+                claim="The queue provides exactly-once delivery.",
+                source_ids=["WEB-0123456789ABCDEF", "PRIVATE-FEDCBA9876543210"],
+                explanation="The sources describe different delivery guarantees.",
+            )
+        ],
+        created_at=datetime.now(UTC),
+        sources=[],
+    )
+    report_store = FakeResearchReportStore(report)
+    app.dependency_overrides[get_research_report_store] = lambda: report_store
+    override_current_session(tenant_id=tenant_id)
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{research_run_id}/report",
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert len(body["evidence_conflicts"]) == 1
+    assert body["evidence_conflicts"][0]["claim"] == "The queue provides exactly-once delivery."
 
 
 def test_get_research_report_returns_not_found() -> None:

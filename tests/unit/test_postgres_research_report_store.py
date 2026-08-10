@@ -47,6 +47,7 @@ async def test_report_store_returns_tenant_scoped_report_and_sources() -> None:
         reflection_attempts=1,
         human_review_required=False,
         human_review_reason=None,
+        evidence_conflicts=[],
         created_at=created_at,
     )
     repository_mock.list_sources_for_run.return_value = [
@@ -118,6 +119,7 @@ async def test_report_store_surfaces_a_high_risk_reports_human_review_flag() -> 
         reflection_attempts=1,
         human_review_required=True,
         human_review_reason="This request touches the medical domain.",
+        evidence_conflicts=[],
         created_at=datetime.now(UTC),
     )
     repository_mock.list_sources_for_run.return_value = []
@@ -129,6 +131,51 @@ async def test_report_store_surfaces_a_high_risk_reports_human_review_flag() -> 
     assert result is not None
     assert result.human_review_required is True
     assert result.human_review_reason == "This request touches the medical domain."
+
+
+@pytest.mark.anyio
+async def test_report_store_surfaces_flagged_evidence_conflicts() -> None:
+    session = cast(AsyncSession, AsyncMock(spec=AsyncSession))
+    session_factory = RecordingSessionFactory(session)
+    repository_mock = AsyncMock(spec=ResearchReportRepository)
+    repository = cast(ResearchReportRepository, repository_mock)
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    repository_mock.get_for_run.return_value = ResearchReport(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        content="Evidence-backed report.",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        human_review_required=False,
+        human_review_reason=None,
+        evidence_conflicts=[
+            {
+                "claim": "The queue provides exactly-once delivery.",
+                "source_ids": ["WEB-0123456789ABCDEF", "PRIVATE-FEDCBA9876543210"],
+                "explanation": "The sources describe different delivery guarantees.",
+            }
+        ],
+        created_at=datetime.now(UTC),
+    )
+    repository_mock.list_sources_for_run.return_value = []
+
+    store = PostgresResearchReportStore(session_factory, lambda _: repository)
+
+    result = await store.get(tenant_id=tenant_id, research_run_id=research_run_id)
+
+    assert result is not None
+    assert len(result.evidence_conflicts) == 1
+    assert result.evidence_conflicts[0].claim == "The queue provides exactly-once delivery."
+    assert result.evidence_conflicts[0].source_ids == [
+        "WEB-0123456789ABCDEF",
+        "PRIVATE-FEDCBA9876543210",
+    ]
 
 
 @pytest.mark.anyio

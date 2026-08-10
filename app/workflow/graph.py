@@ -27,6 +27,7 @@ from app.schemas.intent import IntentDecision
 from app.schemas.planner import ResearchPlan, ResearchTask
 from app.schemas.source import PrivateSource, WebSource
 from app.schemas.workflow import (
+    EvidenceConflict,
     EvidenceGap,
     ReflectionResult,
     ResearchAnalysis,
@@ -104,6 +105,7 @@ class AnalysisOperation(Protocol):
         query: str,
         sources: Sequence[EvidenceSource],
         scores: Sequence[EvidenceScore],
+        conflicts: Sequence[EvidenceConflict] = (),
     ) -> ResearchAnalysis: ...
 
 
@@ -732,6 +734,7 @@ def build_eight_agent_analyst_node(
             query=state["query"],
             sources=state["evidence_sources"],
             scores=state["evidence_scores"],
+            conflicts=state.get("evidence_conflicts", []),
         )
 
         return {

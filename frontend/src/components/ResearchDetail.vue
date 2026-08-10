@@ -11,6 +11,7 @@ import {
   PhLockKey,
   PhPlugs,
   PhWarningCircle,
+  PhWarningDiamond,
 } from "@phosphor-icons/vue";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
@@ -64,6 +65,7 @@ const citationCoverage = computed(() => Math.round((props.report?.citation_cover
 const citedSources = computed(
   () => props.report?.sources.filter((source) => source.cited).length ?? 0,
 );
+const evidenceConflicts = computed(() => props.report?.evidence_conflicts ?? []);
 const reportApproved = computed(
   () => props.report?.citation_valid === true && props.report.reflection_status === "approved",
 );
@@ -269,6 +271,21 @@ async function downloadReport(
           </div>
         </div>
         <p v-if="downloadError" class="field-error" role="alert">{{ downloadError }}</p>
+        <div
+          v-if="!reportApproved && report.reflection_reasons.length > 0"
+          class="revision-reasons-notice"
+          role="alert"
+        >
+          <PhWarningCircle :size="20" aria-hidden="true" />
+          <div>
+            <strong>Why this needs revision</strong>
+            <ul>
+              <li v-for="(reason, index) in report.reflection_reasons" :key="index">
+                {{ reason }}
+              </li>
+            </ul>
+          </div>
+        </div>
         <div v-if="report.human_review_required" class="human-review-notice" role="alert">
           <PhWarningCircle :size="20" aria-hidden="true" />
           <div>
@@ -279,6 +296,24 @@ async function downloadReport(
                 "This request touches a high-risk domain (medical, legal, financial, or safety-critical). Evidence and citations below do not substitute for a qualified human reviewer."
               }}
             </p>
+          </div>
+        </div>
+        <div v-if="evidenceConflicts.length > 0" class="evidence-conflicts-notice" role="note">
+          <PhWarningDiamond :size="20" aria-hidden="true" />
+          <div>
+            <strong>
+              {{
+                evidenceConflicts.length === 1
+                  ? "1 source disagreement flagged"
+                  : `${evidenceConflicts.length} source disagreements flagged`
+              }}
+            </strong>
+            <ul>
+              <li v-for="(conflict, index) in evidenceConflicts" :key="index">
+                <strong>{{ conflict.claim }}</strong> ({{ conflict.source_ids.join(", ") }}) —
+                {{ conflict.explanation }}
+              </li>
+            </ul>
           </div>
         </div>
         <!-- eslint-disable vue/no-v-html -- renderedReportHtml is DOMPurify-sanitized above -->

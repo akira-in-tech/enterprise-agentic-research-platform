@@ -45,6 +45,9 @@ class ResearchReportRepository:
             reflection_attempts=state.get("reflection_attempts", 1),
             human_review_required=reflection.human_review_required,
             human_review_reason=reflection.human_review_reason,
+            evidence_conflicts=[
+                conflict.model_dump() for conflict in state.get("evidence_conflicts", [])
+            ],
         )
         self._session.add(report)
         await self._session.flush()

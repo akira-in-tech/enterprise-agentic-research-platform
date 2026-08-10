@@ -243,6 +243,80 @@ async def test_analyst_returns_source_bound_structured_findings() -> None:
 
 
 @pytest.mark.anyio
+async def test_analyst_prompt_surfaces_flagged_evidence_conflicts() -> None:
+    source = EvidenceSource(
+        source_id="WEB-0123456789ABCDEF",
+        origin="web",
+        title="Queue delivery",
+        locator="https://example.com/queue",
+        content="The queue uses at-least-once delivery.",
+        provider="fixture",
+    )
+    analysis = ResearchAnalysis(
+        summary="The queue's delivery guarantee is disputed.",
+        findings=[],
+        needs_more_research=False,
+    )
+    llm = RecordingLLMClient(structured={ResearchAnalysis: analysis})
+    conflict = EvidenceConflict(
+        claim="The queue provides exactly-once delivery.",
+        source_ids=["WEB-0123456789ABCDEF", "PRIVATE-FEDCBA9876543210"],
+        explanation="The sources describe different delivery guarantees.",
+    )
+
+    await AnalystAgent(llm).analyze(
+        query="Evaluate queue delivery guarantees",
+        sources=[source],
+        scores=[
+            EvidenceScore(
+                source_id=source.source_id,
+                relevance=1,
+                content_quality=0.5,
+                traceability=1,
+                overall=0.775,
+            )
+        ],
+        conflicts=[conflict],
+    )
+
+    prompt = llm.prompts[0]
+    assert "source disagreements" in prompt
+    assert "The queue provides exactly-once delivery." in prompt
+    assert "WEB-0123456789ABCDEF, PRIVATE-FEDCBA9876543210" in prompt
+    assert "different delivery guarantees" in prompt
+
+
+@pytest.mark.anyio
+async def test_analyst_prompt_omits_conflict_section_when_none_are_flagged() -> None:
+    source = EvidenceSource(
+        source_id="WEB-0123456789ABCDEF",
+        origin="web",
+        title="Queue delivery",
+        locator="https://example.com/queue",
+        content="The queue uses at-least-once delivery.",
+        provider="fixture",
+    )
+    analysis = ResearchAnalysis(summary="No conflicts.", findings=[], needs_more_research=False)
+    llm = RecordingLLMClient(structured={ResearchAnalysis: analysis})
+
+    await AnalystAgent(llm).analyze(
+        query="Evaluate queue delivery guarantees",
+        sources=[source],
+        scores=[
+            EvidenceScore(
+                source_id=source.source_id,
+                relevance=1,
+                content_quality=0.5,
+                traceability=1,
+                overall=0.775,
+            )
+        ],
+    )
+
+    assert "source disagreements" not in llm.prompts[0]
+
+
+@pytest.mark.anyio
 async def test_analyst_falls_back_when_llm_invents_a_source_id() -> None:
     source = EvidenceSource(
         source_id="WEB-0123456789ABCDEF",

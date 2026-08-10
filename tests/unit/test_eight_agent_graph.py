@@ -18,6 +18,7 @@ from app.schemas.intent import IntentDecision
 from app.schemas.planner import ReportSection, ResearchPlan, ResearchTask
 from app.schemas.source import PrivateSource, WebSource
 from app.schemas.workflow import (
+    EvidenceConflict,
     EvidenceGap,
     ReflectionResult,
     ResearchAnalysis,
@@ -158,6 +159,7 @@ async def test_eight_agent_graph_runs_parallel_scouts_and_writes_report() -> Non
         query: str,
         sources: Sequence[EvidenceSource],
         scores: Sequence[EvidenceScore],
+        conflicts: Sequence[EvidenceConflict] = (),
     ) -> ResearchAnalysis:
         events.append("analyst")
         assert query and len(scores) == 2
@@ -262,6 +264,7 @@ async def test_eight_agent_graph_reflects_into_one_follow_up_round() -> None:
         query: str,
         sources: Sequence[EvidenceSource],
         scores: Sequence[EvidenceScore],
+        conflicts: Sequence[EvidenceConflict] = (),
     ) -> ResearchAnalysis:
         nonlocal analysis_calls
         analysis_calls += 1

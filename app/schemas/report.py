@@ -26,6 +26,14 @@ class ResearchReportSourceResponse(BaseModel):
     venue: str | None = None
 
 
+class EvidenceConflictResponse(BaseModel):
+    """Represent one Evidence Judge-flagged disagreement between sources."""
+
+    claim: str
+    source_ids: list[str]
+    explanation: str
+
+
 class ResearchReportResponse(BaseModel):
     """Represent one durable tenant-scoped research report."""
 
@@ -40,6 +48,7 @@ class ResearchReportResponse(BaseModel):
     reflection_attempts: int = Field(ge=1)
     human_review_required: bool = False
     human_review_reason: str | None = None
+    evidence_conflicts: list[EvidenceConflictResponse] = Field(default_factory=list)
     created_at: datetime
     sources: list[ResearchReportSourceResponse]
 

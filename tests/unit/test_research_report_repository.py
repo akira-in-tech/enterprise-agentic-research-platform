@@ -13,6 +13,7 @@ from app.schemas.evidence import (
     EvidenceSource,
     ReflectionDecision,
 )
+from app.schemas.workflow import EvidenceConflict
 from app.workflow.state import ResearchState
 
 
@@ -131,6 +132,62 @@ async def test_repository_persists_a_high_risk_reports_human_review_flag() -> No
     assert report.human_review_required is True
     assert report.human_review_reason == "This request touches the medical domain."
     session_mock.commit.assert_not_awaited()
+
+
+@pytest.mark.anyio
+async def test_repository_persists_flagged_evidence_conflicts() -> None:
+    session_mock = AsyncMock(spec=AsyncSession)
+    added: list[object] = []
+    session_mock.add = Mock(side_effect=added.append)
+
+    async def assign_report_identity() -> None:
+        for entity in added:
+            if isinstance(entity, ResearchReport) and entity.id is None:
+                entity.id = uuid4()
+
+    session_mock.flush.side_effect = assign_report_identity
+    repository = ResearchReportRepository(cast(AsyncSession, session_mock))
+
+    state = create_report_state()
+    conflict = EvidenceConflict(
+        claim="The queue provides exactly-once delivery.",
+        source_ids=["WEB-0123456789ABCDEF", "PRIVATE-FEDCBA9876543210"],
+        explanation="The sources describe different delivery guarantees.",
+    )
+    state["evidence_conflicts"] = [conflict]
+
+    report = await repository.create_from_state(
+        tenant_id=uuid4(),
+        research_run_id=uuid4(),
+        state=state,
+    )
+
+    assert report is not None
+    assert report.evidence_conflicts == [conflict.model_dump()]
+
+
+@pytest.mark.anyio
+async def test_repository_persists_no_conflicts_when_none_are_flagged() -> None:
+    session_mock = AsyncMock(spec=AsyncSession)
+    added: list[object] = []
+    session_mock.add = Mock(side_effect=added.append)
+
+    async def assign_report_identity() -> None:
+        for entity in added:
+            if isinstance(entity, ResearchReport) and entity.id is None:
+                entity.id = uuid4()
+
+    session_mock.flush.side_effect = assign_report_identity
+    repository = ResearchReportRepository(cast(AsyncSession, session_mock))
+
+    report = await repository.create_from_state(
+        tenant_id=uuid4(),
+        research_run_id=uuid4(),
+        state=create_report_state(),
+    )
+
+    assert report is not None
+    assert report.evidence_conflicts == []
 
 
 @pytest.mark.anyio

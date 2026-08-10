@@ -120,6 +120,12 @@ export interface ResearchReportSource {
   venue: string | null;
 }
 
+export interface EvidenceConflict {
+  claim: string;
+  source_ids: string[];
+  explanation: string;
+}
+
 export interface ResearchReport {
   report_id: string;
   research_run_id: string;
@@ -132,6 +138,7 @@ export interface ResearchReport {
   reflection_attempts: number;
   human_review_required: boolean;
   human_review_reason: string | null;
+  evidence_conflicts: EvidenceConflict[];
   created_at: string;
   sources: ResearchReportSource[];
 }

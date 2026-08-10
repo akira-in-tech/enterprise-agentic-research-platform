@@ -94,7 +94,7 @@ test.describe("design preview", () => {
       .click();
 
     await expect(page.getByText("Revision required", { exact: true })).toBeVisible();
-    await expect(page.getByRole("alert")).toContainText("Citation revision required");
+    await expect(page.locator(".operational-notice")).toContainText("Citation revision required");
   });
 
   test("state=redis surfaces the operational notice on the home page", async ({ page }) => {

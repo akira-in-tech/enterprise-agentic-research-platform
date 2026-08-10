@@ -51,6 +51,9 @@ class ResearchReport(Base):
         Boolean, nullable=False, default=False, server_default=text("false")
     )
     human_review_reason: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    evidence_conflicts: Mapped[list[dict[str, object]]] = mapped_column(
+        JSON, nullable=False, default=list, server_default=text("'[]'")
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,

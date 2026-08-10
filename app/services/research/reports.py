@@ -5,7 +5,11 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.repositories import ResearchReportRepository
-from app.schemas.report import ResearchReportResponse, ResearchReportSourceResponse
+from app.schemas.report import (
+    EvidenceConflictResponse,
+    ResearchReportResponse,
+    ResearchReportSourceResponse,
+)
 from app.services.research.postgres import TransactionalSessionFactory
 
 
@@ -60,6 +64,10 @@ class PostgresResearchReportStore:
                 reflection_attempts=report.reflection_attempts,
                 human_review_required=report.human_review_required,
                 human_review_reason=report.human_review_reason,
+                evidence_conflicts=[
+                    EvidenceConflictResponse.model_validate(conflict)
+                    for conflict in report.evidence_conflicts
+                ],
                 created_at=report.created_at,
                 sources=[ResearchReportSourceResponse.model_validate(source) for source in sources],
             )

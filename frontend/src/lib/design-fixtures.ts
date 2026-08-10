@@ -50,6 +50,7 @@ export function createDesignPreviewReport(now = new Date()): ResearchReport {
     reflection_attempts: 1,
     human_review_required: false,
     human_review_reason: null,
+    evidence_conflicts: [],
     created_at: now.toISOString(),
     sources: [
       {

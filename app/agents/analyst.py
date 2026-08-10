@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from app.agents.prompting import UNTRUSTED_CONTENT_NOTICE, wrap_untrusted_content
 from app.schemas.evidence import EvidenceScore, EvidenceSource, ReflectionDecision
 from app.schemas.planner import ResearchPlan
-from app.schemas.workflow import ResearchAnalysis
+from app.schemas.workflow import EvidenceConflict, ResearchAnalysis
 from app.services.evidence import select_top_evidence
 from app.services.llm.base import LLMClient
 
@@ -33,6 +33,7 @@ class AnalystAgent:
         query: str,
         sources: Sequence[EvidenceSource],
         scores: Sequence[EvidenceScore],
+        conflicts: Sequence[EvidenceConflict] = (),
     ) -> ResearchAnalysis:
         """Generate structured findings constrained to the supplied evidence."""
 
@@ -46,6 +47,21 @@ class AnalystAgent:
             }
             for source in top_sources
         ]
+        conflict_notice = ""
+        if conflicts:
+            conflict_lines = "\n".join(
+                f"- Claim: {conflict.claim}\n"
+                f"  Disagreeing sources: {', '.join(conflict.source_ids)}\n"
+                f"  Why they disagree: {conflict.explanation}"
+                for conflict in conflicts
+            )
+            conflict_notice = (
+                "\n\nThe Evidence Judge flagged the following source disagreements. "
+                "Do not silently pick a side: findings touching these claims must "
+                "acknowledge the disagreement and cite the conflicting sources, or "
+                "explain why one source is more credible.\n"
+                f"{conflict_lines}\n"
+            )
         prompt = (
             "You are the Analyst in an evidence-backed research workflow. "
             "Produce structured conclusions, not a final report. Every finding must "
@@ -55,7 +71,8 @@ class AnalystAgent:
             "similar possessive language, that is a request for the organization's own "
             "knowledge: ground findings in evidence with origin 'private' first, rather "
             "than generic external web content that only superficially matches the "
-            "topic.\n\n"
+            "topic."
+            f"{conflict_notice}\n\n"
             f"{UNTRUSTED_CONTENT_NOTICE}\n\n"
             f"Research question: {query}\n"
             f"Evidence: {evidence}"

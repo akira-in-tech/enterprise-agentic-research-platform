@@ -44,6 +44,7 @@ const report: ResearchReport = {
   reflection_attempts: 1,
   human_review_required: false,
   human_review_reason: null,
+  evidence_conflicts: [],
   created_at: "2026-08-01T12:00:00Z",
   sources: [baseSource],
 };
@@ -196,6 +197,83 @@ describe("ResearchDetail", () => {
     });
 
     expect(wrapper.text()).not.toContain("Human review required");
+  });
+
+  it("lists the specific reasons a report needs revision", () => {
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report: {
+          ...report,
+          citation_valid: false,
+          reflection_status: "revise",
+          reflection_reasons: [
+            "The report contains unknown source citations.",
+            "The report contains factual paragraphs without citations.",
+          ],
+        },
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Why this needs revision");
+    expect(wrapper.text()).toContain("The report contains unknown source citations.");
+    expect(wrapper.text()).toContain("The report contains factual paragraphs without citations.");
+  });
+
+  it("does not show a revision-reasons notice for an approved report", () => {
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report,
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    expect(wrapper.text()).not.toContain("Why this needs revision");
+  });
+
+  it("flags evidence conflicts surfaced by the Evidence Judge", () => {
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report: {
+          ...report,
+          evidence_conflicts: [
+            {
+              claim: "The queue provides exactly-once delivery.",
+              source_ids: ["WEB-0123456789ABCDEF", "PRIVATE-FEDCBA9876543210"],
+              explanation: "The sources describe different delivery guarantees.",
+            },
+          ],
+        },
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    expect(wrapper.text()).toContain("1 source disagreement flagged");
+    expect(wrapper.text()).toContain("The queue provides exactly-once delivery.");
+    expect(wrapper.text()).toContain("The sources describe different delivery guarantees.");
+  });
+
+  it("does not show an evidence-conflicts notice when none are flagged", () => {
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report,
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    expect(wrapper.text()).not.toContain("source disagreement");
   });
 
   it("downloads the report as a file when Download is clicked", async () => {
