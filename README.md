@@ -63,6 +63,23 @@ demo-on-demand, not always-on, so the URL may be down between reviews.
 
 Full screen recording: [frontend/artifacts/demo/demo.mp4](frontend/artifacts/demo/demo.mp4).
 
+**Private Knowledge.** A second recording against the same live deployment
+covers the path the first one doesn't: uploading a private document (through
+the real Bedrock Titan V2 embedding pipeline, not a mock), scoping a research
+run to it, and getting back a report that cites it correctly — including
+telling apart the private source from unrelated public results for the same
+search terms.
+
+<p>
+  <img src="frontend/artifacts/demo/private-knowledge/04-composer-scoped-to-private-doc.png" alt="Composer with research scoped to one selected private document" width="49%">
+  <img src="frontend/artifacts/demo/private-knowledge/07-report-completed.png" alt="Completed report synthesizing the private document's content" width="49%">
+</p>
+<p>
+  <img src="frontend/artifacts/demo/private-knowledge/08-evidence-with-private-source.png" alt="Evidence panel showing the private document as a cited, verified source" width="49%">
+</p>
+
+Full screen recording: [frontend/artifacts/demo/private-knowledge/demo.mp4](frontend/artifacts/demo/private-knowledge/demo.mp4).
+
 ## Architecture
 
 ```text
