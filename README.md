@@ -43,6 +43,23 @@ Scholar, PostgreSQL, Redis, Milvus, MCP, Vue, Docker, and AWS.
 - **MCP tool server** exposing search, retrieval, ingestion, and report
   tools to other agents or clients over Streamable HTTP.
 
+## Demo
+
+Recorded against the real AWS staging deployment (not a local mock) for
+`Compare HTTP/2 and HTTP/3 using current technical sources.`, routed through
+Claude and the full eight-agent workflow end to end.
+
+<p>
+  <img src="frontend/artifacts/demo/03-composer-filled.png" alt="Research composer with the eight-agent workflow preview" width="49%">
+  <img src="frontend/artifacts/demo/05-agent-workflow-in-progress.png" alt="Agent workflow in progress" width="49%">
+</p>
+<p>
+  <img src="frontend/artifacts/demo/06-report-completed.png" alt="Completed, verified report with inline citations" width="49%">
+  <img src="frontend/artifacts/demo/07-evidence-expanded.png" alt="Evidence panel: 100% citation coverage, 19/42 sources cited, verification passed" width="49%">
+</p>
+
+Full screen recording: [frontend/artifacts/demo/demo.mp4](frontend/artifacts/demo/demo.mp4).
+
 ## Architecture
 
 ```text
