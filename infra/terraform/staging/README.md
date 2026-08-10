@@ -93,6 +93,14 @@ a fresh authenticated plan first. No Terraform plan artifact is uploaded because
 plan files can contain sensitive values. The job emits only deterministic
 change counts to its step summary.
 
+Since then, the full stack has actually been applied and AWS-verified —
+`scripts/aws-deploy.sh` (via the `Deploy AWS staging` GitHub Actions workflow)
+has run successfully end to end, with a real deep-research run completed
+against the live public endpoint (see the root README's Demo section). This
+was demo-on-demand, not always-on: the stack may since have been destroyed;
+[docs/status.md](../../../docs/status.md) has the current word on whether
+it's up right now.
+
 The following fixed-cost estimate uses 730 hours per month and public
 `us-west-2` on-demand rates from the AWS Price List. It excludes traffic-driven
 ALB LCUs, CloudFront and internet transfer, CloudWatch ingestion, ECR storage,
