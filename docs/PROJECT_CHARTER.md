@@ -490,6 +490,17 @@ docs/
 参数；错用会抛出不指名原因的 `psycopg.ProgrammingError`。该问题是本项目
 接入 `AsyncPostgresSaver`（见 [checkpointing.py](../app/services/research/checkpointing.py)）
 时真实遇到的，已在 [docs/status.md](status.md) 的 Development Log 中记录。
+
+第二个 PR：**Open**（已提交，尚未合并）——
+[HENNGE/terraform-aws-ecs#47](https://github.com/HENNGE/terraform-aws-ecs/pull/47)，
+补齐 `modules/simple/fargate` 与 `modules/core/service` 两份 README，说明
+`force_new_deployment = true` 单独设置并不会让每次 `terraform apply` 都触发
+重新部署（Terraform 只在该属性值发生变化时才会产生 diff），必须搭配已存在的
+`triggers`（配合 `plantimestamp()`）才能达到预期效果；对应 upstream 的
+[issue #43](https://github.com/HENNGE/terraform-aws-ecs/issues/43)，PR 里
+写了 `Closes #43`。这与本项目 `scripts/aws-deploy.sh` 和 restart verification
+中真实验证过的 ECS 强制重新部署机制是同一领域。
+
 Merged 之前不描述为 merged。
 
 ## 26. Engineering Demo Strategy
