@@ -47,7 +47,10 @@ Scholar, PostgreSQL, Redis, Milvus, MCP, Vue, Docker, and AWS.
 
 Recorded against the real AWS staging deployment (not a local mock) for
 `Compare HTTP/2 and HTTP/3 using current technical sources.`, routed through
-Claude and the full eight-agent workflow end to end.
+Claude and the full eight-agent workflow end to end. Live at
+[d5llhn72jopyp.cloudfront.net](https://d5llhn72jopyp.cloudfront.net) when the
+staging stack is up — see [Deployment](#deployment) below; it's
+demo-on-demand, not always-on, so the URL may be down between reviews.
 
 <p>
   <img src="frontend/artifacts/demo/03-composer-filled.png" alt="Research composer with the eight-agent workflow preview" width="49%">
@@ -189,10 +192,12 @@ counts for both suites are tracked in [docs/status.md](docs/status.md).
 
 ## Deployment
 
-Only the protected Terraform state bucket and GitHub OIDC deployment
-identity are applied to AWS; the application stack (ECS, RDS, Valkey, ALB,
-CloudFront) has never been `terraform apply`'d. Deployment is demo-on-demand:
-apply for an active review, verify the endpoint, then destroy.
+The application stack (ECS, RDS, Valkey, ALB, CloudFront) has been applied
+and verified live — see the [Demo](#demo) section above. Deployment is
+demo-on-demand rather than always-on: apply for an active review, verify the
+endpoint, then destroy, since the running stack costs real money for as long
+as it's up (see [docs/deployment.md](docs/deployment.md#aws-staging) for the
+cost breakdown).
 
 ```bash
 # Deploy (after configuring the staging backend and required secrets):

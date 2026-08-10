@@ -81,14 +81,17 @@ Terraform is split into three roots (`infra/terraform/`):
   single-node Valkey, Secrets Manager credentials, private S3 document
   storage, least-privilege ECS task access, ARM64 Fargate, ALB,
   CloudFront, and monthly budget alerts.
-  **Terraform-validated and mock-tested; not yet applied.**
+  **Applied and AWS-verified** — see the root [README's Demo
+  section](../README.md#demo) for a live, screen-recorded run.
 
-As of this writing, only the state bucket and the CI deployment identity
-are live AWS resources. The application stack (ECS task, RDS, Valkey, ALB,
-CloudFront) has never been `terraform apply`'d — deploying it is a
-deliberate, explicit action (`scripts/aws-deploy.sh` or the `Deploy AWS
-staging` GitHub Actions workflow), not something this repository does
-automatically.
+Deploying the application stack is a deliberate, explicit action
+(`scripts/aws-deploy.sh` or the `Deploy AWS staging` GitHub Actions
+workflow), not something this repository does automatically. It is not
+always-on: applying it for a review and destroying it afterward (see
+`aws-destroy.sh` below) is the intended operating model, so at any given
+time the stack may or may not currently be live — check
+[docs/status.md](status.md) or attempt the deployed URL directly for the
+current state.
 
 The staging defaults prioritize cost control, not high availability: zero
 running application tasks until images exist, 0.5 vCPU / 1 GiB per running

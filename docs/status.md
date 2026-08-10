@@ -99,11 +99,11 @@ what has not.
 | Docker Compose project stack | Built and smoke tested across eight healthy services, including the official-SDK MCP server |
 | GitHub Actions | Remote verified across backend, frontend, and container quality gates |
 | Terraform state bootstrap | Applied and AWS verified: protected S3 bucket plus five security controls; staging backend initialized |
-| Cost-controlled AWS staging infrastructure | Terraform validated and mock tested, including private S3 documents and Bedrock task permissions; the prior remote plan predates this slice and must be regenerated before apply |
+| Cost-controlled AWS staging infrastructure | Applied and AWS-verified, including private S3 documents and Bedrock task permissions |
 | ARM64 ECS application packaging | API and Claude-only frontend builds tested locally |
 | GitHub OIDC deployment identity | Applied and AWS verified: exact repository/environment trust, three reviewed inline policies, protected remote state, and zero Terraform drift |
 | GitHub OIDC deployment workflow | Remotely verified on GitHub Actions: protected staging environment assumed the expected AWS account and deployment role, then generated the zero-task staging plan with short-lived credentials |
-| AWS deployment | Remote-state bootstrap deployed and staging backend initialized; Claude, Tavily, and managed Milvus inputs live verified; application apply, Bedrock live invocation, a fresh plan, and public endpoint verification remain pending |
+| AWS deployment | Applied and AWS-verified: full application stack live (ECS Fargate, RDS PostgreSQL, ElastiCache Valkey, ALB, CloudFront), public endpoint healthy, a real deep-research run completed end to end and recorded (see the root [README's Demo section](../README.md#demo)). Getting there took nine real deploy attempts across two sessions, each surfacing and fixing a genuinely different bug — four rounds of missing IAM permissions on the GitHub OIDC deploy role (budgets, S3 bucket sub-resources, KMS grants, ELB listener attributes, RDS-managed-secret scoping), one IAM combined-inline-policy-size limit requiring a move to a customer-managed policy, two real application bugs only reachable in the cloud path (a `Literal[int]` Pydantic field that doesn't coerce string env vars, and an asyncpg `ssl` query param that raw psycopg rejects), one QEMU arm64 cross-build crash under GitHub Actions' emulation, and one ECR immutable-tag collision on retry (fixed by making the deploy script idempotent). Bedrock live invocation (the embedding path, exercised only by private-document upload) has not yet been separately observed since the recorded demo run used only public web/academic sources; deployment is demo-on-demand, not always-on, so the stack may have since been destroyed — see [docs/deployment.md](deployment.md#aws-staging) |
 | Domain-neutral agent isolation | demo_profiles/engineering/ holds example queries, evaluation cases, a reference report outline, and a private-knowledge manifest, none of it imported by application code; deleting the directory does not change routing, planning, retrieval, or report-writing behavior |
 | High-risk domain human review | Intent Router detection and ReflectionAgent human_review_required/reason unit tested; surfaced on the synchronous research-run API response |
 | Full MCP research tool set | search_web, search_private_documents, retrieve_source, ingest_document, save_research_report, and get_research_history unit tested against real repositories/services with mocked sessions; request_human_review unit tested against the durability audit-event repository |
@@ -173,6 +173,7 @@ Implemented and tested: scripts/run_evaluation.py, a reproducible evaluation har
 Implemented and tested: an AcademicAwareSearchClient fanning out to Tavily and the Semantic Scholar Academic Graph API concurrently, with per-leg fail-open and a dedicated circuit breaker around the academic leg; source_type/authors/year/venue flow through evidence scoring (a +0.10 paper bonus) and citations end to end; live-network verified that a real Semantic Scholar failure does not break Tavily results, but a live PAPER- source inside a generated report is not yet published, blocked by that provider's unauthenticated rate limit on the verifying network
 Implemented and tested: report export now accepts format (markdown/pdf) and citation_style (numbered/footnote) query params, rewriting citation markers into a real-link References/Notes list and rendering PDF via Markdown -> HTML -> WeasyPrint with a branded stylesheet; DownloadOptionsMenu in the Vue console offers all four combinations; verified inside the production Docker image and GitHub Actions CI, since WeasyPrint's native libraries are not installable on this dev machine's host OS
 Implemented and tested: six published evaluation runs found and fixed a real crash bug (AnalystAgent.analyze() had no fallback for a truncated structured response) and a scoring-method defect (report-section coverage was an all-or-nothing pass/fail veto despite its own documented loose-matching intent); fixing the latter alone moved a qwen3:8b run from 20% to 80% overall pass rate with every underlying rate unchanged, confirming the gate -- not model capability -- was the dominant blocker; the one remaining failure is the same unresolved private-knowledge citation gap established across four earlier runs
+Deployed and AWS-verified: the full staging application stack (ECS Fargate, RDS PostgreSQL, ElastiCache Valkey, ALB, CloudFront) applied for the first time and confirmed healthy at a real public URL, with a complete deep-research run against Claude recorded end to end (see the root README's Demo section). Getting there took nine real deploy attempts, each surfacing a genuinely different bug rather than a repeat of the same one: four rounds of missing IAM permissions on the GitHub OIDC deploy role (budgets, S3 bucket sub-resource reads, KMS grants for RDS's managed master-password secret, an ELB listener-attributes read), a combined-inline-policy-size limit forcing a move to a customer-managed IAM policy, two application bugs only reachable through the cloud path -- a `Literal[256, 512, 1024]` Pydantic field that does not coerce a string env var the way a plain `int` field does, and an asyncpg `?ssl=require` query parameter that raw psycopg/libpq rejects outright and expects as `sslmode` instead -- a QEMU arm64 cross-build crash under GitHub Actions' x86_64 runners, and an ECR immutable-tag collision on retry (fixed by making the deploy script skip already-pushed image tags). The first demo recording attempt also caught a live production crash -- `ResearchTask.rationale`'s 300-character limit was too tight for Claude's actual explanatory text and took down the whole workflow uncaught -- fixed by raising every sibling free-text field in the plan schema to 500 characters; the second recording completed in 4m35s with a verified report (100% citation coverage, 19/42 sources cited). Every partially-created deployment along the way, including one with a live ALB, RDS instance, and CloudFront distribution, was destroyed immediately after diagnosis to stop billing before the next fix landed. Bedrock's live embedding invocation remains unobserved, since the recorded run used only public sources and never triggered private-document upload.
 ```
 
 See [workflow.md](workflow.md) for the deep-research agent path and
@@ -182,19 +183,20 @@ used to spell out inline.
 
 ## Architecture, Annotated With Deployment Status
 
-The diagram below combines the implemented application with its planned AWS
-staging runtime — the ECS, RDS, Valkey, ALB, CloudFront, and ECR resources are
-declared in Terraform but not deployed yet. See
-[architecture.md](architecture.md) for a clean component diagram without
-status annotations.
+The diagram below combines the implemented application with its AWS staging
+runtime — the ECS, RDS, Valkey, ALB, CloudFront, and ECR resources have been
+applied and AWS-verified (demo-on-demand: applied for review sessions, not
+always-on, so a specific check may catch the stack destroyed between
+reviews). See [architecture.md](architecture.md) for a clean component
+diagram without status annotations.
 
 ```mermaid
 flowchart TB
     researcher["Researcher in browser"]
-    cloudfront["CloudFront HTTPS entry<br/>planned, not applied"]
-    alb["Application Load Balancer<br/>planned, not applied"]
+    cloudfront["CloudFront HTTPS entry<br/>applied and AWS-verified"]
+    alb["Application Load Balancer<br/>applied and AWS-verified"]
 
-    subgraph ecs["ECS Fargate task - planned, not applied"]
+    subgraph ecs["ECS Fargate task - applied and AWS-verified"]
         frontend["Nginx + Vue 3 console"]
         api["FastAPI API"]
         jobs["Background Job Manager"]
@@ -214,8 +216,8 @@ flowchart TB
     end
 
     subgraph state["Application state"]
-        postgres["RDS PostgreSQL<br/>durable runs, reports, and evidence<br/>planned, not applied"]
-        redis["ElastiCache for Valkey<br/>cache, idempotency, locks, rate limits, and progress<br/>planned, not applied"]
+        postgres["RDS PostgreSQL<br/>durable runs, reports, and evidence<br/>applied and AWS-verified"]
+        redis["ElastiCache for Valkey<br/>cache, idempotency, locks, rate limits, and progress<br/>applied and AWS-verified"]
         milvus["Zilliz Cloud / Milvus<br/>tenant-scoped vector retrieval<br/>connection live verified"]
     end
 
@@ -223,8 +225,8 @@ flowchart TB
         claude["Claude<br/>structured LLM output live verified"]
         tavily["Tavily<br/>web search live verified"]
         semanticscholar["Semantic Scholar<br/>academic search, unauthenticated by default<br/>fail-open leg, live rate-limit hit verified"]
-        embeddings["Embedding provider<br/>Ollama live verified locally<br/>Bedrock adapter unit tested"]
-        objects["Source object storage<br/>local filesystem tested<br/>private S3 declared and mock tested"]
+        embeddings["Embedding provider<br/>Ollama live verified locally<br/>Bedrock adapter unit tested, live invocation not yet observed"]
+        objects["Source object storage<br/>local filesystem tested<br/>private S3 applied and AWS-verified"]
         mcp["Internal MCP reference server<br/>official SDK + live TCP verified"]
     end
 
