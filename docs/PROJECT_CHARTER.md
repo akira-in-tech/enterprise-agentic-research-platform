@@ -482,14 +482,18 @@ docs/
 - 明确标记状态：open、merged 或 closed
 - 不把"提交"描述成"merged"，除非确实合并
 
-当前状态：**Open**（已提交，尚未合并）——
+当前状态：**Closed**（被自动机器人关闭，非内容被拒）——
 [langchain-ai/langgraph#8583](https://github.com/langchain-ai/langgraph/pull/8583)，
 为 `libs/checkpoint-postgres/README.md` 补充一条说明：`psycopg`（`PostgresSaver`/
 `AsyncPostgresSaver` 的底层驱动）的连接串使用 `sslmode` 参数，而不是
 `asyncpg`（例如从已有的 SQLAlchemy async engine URL 复用而来）所用的 `ssl`
 参数；错用会抛出不指名原因的 `psycopg.ProgrammingError`。该问题是本项目
 接入 `AsyncPostgresSaver`（见 [checkpointing.py](../app/services/research/checkpointing.py)）
-时真实遇到的，已在 [docs/status.md](status.md) 的 Development Log 中记录。
+时真实遇到的。提交后被 `langchain-ai/langgraph` 的 `require-issue-link`
+GitHub Action 自动关闭，原因是外部 PR 必须先关联一个经 maintainer 批准的
+issue（`Fixes #`/`Closes #`/`Resolves #`）才会被接受；本 PR 提交时未满足
+这一流程要求。未重新提交前不描述为 open，已在
+[docs/status.md](status.md) 的 Development Log 中记录。
 
 第二个 PR：**Open**（已提交，尚未合并）——
 [HENNGE/terraform-aws-ecs#47](https://github.com/HENNGE/terraform-aws-ecs/pull/47)，
