@@ -84,6 +84,8 @@ async def test_repository_persists_report_and_scored_sources_without_commit() ->
     assert report.citation_valid is True
     assert report.reflection_status == "approved"
     assert report.reflection_attempts == 2
+    assert report.human_review_required is False
+    assert report.human_review_reason is None
     assert len(added) == 2
 
     source = added[1]
@@ -93,6 +95,41 @@ async def test_repository_persists_report_and_scored_sources_without_commit() ->
     assert source.overall_score == 0.88
     assert source.cited is True
     assert session_mock.flush.await_count == 2
+
+
+@pytest.mark.anyio
+async def test_repository_persists_a_high_risk_reports_human_review_flag() -> None:
+    session_mock = AsyncMock(spec=AsyncSession)
+    added: list[object] = []
+    session_mock.add = Mock(side_effect=added.append)
+
+    async def assign_report_identity() -> None:
+        for entity in added:
+            if isinstance(entity, ResearchReport) and entity.id is None:
+                entity.id = uuid4()
+
+    session_mock.flush.side_effect = assign_report_identity
+    repository = ResearchReportRepository(cast(AsyncSession, session_mock))
+
+    state = create_report_state()
+    state["reflection"] = ReflectionDecision(
+        status="approved",
+        reasons=[],
+        evidence_count=1,
+        average_evidence_score=0.88,
+        human_review_required=True,
+        human_review_reason="This request touches the medical domain.",
+    )
+
+    report = await repository.create_from_state(
+        tenant_id=uuid4(),
+        research_run_id=uuid4(),
+        state=state,
+    )
+
+    assert report is not None
+    assert report.human_review_required is True
+    assert report.human_review_reason == "This request touches the medical domain."
     session_mock.commit.assert_not_awaited()
 
 

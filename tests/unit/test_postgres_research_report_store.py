@@ -45,6 +45,8 @@ async def test_report_store_returns_tenant_scoped_report_and_sources() -> None:
         reflection_status="approved",
         reflection_reasons=[],
         reflection_attempts=1,
+        human_review_required=False,
+        human_review_reason=None,
         created_at=created_at,
     )
     repository_mock.list_sources_for_run.return_value = [
@@ -84,6 +86,8 @@ async def test_report_store_returns_tenant_scoped_report_and_sources() -> None:
     assert result.research_run_id == research_run_id
     assert result.reflection_status == "approved"
     assert result.reflection_attempts == 1
+    assert result.human_review_required is False
+    assert result.human_review_reason is None
     assert result.sources[0].source_id == "WEB-0123456789ABCDEF"
     assert result.sources[0].cited is True
     assert session_factory.begin_calls == 1
@@ -91,6 +95,40 @@ async def test_report_store_returns_tenant_scoped_report_and_sources() -> None:
         tenant_id=tenant_id,
         research_run_id=research_run_id,
     )
+
+
+@pytest.mark.anyio
+async def test_report_store_surfaces_a_high_risk_reports_human_review_flag() -> None:
+    session = cast(AsyncSession, AsyncMock(spec=AsyncSession))
+    session_factory = RecordingSessionFactory(session)
+    repository_mock = AsyncMock(spec=ResearchReportRepository)
+    repository = cast(ResearchReportRepository, repository_mock)
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    repository_mock.get_for_run.return_value = ResearchReport(
+        id=uuid4(),
+        tenant_id=tenant_id,
+        research_run_id=research_run_id,
+        content="Evidence-backed report.",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        human_review_required=True,
+        human_review_reason="This request touches the medical domain.",
+        created_at=datetime.now(UTC),
+    )
+    repository_mock.list_sources_for_run.return_value = []
+
+    store = PostgresResearchReportStore(session_factory, lambda _: repository)
+
+    result = await store.get(tenant_id=tenant_id, research_run_id=research_run_id)
+
+    assert result is not None
+    assert result.human_review_required is True
+    assert result.human_review_reason == "This request touches the medical domain."
 
 
 @pytest.mark.anyio

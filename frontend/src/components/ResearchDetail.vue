@@ -269,6 +269,18 @@ async function downloadReport(
           </div>
         </div>
         <p v-if="downloadError" class="field-error" role="alert">{{ downloadError }}</p>
+        <div v-if="report.human_review_required" class="human-review-notice" role="alert">
+          <PhWarningCircle :size="20" aria-hidden="true" />
+          <div>
+            <strong>Human review required</strong>
+            <p>
+              {{
+                report.human_review_reason ??
+                "This request touches a high-risk domain (medical, legal, financial, or safety-critical). Evidence and citations below do not substitute for a qualified human reviewer."
+              }}
+            </p>
+          </div>
+        </div>
         <!-- eslint-disable vue/no-v-html -- renderedReportHtml is DOMPurify-sanitized above -->
         <div
           class="report-content"

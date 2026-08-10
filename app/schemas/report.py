@@ -38,6 +38,8 @@ class ResearchReportResponse(BaseModel):
     reflection_status: Literal["approved", "revise"]
     reflection_reasons: list[str]
     reflection_attempts: int = Field(ge=1)
+    human_review_required: bool = False
+    human_review_reason: str | None = None
     created_at: datetime
     sources: list[ResearchReportSourceResponse]
 

@@ -477,6 +477,42 @@ def test_get_research_report_is_tenant_scoped() -> None:
     assert report_store.calls == [(tenant_id, research_run_id)]
 
 
+def test_get_research_report_surfaces_the_human_review_flag() -> None:
+    tenant_id = uuid4()
+    research_run_id = uuid4()
+    report = ResearchReportResponse(
+        report_id=uuid4(),
+        research_run_id=research_run_id,
+        content="Durable report on a high-risk topic.",
+        workflow_status="research_report_completed",
+        citation_valid=True,
+        citation_coverage=1,
+        reflection_status="approved",
+        reflection_reasons=[],
+        reflection_attempts=1,
+        human_review_required=True,
+        human_review_reason="This request touches the medical domain.",
+        created_at=datetime.now(UTC),
+        sources=[],
+    )
+    report_store = FakeResearchReportStore(report)
+    app.dependency_overrides[get_research_report_store] = lambda: report_store
+    override_current_session(tenant_id=tenant_id)
+
+    try:
+        with TestClient(app) as client:
+            response = client.get(
+                f"/research-runs/{research_run_id}/report",
+            )
+    finally:
+        app.dependency_overrides.clear()
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["human_review_required"] is True
+    assert body["human_review_reason"] == "This request touches the medical domain."
+
+
 def test_get_research_report_returns_not_found() -> None:
     report_store = FakeResearchReportStore()
     app.dependency_overrides[get_research_report_store] = lambda: report_store

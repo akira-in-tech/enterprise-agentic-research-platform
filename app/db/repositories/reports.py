@@ -43,6 +43,8 @@ class ResearchReportRepository:
             reflection_status=reflection.status,
             reflection_reasons=list(reflection.reasons),
             reflection_attempts=state.get("reflection_attempts", 1),
+            human_review_required=reflection.human_review_required,
+            human_review_reason=reflection.human_review_reason,
         )
         self._session.add(report)
         await self._session.flush()

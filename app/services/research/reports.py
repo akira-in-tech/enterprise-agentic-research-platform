@@ -58,6 +58,8 @@ class PostgresResearchReportStore:
                 ),
                 reflection_reasons=list(report.reflection_reasons),
                 reflection_attempts=report.reflection_attempts,
+                human_review_required=report.human_review_required,
+                human_review_reason=report.human_review_reason,
                 created_at=report.created_at,
                 sources=[ResearchReportSourceResponse.model_validate(source) for source in sources],
             )

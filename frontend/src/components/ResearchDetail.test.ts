@@ -42,6 +42,8 @@ const report: ResearchReport = {
   reflection_status: "approved",
   reflection_reasons: [],
   reflection_attempts: 1,
+  human_review_required: false,
+  human_review_reason: null,
   created_at: "2026-08-01T12:00:00Z",
   sources: [baseSource],
 };
@@ -161,6 +163,39 @@ describe("ResearchDetail", () => {
 
     expect(wrapper.text()).toContain("Citation revision required");
     expect(wrapper.text()).toContain("Revision required");
+  });
+
+  it("warns when a report is flagged for human review", () => {
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report: {
+          ...report,
+          human_review_required: true,
+          human_review_reason: "Request touches the medical domain.",
+        },
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    expect(wrapper.text()).toContain("Human review required");
+    expect(wrapper.text()).toContain("Request touches the medical domain.");
+  });
+
+  it("does not show a human review warning for a routine report", () => {
+    const wrapper = mount(ResearchDetail, {
+      props: {
+        run,
+        progress: null,
+        report,
+        loadingReport: false,
+        operationalIssue: null,
+      },
+    });
+
+    expect(wrapper.text()).not.toContain("Human review required");
   });
 
   it("downloads the report as a file when Download is clicked", async () => {

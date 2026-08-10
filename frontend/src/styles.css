@@ -1634,6 +1634,33 @@ button:disabled {
   background: var(--warning-soft);
 }
 
+.human-review-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 18px 0;
+  padding: 14px 16px;
+  color: var(--warning);
+  background: var(--warning-soft);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-lg);
+}
+
+.human-review-notice svg {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.human-review-notice strong {
+  display: block;
+  margin-bottom: 2px;
+}
+
+.human-review-notice p {
+  color: var(--ink);
+  margin: 0;
+}
+
 .report-heading-actions {
   display: flex;
   align-items: center;

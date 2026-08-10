@@ -48,6 +48,8 @@ export function createDesignPreviewReport(now = new Date()): ResearchReport {
     reflection_status: "approved",
     reflection_reasons: [],
     reflection_attempts: 1,
+    human_review_required: false,
+    human_review_reason: null,
     created_at: now.toISOString(),
     sources: [
       {

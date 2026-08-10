@@ -130,6 +130,8 @@ export interface ResearchReport {
   reflection_status: "approved" | "revise";
   reflection_reasons: string[];
   reflection_attempts: number;
+  human_review_required: boolean;
+  human_review_reason: string | null;
   created_at: string;
   sources: ResearchReportSource[];
 }
