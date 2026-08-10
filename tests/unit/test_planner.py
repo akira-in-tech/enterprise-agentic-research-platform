@@ -78,6 +78,31 @@ async def test_planner_returns_structured_research_plan(
     generate_structured.assert_awaited_once()
 
 
+def test_research_task_accepts_a_rationale_claude_actually_produced() -> None:
+    # A live staging run crashed the whole workflow uncaught with
+    # "String should have at most 300 characters" for a genuine,
+    # unremarkable Claude-generated rationale -- 300 was simply too tight
+    # for how verbosely a capable model explains a task's purpose.
+    rationale = (
+        "Comparing methodology differences between HTTP/2 and HTTP/3 helps "
+        "establish a technical baseline before evaluating real-world "
+        "performance, since the protocols diverge at the transport layer "
+        "(TCP versus QUIC/UDP) in ways that directly explain the latency, "
+        "head-of-line blocking, and connection migration differences "
+        "measured later, rather than treating those results as unexplained "
+        "timeframe differences."
+    )
+    assert len(rationale) > 300
+
+    task = ResearchTask(
+        title="Protocol methodology",
+        search_query="HTTP/2 HTTP/3 transport layer methodology",
+        rationale=rationale,
+    )
+
+    assert task.rationale == rationale
+
+
 @pytest.mark.anyio
 async def test_planner_rejects_empty_query() -> None:
     llm_client = AnthropicClient(

@@ -15,12 +15,12 @@ class ResearchTask(BaseModel):
 
     search_query: str = Field(
         min_length=3,
-        max_length=300,
+        max_length=500,
     )
 
     rationale: str = Field(
         min_length=3,
-        max_length=300,
+        max_length=500,
     )
 
 
@@ -36,7 +36,7 @@ class ReportSection(BaseModel):
 
     purpose: str = Field(
         min_length=3,
-        max_length=300,
+        max_length=500,
     )
 
 
@@ -47,13 +47,13 @@ class ResearchPlan(BaseModel):
 
     goal: str = Field(
         min_length=3,
-        max_length=300,
+        max_length=500,
     )
 
     sub_questions: list[
         Annotated[
             str,
-            Field(min_length=3, max_length=300),
+            Field(min_length=3, max_length=500),
         ]
     ] = Field(
         min_length=2,
