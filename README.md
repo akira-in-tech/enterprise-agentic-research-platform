@@ -116,6 +116,18 @@ cp .env.example .env   # add only the credentials for the integrations you inten
 uvicorn app.main:app --reload
 ```
 
+PDF rendering uses WeasyPrint and therefore needs native Pango libraries in
+addition to the Python package. On macOS, install the official Homebrew
+package before running the complete backend suite. If Homebrew's libraries
+are not discovered automatically, expose its library directory for the
+current shell:
+
+```bash
+brew install weasyprint
+export DYLD_FALLBACK_LIBRARY_PATH="$(brew --prefix)/lib${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
+python -m weasyprint --info
+```
+
 ```bash
 cd frontend
 npm install
@@ -180,6 +192,15 @@ current limit, remaining allowance, and reset delay.
 ruff check .
 mypy app tests scripts alembic/env.py alembic/versions
 pytest -q
+```
+
+The same backend suite can be reproduced without installing native PDF
+libraries on the host. The dedicated Docker test stage contains the exact
+Linux libraries used by the production image and CI:
+
+```bash
+docker build --target test --tag evident-backend-test .
+docker run --rm evident-backend-test
 ```
 
 ```bash

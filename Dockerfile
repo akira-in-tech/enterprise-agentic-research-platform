@@ -32,3 +32,22 @@ USER app
 EXPOSE 8000 8001
 
 CMD ["python", "-m", "app.entrypoint"]
+
+FROM runtime AS test
+
+ENV IMAGE_TAG=test-image
+
+USER root
+
+COPY tests ./tests
+COPY scripts ./scripts
+COPY demo_profiles ./demo_profiles
+
+RUN python -m pip install --no-cache-dir -e '.[dev]' \
+    && chown -R app:app /app
+
+USER app
+
+CMD ["python", "-m", "pytest", "-q"]
+
+FROM runtime AS production
