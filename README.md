@@ -262,7 +262,8 @@ event-listener support to the project Workbench, including user-channel state
 synchronization, Private Channel event history, legacy FDC3 2.0/2.1 fallback,
 copyable examples, and seven focused tests. The pull request resolves upstream
 issue #1674 and is currently a draft awaiting contributor CLA authorization
-and maintainer review; it is not described as merged.
+and maintainer review; its external Netlify deploy preview currently reports
+failure. It is not described as ready or merged.
 
 ## Documentation
 
