@@ -514,15 +514,15 @@ describe 使用同一个规范化 key。PR commit 以 `akira <ye.ton@northeaster
 署名并包含 DCO `Signed-off-by`，GitHub DCO check 已通过；当前已退出 Draft，
 等待 maintainer review。
 
-第四个 PR：**Open Draft / CLA Pending**（已提交，尚未合并）——
+第四个 PR：**Open / Ready for Review**（EasyCLA 已通过，尚未合并）——
 [finos/FDC3#2091](https://github.com/finos/FDC3/pull/2091)，直接解决 upstream
 [issue #1674](https://github.com/finos/FDC3/issues/1674)。FDC3 Workbench 在 2.2+
 使用 `DesktopAgent.addEventListener` 与 `PrivateChannel.addEventListener` 监听
 user-channel 和 private-channel 事件，同时为 FDC3 2.0/2.1 保留 legacy callback
 路径；事件历史保留真实 `details.contextType`，UI 提供状态、历史和可复制示例。
 新增 7 个 Vitest 用例，并通过 Workbench build/lint 及 monorepo test/lint。
-EasyCLA 当前要求贡献者本人完成授权，外部 Netlify deploy preview 当前也报告
-failure；这些检查与 maintainer review 完成前不描述为 ready 或 merged。
+EasyCLA 已确认贡献者授权，PR 已退出 Draft 并进入 maintainer review；外部
+Netlify deploy preview 当前仍报告 failure。在 maintainer 合并前不描述为 merged。
 
 Merged 之前不描述为 merged。
 
