@@ -505,6 +505,14 @@ issue（`Fixes #`/`Closes #`/`Resolves #`）才会被接受；本 PR 提交时�
 写了 `Closes #43`。这与本项目 `scripts/aws-deploy.sh` 和 restart verification
 中真实验证过的 ECS 强制重新部署机制是同一领域。
 
+第三个 PR：**Open Draft**（已提交，尚未合并）——
+[kedro-org/kedro-plugins#1496](https://github.com/kedro-org/kedro-plugins/pull/1496)，
+完成 upstream issues #1316 与 #1317 中 Redis dataset 的 `os.PathLike` 子任务。
+`redis.PickleDataset` 的公开 `key` contract 现在接受 `str | os.PathLike`，并在
+进入 redis-py 前通过 `os.fspath()` 规范化；回归测试覆盖 save、load、exists 和
+describe 使用同一个规范化 key。PR commit 以 `akira <ye.ton@northeastern.edu>`
+署名并包含 DCO `Signed-off-by`，GitHub DCO check 已通过。
+
 Merged 之前不描述为 merged。
 
 ## 26. Engineering Demo Strategy
