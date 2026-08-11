@@ -505,13 +505,24 @@ issue（`Fixes #`/`Closes #`/`Resolves #`）才会被接受；本 PR 提交时�
 写了 `Closes #43`。这与本项目 `scripts/aws-deploy.sh` 和 restart verification
 中真实验证过的 ECS 强制重新部署机制是同一领域。
 
-第三个 PR：**Open Draft**（已提交，尚未合并）——
+第三个 PR：**Open / Ready for Review**（已提交，尚未合并）——
 [kedro-org/kedro-plugins#1496](https://github.com/kedro-org/kedro-plugins/pull/1496)，
 完成 upstream issues #1316 与 #1317 中 Redis dataset 的 `os.PathLike` 子任务。
 `redis.PickleDataset` 的公开 `key` contract 现在接受 `str | os.PathLike`，并在
 进入 redis-py 前通过 `os.fspath()` 规范化；回归测试覆盖 save、load、exists 和
 describe 使用同一个规范化 key。PR commit 以 `akira <ye.ton@northeastern.edu>`
-署名并包含 DCO `Signed-off-by`，GitHub DCO check 已通过。
+署名并包含 DCO `Signed-off-by`，GitHub DCO check 已通过；当前已退出 Draft，
+等待 maintainer review。
+
+第四个 PR：**Open Draft / CLA Pending**（已提交，尚未合并）——
+[finos/FDC3#2091](https://github.com/finos/FDC3/pull/2091)，直接解决 upstream
+[issue #1674](https://github.com/finos/FDC3/issues/1674)。FDC3 Workbench 在 2.2+
+使用 `DesktopAgent.addEventListener` 与 `PrivateChannel.addEventListener` 监听
+user-channel 和 private-channel 事件，同时为 FDC3 2.0/2.1 保留 legacy callback
+路径；事件历史保留真实 `details.contextType`，UI 提供状态、历史和可复制示例。
+新增 7 个 Vitest 用例，并通过 Workbench build/lint 及 monorepo test/lint。
+EasyCLA 当前要求贡献者本人完成授权，授权和 maintainer review 完成前不描述为
+ready 或 merged。
 
 Merged 之前不描述为 merged。
 
