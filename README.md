@@ -149,22 +149,22 @@ is used only where its speed or coordination semantics add value.
 
 ```mermaid
 flowchart TB
-    user["Researcher"] --> ui["Vue 3 + Vite console"]
-    ui -->|"REST + SSE"| api["FastAPI application"]
-    api --> auth["Session auth + tenant boundary"]
-    api --> jobs["Durable job manager"]
-    jobs --> graph["LangGraph 8-agent workflow"]
+    researcher["Researcher"] --> console["Vue 3 + Vite console"]
+    console -->|"REST + SSE"| api["FastAPI application"]
+    api --> sessionBoundary["Session auth + tenant boundary"]
+    api --> jobManager["Durable job manager"]
+    jobManager --> researchWorkflow["LangGraph 8-agent workflow"]
 
-    graph --> llm["Claude / Qwen"]
-    graph --> public["Tavily + Semantic Scholar"]
-    graph --> mcp["MCP tools"]
-    graph --> private["Private RAG"]
-    private --> embed["Ollama / Bedrock embeddings"]
-    embed --> milvus["Milvus / Zilliz Cloud"]
+    researchWorkflow --> llmProviders["Claude / Qwen"]
+    researchWorkflow --> publicSources["Tavily + Semantic Scholar"]
+    researchWorkflow --> mcpTools["MCP tools"]
+    researchWorkflow --> privateRag["Private RAG"]
+    privateRag --> embeddingService["Ollama / Bedrock embeddings"]
+    embeddingService --> vectorDatabase["Milvus / Zilliz Cloud"]
 
-    api <--> postgres["PostgreSQL\nruns, reports, sources, checkpoints, audit"]
-    api <--> redis["Redis / Valkey\ncache, idempotency, locks, rate limits, progress"]
-    api --> objects["Local storage / private S3\ndocuments and report exports"]
+    api <--> postgresState["PostgreSQL<br/>runs, reports, sources, checkpoints, audit"]
+    api <--> redisState["Redis / Valkey<br/>cache, idempotency, locks, rate limits, progress"]
+    api --> objectStorage["Local storage / private S3<br/>documents and report exports"]
 ```
 
 ### State and provider boundaries
