@@ -255,16 +255,6 @@ AWS_DESTROY_CONFIRM=destroy-staging scripts/aws-destroy.sh
 See [docs/deployment.md](docs/deployment.md#aws-staging) for the Terraform
 root breakdown, full cost basis, and what each script does.
 
-## Open-Source Contribution
-
-[FINOS FDC3 #2091](https://github.com/finos/FDC3/pull/2091) adds FDC3 2.2
-event-listener support to the project Workbench, including user-channel state
-synchronization, Private Channel event history, legacy FDC3 2.0/2.1 fallback,
-copyable examples, and seven focused tests. The pull request resolves upstream
-issue #1674 and is open and ready for maintainer review with EasyCLA signed;
-its external Netlify deploy preview currently reports failure. It is not
-described as merged.
-
 ## Documentation
 
 | Document | Covers |

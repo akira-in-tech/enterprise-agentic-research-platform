@@ -522,7 +522,9 @@ user-channel 和 private-channel 事件，同时为 FDC3 2.0/2.1 保留 legacy c
 路径；事件历史保留真实 `details.contextType`，UI 提供状态、历史和可复制示例。
 新增 7 个 Vitest 用例，并通过 Workbench build/lint 及 monorepo test/lint。
 EasyCLA 已确认贡献者授权，PR 已退出 Draft 并进入 maintainer review；外部
-Netlify deploy preview 当前仍报告 failure。在 maintainer 合并前不描述为 merged。
+Netlify deploy preview 提交时曾报告 failure，原因是分支落后于 upstream main 的
+website/build 依赖基线，与 PR 自身改动无关；同步 main 后已转为 pass（Deploy
+Preview ready）。在 maintainer 合并前不描述为 merged。
 
 Merged 之前不描述为 merged。
 
