@@ -328,6 +328,7 @@ Review the cost basis, networking, secret flow, and deployment lifecycle in
 | [Security](docs/security.md)               | Authentication, tenant isolation, prompt-injection handling, and secrets |
 | [Reliability](docs/reliability.md)         | Retry, circuit breaking, checkpoint recovery, and failure isolation      |
 | [Evaluation](docs/evaluation.md)           | Metrics, fixtures, published runs, limitations, and cost methodology     |
+| [Performance](docs/performance.md)         | Staging latency, concurrency, and capacity baseline with findings        |
 | [Trade-offs](docs/trade-offs.md)           | Architectural decisions and rejected alternatives                        |
 | [Deployment](docs/deployment.md)           | Local topology, CI/CD, AWS staging, and cost controls                    |
 | [Status](docs/status.md)                   | Evidence-backed implementation and verification log                      |
