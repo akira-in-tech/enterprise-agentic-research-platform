@@ -179,3 +179,34 @@ tools, like the eval runner's `eval_runs/` artifacts). The method:
   `AWS/ECS` CPU and memory, `AWS/ApplicationELB` `TargetResponseTime`
   and `HTTPCode_Target_5XX`, and `AWS/RDS` CPU and connections over the
   test window.
+
+## Local-only reproduction check (2026-09-28)
+
+The AWS edge and concurrency numbers above cannot be reproduced: the
+staging stack they were measured against was destroyed on 2026-09-07
+(see the snapshot note at the top of this document) and this was a
+one-time pass, not a standing environment. The two local
+micro-benchmarks have no such dependency, so both were re-run today
+against real external services to check whether the original numbers
+still hold.
+
+- **Top-20 evidence cap**: same method as above (`select_top_evidence`
+  against a real pooled Tavily/Semantic Scholar retrieval, rendered
+  with the real Writer evidence-block format, counted with
+  `tiktoken`). Semantic Scholar returned `429` on every query this
+  run (rate-limited), so the pool is Tavily-only: 90 real, deduplicated
+  sources, 30,945 full-block tokens down to 6,452 at the top-20 cap,
+  a **79.2% reduction**. The original recorded pass (2026-09-07, 70
+  sources) measured 71%; a prior reproduction on 2026-09-17 (74
+  sources) measured 71.0%. The reduction is consistently large across
+  three independent live pulls (71-79%) but is not a fixed constant,
+  since it depends on the day's live web-search results, not a static
+  fixture.
+- **Redis result-cache hit read**: same method as above
+  (`RedisResearchResultCache.get()` against a throwaway local Redis
+  container, n=2,000, full Pydantic validation included). A 44,364-byte
+  cached report: p50 0.24 ms, p90 0.66 ms, p99 1.03 ms, mean 0.36 ms.
+  This matches the original recorded pass (p50 0.31 ms, p99 1.09 ms)
+  and the 2026-09-17 reproduction (p50 0.25 ms, p99 0.99 ms) closely;
+  unlike the evidence-cap number, this one does not depend on external
+  data and is stable run to run.
