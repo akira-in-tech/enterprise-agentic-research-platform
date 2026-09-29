@@ -1,4 +1,5 @@
 import re
+from typing import cast
 from uuid import UUID, uuid4
 
 from sqlalchemy import delete, func, select, update
@@ -277,7 +278,7 @@ class KnowledgeDocumentRepository:
                 "Knowledge document is missing or cannot be deleted."
             )
 
-        return result
+        return cast(KnowledgeDocument, result)
 
     async def _transition(
         self,
@@ -304,4 +305,4 @@ class KnowledgeDocumentRepository:
                 f"Knowledge document is missing or cannot transition to {target_status}."
             )
 
-        return result
+        return cast(KnowledgeDocument, result)
